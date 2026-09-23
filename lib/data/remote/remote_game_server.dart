@@ -11,6 +11,7 @@ import 'package:kelimelig/domain/entities/game_models.dart';
 import 'package:kelimelig/domain/entities/shop_product.dart';
 import 'package:kelimelig/domain/entities/user_entity.dart';
 import 'package:kelimelig/domain/entities/word_entity.dart';
+import 'package:kelimelig/domain/entities/word_import_result.dart';
 import 'package:kelimelig/domain/game/game_server.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -35,6 +36,7 @@ class RemoteGameServer implements GameServer {
     Map<String, dynamic> args, {
     bool admin = false,
     bool retried = false,
+    Duration timeout = const Duration(seconds: 20),
   }) async {
     final headers = <String, String>{'content-type': 'application/json'};
     final token = admin ? _session.adminToken : _session.playerToken;
@@ -53,7 +55,7 @@ class RemoteGameServer implements GameServer {
             },
           }),
         )
-        .timeout(const Duration(seconds: 20));
+        .timeout(timeout);
     final decoded = response.body.isEmpty
         ? <String, dynamic>{}
         : jsonDecode(response.body);
@@ -64,7 +66,7 @@ class RemoteGameServer implements GameServer {
             : <String, dynamic>{};
     if (response.statusCode == 401 && !admin && !retried) {
       await _savePlayer(null);
-      return _call(op, args, retried: true);
+      return _call(op, args, retried: true, timeout: timeout);
     }
     if (!admin && body.containsKey('token')) {
       final next = body['token'];
@@ -347,6 +349,18 @@ class RemoteGameServer implements GameServer {
   @override
   Future<void> adminDeleteWord(String wordId) async {
     await _call('adminDeleteWord', {'wordId': wordId}, admin: true);
+  }
+
+  @override
+  Future<WordImportResult> adminImportWords(String csv) async {
+    final data = await _call(
+      'adminImportWords',
+      {'csv': csv},
+      admin: true,
+      timeout: const Duration(minutes: 3),
+    );
+    final map = data is Map ? Map<dynamic, dynamic>.from(data) : const {};
+    return WordImportResult.fromMap(map);
   }
 
   @override

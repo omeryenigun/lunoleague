@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:kelimelig/admin/admin_locale.dart';
 import 'package:kelimelig/admin/game_scope.dart';
 import 'package:kelimelig/admin/widgets/admin_widgets.dart';
+import 'package:kelimelig/admin/word_csv_pick.dart';
 import 'package:kelimelig/core/constants/enums.dart';
+import 'package:kelimelig/core/errors/failures.dart';
 import 'package:kelimelig/core/l10n/game_locale.dart';
 import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/domain/entities/word_entity.dart';
+import 'package:kelimelig/domain/entities/word_import_result.dart';
 
 class WordsScreen extends StatefulWidget {
   const WordsScreen({super.key});
@@ -18,6 +21,7 @@ class _WordsScreenState extends State<WordsScreen> {
   String _query = '';
   WordStatus? _status;
   var _reloadToken = 0;
+  var _importing = false;
 
   Future<List<WordEntity>> _load(String locale, LeagueTier league) async {
     final all = await adminServer(context).adminListWords();
@@ -60,6 +64,17 @@ class _WordsScreenState extends State<WordsScreen> {
                   ),
                   onChanged: (v) => setState(() => _query = v),
                 ),
+              ),
+              IconButton(
+                tooltip: 'CSV yükle',
+                onPressed: _importing ? null : _importCsv,
+                icon: _importing
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.upload_file),
               ),
               IconButton(
                 onPressed: () => _edit(null, locale),
@@ -194,6 +209,55 @@ class _WordsScreenState extends State<WordsScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Future<void> _importCsv() async {
+    final csv = await pickWordCsv();
+    if (csv == null || !mounted) return;
+    setState(() => _importing = true);
+    try {
+      final result = await adminServer(context).adminImportWords(csv);
+      if (!mounted) return;
+      setState(() => _reloadToken++);
+      await _showImportSummary(result);
+    } on AppFailure catch (error) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Dosya hatası'),
+          content: Text(error.message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Tamam'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _importing = false);
+    }
+  }
+
+  Future<void> _showImportSummary(WordImportResult result) {
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Yükleme bitti'),
+        content: Text(
+          '${result.imported} kayıt yüklendi.\n'
+          '${result.skipped} kayıt zaten vardı.\n'
+          '${result.invalid} satır atlandı.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Tamam'),
+          ),
+        ],
+      ),
     );
   }
 

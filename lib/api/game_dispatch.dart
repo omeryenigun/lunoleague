@@ -13,6 +13,7 @@ const adminOps = {
   'adminListWords',
   'adminUpsertWord',
   'adminDeleteWord',
+  'adminImportWords',
   'adminSetDaily',
   'adminAutoAssignMonth',
   'adminOverview',
@@ -182,6 +183,8 @@ Future<Object?> dispatchGame(
     case 'adminDeleteWord':
       await game.adminDeleteWord(args['wordId'] as String);
       return null;
+    case 'adminImportWords':
+      return (await game.adminImportWords(args['csv'] as String? ?? '')).toMap();
     case 'adminSetDaily':
       await game.adminSetDaily(
         dateKey: args['dateKey'] as String,

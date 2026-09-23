@@ -49,6 +49,7 @@ app.*.map.json
 android/key.properties
 android/*.jks
 android/*.keystore
+android/keystore-backup/
 *.jks
 *.keystore
 

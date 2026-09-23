@@ -5,6 +5,7 @@ import 'package:kelimelig/domain/entities/game_models.dart';
 import 'package:kelimelig/domain/entities/shop_product.dart';
 import 'package:kelimelig/domain/entities/user_entity.dart';
 import 'package:kelimelig/domain/entities/word_entity.dart';
+import 'package:kelimelig/domain/entities/word_import_result.dart';
 
 abstract class GameServer {
   Future<UserEntity?> currentUser();
@@ -71,6 +72,10 @@ abstract class GameServer {
   Future<List<WordEntity>> adminListWords();
   Future<WordEntity> adminUpsertWord(WordEntity word);
   Future<void> adminDeleteWord(String wordId);
+
+  /// Inserts CSV rows that are not already stored for the same language.
+  /// A bad header throws and writes nothing.
+  Future<WordImportResult> adminImportWords(String csv);
   Future<void> adminSetDaily({
     required String dateKey,
     required LeagueTier league,

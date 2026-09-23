@@ -49,7 +49,7 @@ $alias = "upload"
     -alias $alias `
     -storepass $password `
     -keypass $password `
-    -dname "CN=KelimeLig, OU=KelimeLig, O=KelimeLig, L=Istanbul, C=TR"
+    -dname "CN=Luno League, OU=Luno League, O=Luno League, L=Istanbul, C=TR"
 
 if ($LASTEXITCODE -ne 0) { throw "keytool başarısız (exit $LASTEXITCODE)" }
 

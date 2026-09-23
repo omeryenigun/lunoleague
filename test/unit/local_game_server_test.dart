@@ -8,6 +8,7 @@ import 'package:kelimelig/data/local/key_value_store.dart';
 import 'package:kelimelig/data/local/local_game_server.dart';
 import 'package:kelimelig/data/local/seed_words.dart';
 import 'package:kelimelig/data/local/seed_words_en.dart';
+import 'package:kelimelig/data/local/word_csv.dart';
 import 'package:kelimelig/domain/entities/game_models.dart';
 import 'package:kelimelig/domain/entities/shop_product.dart';
 
@@ -754,5 +755,55 @@ void main() {
     expect(again.id, first.id);
     expect(again.isAnonymous, isFalse);
     expect(again.email, 'a@gmail.com');
+  });
+
+  test('csv import skips words already stored', () async {
+    const header =
+        'word,language,definition,example,english,category,difficulty,frequency,status';
+    const csv = '''
+$header
+kalem,tr,Yeni anlam,Yeni cümle.,pen,okul,1,5,active
+zurna,tr,Üflemeli çalgı,Zurna çaldı.,zurna,müzik,,,
+elma,tr,Meyve,Elma kırmızı.,apple,meyve,,,
+zurna,tr,İkinci,Tekrar.,zurna,müzik,,,
+''';
+    final before = (await server.adminListWords())
+        .firstWhere((word) => word.word == 'kalem');
+    final first = await server.adminImportWords(csv);
+    expect(first.imported, 1);
+    expect(first.skipped, 2);
+    expect(first.invalid, 1);
+
+    final kalem = (await server.adminListWords())
+        .firstWhere((word) => word.word == 'kalem');
+    expect(kalem.definition, before.definition);
+    expect(kalem.usedCount, before.usedCount);
+    expect(
+      (await server.adminListWords()).where((word) => word.word == 'zurna'),
+      hasLength(1),
+    );
+
+    final again = await server.adminImportWords(csv);
+    expect(again.imported, 0);
+    expect(again.skipped, 3);
+    expect(again.invalid, 1);
+  });
+
+  test('csv keeps a quoted comma and rejects a bad header', () async {
+    final doc = parseWordCsv(
+      'word;language;definition;example;english;category;difficulty;frequency;status\n'
+      'zurna;tr;"Üflemeli, nefesli çalgı";Zurna çaldı.;zurna;müzik;;;\n',
+    );
+    expect(doc.headerError, isNull);
+    expect(doc.rows.single[2], 'Üflemeli, nefesli çalgı');
+
+    final count = (await server.adminListWords()).length;
+    expect(
+      () => server.adminImportWords('kelime,dil\nzurna,tr\n'),
+      throwsA(
+        isA<AppFailure>().having((error) => error.code, 'code', 'CSV_HEADER'),
+      ),
+    );
+    expect((await server.adminListWords()).length, count);
   });
 }

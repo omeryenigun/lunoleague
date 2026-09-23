@@ -9,6 +9,7 @@ import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/core/utils/password_hash.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
 import 'package:kelimelig/data/local/seed_words.dart';
+import 'package:kelimelig/data/local/word_csv.dart';
 import 'package:kelimelig/data/local/seed_words_en.dart';
 import 'package:kelimelig/domain/entities/admin_models.dart';
 import 'package:kelimelig/domain/entities/cosmetics.dart';
@@ -17,6 +18,7 @@ import 'package:kelimelig/domain/entities/game_models.dart';
 import 'package:kelimelig/domain/entities/shop_product.dart';
 import 'package:kelimelig/domain/entities/user_entity.dart';
 import 'package:kelimelig/domain/entities/word_entity.dart';
+import 'package:kelimelig/domain/entities/word_import_result.dart';
 import 'package:kelimelig/domain/game/game_server.dart';
 import 'package:kelimelig/domain/game/progression.dart';
 import 'package:kelimelig/domain/game/word_matching_engine.dart';
@@ -1928,6 +1930,113 @@ class LocalGameServer implements GameServer {
   }
 
   @override
+  Future<WordImportResult> adminImportWords(String csv) async {
+    final doc = parseWordCsv(csv);
+    if (doc.headerError != null) {
+      throw AppFailure(doc.headerError!, code: 'CSV_HEADER');
+    }
+    final known = <String>{};
+    for (final raw in await _store.values('words')) {
+      final word = WordEntity.fromMap(raw);
+      known.add(_importKey(word.language, word.word));
+    }
+    var imported = 0;
+    var skipped = 0;
+    var invalid = 0;
+    final now = _now;
+    for (final cells in doc.rows) {
+      final row = _csvWord(cells);
+      if (row == null) {
+        invalid++;
+        continue;
+      }
+      final key = _importKey(row.language, row.word);
+      if (known.contains(key)) {
+        skipped++;
+        continue;
+      }
+      await adminUpsertWord(
+        WordEntity(
+          id: '',
+          word: row.word,
+          language: row.language,
+          length: row.length,
+          difficulty: row.difficulty,
+          frequency: row.frequency,
+          category: row.category,
+          definition: row.definition,
+          exampleSentence: row.example,
+          englishTranslation: row.english,
+          status: row.status,
+          isActive: row.status == WordStatus.active,
+          usedCount: 0,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+      known.add(key);
+      imported++;
+    }
+    return WordImportResult(
+      imported: imported,
+      skipped: skipped,
+      invalid: invalid,
+    );
+  }
+
+  String _importKey(String language, String word) {
+    final locale = GameLocale.resolve(language);
+    return '${locale.id}|${locale.toUpper(word)}';
+  }
+
+  _CsvWord? _csvWord(List<String> cells) {
+    if (cells.length != wordCsvHeaders.length) return null;
+    final word = cells[0].trim();
+    final language = cells[1].trim().toLowerCase();
+    final definition = cells[2].trim();
+    if (word.isEmpty || definition.isEmpty) return null;
+    if (language != 'tr' && language != 'en') return null;
+    final locale = GameLocale.resolve(language);
+    if (!locale.isAllowedWord(word)) return null;
+    final length = locale.letterCount(word);
+    if (length < 5 || length > 7) return null;
+    final difficulty = _csvScale(cells[6], fallback: 2);
+    final frequency = _csvScale(cells[7], fallback: 3);
+    final status = _csvStatus(cells[8]);
+    if (difficulty == null || frequency == null || status == null) return null;
+    final category = cells[5].trim();
+    return _CsvWord(
+      word: word,
+      language: language,
+      definition: definition,
+      example: cells[3].trim(),
+      english: cells[4].trim(),
+      category: category.isEmpty ? 'genel' : category,
+      difficulty: difficulty,
+      frequency: frequency,
+      status: status,
+      length: length,
+    );
+  }
+
+  int? _csvScale(String raw, {required int fallback}) {
+    final text = raw.trim();
+    if (text.isEmpty) return fallback;
+    final value = int.tryParse(text);
+    if (value == null || value < 1 || value > 5) return null;
+    return value;
+  }
+
+  WordStatus? _csvStatus(String raw) {
+    final text = raw.trim().toLowerCase();
+    if (text.isEmpty) return WordStatus.active;
+    for (final status in WordStatus.values) {
+      if (status.name == text) return status;
+    }
+    return null;
+  }
+
+  @override
   Future<void> adminSetDaily({
     required String dateKey,
     required LeagueTier league,
@@ -2317,4 +2426,30 @@ class _Ach {
   const _Ach(this.id, this.name, this.desc, this.icon, this.coins);
   final String id, name, desc, icon;
   final int coins;
+}
+
+class _CsvWord {
+  const _CsvWord({
+    required this.word,
+    required this.language,
+    required this.definition,
+    required this.example,
+    required this.english,
+    required this.category,
+    required this.difficulty,
+    required this.frequency,
+    required this.status,
+    required this.length,
+  });
+
+  final String word;
+  final String language;
+  final String definition;
+  final String example;
+  final String english;
+  final String category;
+  final int difficulty;
+  final int frequency;
+  final WordStatus status;
+  final int length;
 }

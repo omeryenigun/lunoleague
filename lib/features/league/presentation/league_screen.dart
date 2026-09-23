@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:kelimelig/core/constants/enums.dart';
 import 'package:kelimelig/core/l10n/l10n.dart';
 import 'package:kelimelig/core/theme/colors.dart';
@@ -58,31 +59,33 @@ class _LeagueScreenState extends State<LeagueScreen>
             backgroundColor: AppColors.cosmicBg,
             body: CosmicBackdrop(
               child: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
-                  child: Column(
-                    children: [
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: ShimmerTitle(
-                          text: l10n.t('league'),
-                          fontSize: 28,
-                          textAlign: TextAlign.left,
-                        ),
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+                  children: [
+                    ShimmerTitle(
+                      text: l10n.t('league'),
+                      fontSize: 28,
+                      textAlign: TextAlign.left,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      l10n.t('league_need_account'),
+                      style: const TextStyle(
+                        color: Color(0xFF94A3B8),
+                        height: 1.4,
+                        fontWeight: FontWeight.w600,
                       ),
-                      const Spacer(),
-                      Text(
-                        l10n.t('league_need_account'),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Color(0xFF94A3B8),
-                          height: 1.4,
-                          fontWeight: FontWeight.w600,
-                        ),
+                    ),
+                    const SizedBox(height: 16),
+                    for (final tier in LeagueTier.values) ...[
+                      _GuestLeagueOption(
+                        tier: tier,
+                        locale: l10n.id,
+                        onTap: () => context.push('/login'),
                       ),
-                      const Spacer(),
+                      const SizedBox(height: 12),
                     ],
-                  ),
+                  ],
                 ),
               ),
             ),
@@ -184,6 +187,72 @@ class _LeagueScreenState extends State<LeagueScreen>
           ),
         );
       },
+    );
+  }
+}
+
+class _GuestLeagueOption extends StatelessWidget {
+  const _GuestLeagueOption({
+    required this.tier,
+    required this.locale,
+    required this.onTap,
+  });
+
+  final LeagueTier tier;
+  final String locale;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = AppColors.forLeague(tier);
+    final detail = locale == 'en'
+        ? '${tier.wordLength} letters · ${tier.maxAttempts} tries'
+        : '${tier.wordLength} harf · ${tier.maxAttempts} deneme';
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            color: const Color(0xCC0F172A),
+            border: Border.all(color: accent.withValues(alpha: 0.45)),
+          ),
+          child: Row(
+            children: [
+              Text(tier.symbol, style: const TextStyle(fontSize: 26)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${tier.labelFor(locale)} ${locale == 'en' ? 'League' : 'Lig'}',
+                      style: TextStyle(
+                        color: accent,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      detail,
+                      style: const TextStyle(
+                        color: Color(0xFF94A3B8),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: accent.withValues(alpha: 0.9)),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
