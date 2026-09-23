@@ -10,7 +10,6 @@ import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/domain/entities/game_models.dart';
 import 'package:kelimelig/domain/entities/user_entity.dart';
 import 'package:kelimelig/core/widgets/game_logo.dart';
-import 'package:kelimelig/core/widgets/midnight_countdown.dart';
 import 'package:kelimelig/features/home/cubit/home_cubit.dart';
 import 'package:kelimelig/injection.dart';
 
@@ -225,60 +224,45 @@ class _DailyCta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final done = snap.dailyStatus == DailyStatus.completed;
-    final enabled = !done;
     final resume = snap.dailyStatus == DailyStatus.started;
     final l10n = sl<L10n>();
-    final subtitle = done
-        ? l10n.t('daily_next_midnight')
-        : resume
-            ? l10n.t('daily_resume_sub')
-            : user.isAnonymous
-                ? l10n.t('daily_guest')
-                : l10n.t('daily_reg');
-    final title = done
-        ? l10n.t('daily_done')
-        : resume
-            ? l10n.t('daily_resume')
-            : l10n.t('daily_play');
+    final subtitle = resume
+        ? l10n.t('daily_resume_sub')
+        : user.isAnonymous
+            ? l10n.t('daily_guest')
+            : l10n.t('daily_reg');
+    final title = resume ? l10n.t('daily_resume') : l10n.t('daily_play');
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: enabled
-            ? () async {
-                await context.push('/game/daily');
-                if (context.mounted) await context.read<HomeCubit>().load();
-              }
-            : null,
+        onTap: () async {
+          await context.push('/game/daily');
+          if (context.mounted) await context.read<HomeCubit>().load();
+        },
         borderRadius: BorderRadius.circular(20),
         child: Ink(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            gradient: enabled
-                ? const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      AppColors.cosmicGreen,
-                      AppColors.cosmicTeal,
-                      Color(0xFF27AE60),
-                    ],
-                  )
-                : null,
-            color: enabled ? null : const Color(0xB30F172A),
-            boxShadow: enabled
-                ? [
-                    BoxShadow(
-                      color: AppColors.cosmicGreen.withValues(alpha: 0.4),
-                      blurRadius: 30,
-                      offset: const Offset(0, 6),
-                    ),
-                    BoxShadow(
-                      color: AppColors.cosmicTeal.withValues(alpha: 0.22),
-                      blurRadius: 60,
-                    ),
-                  ]
-                : null,
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppColors.cosmicGreen,
+                AppColors.cosmicTeal,
+                Color(0xFF27AE60),
+              ],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.cosmicGreen.withValues(alpha: 0.4),
+                blurRadius: 30,
+                offset: const Offset(0, 6),
+              ),
+              BoxShadow(
+                color: AppColors.cosmicTeal.withValues(alpha: 0.22),
+                blurRadius: 60,
+              ),
+            ],
           ),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
@@ -287,11 +271,11 @@ class _DailyCta extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 21,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 0.2,
-                    color: enabled ? AppColors.cosmicBg : const Color(0xFFF0FDF4),
+                    color: AppColors.cosmicBg,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -300,23 +284,9 @@ class _DailyCta extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: enabled
-                        ? AppColors.cosmicBg.withValues(alpha: 0.75)
-                        : const Color(0xFF94A3B8),
+                    color: AppColors.cosmicBg.withValues(alpha: 0.75),
                   ),
                 ),
-                if (done) ...[
-                  const SizedBox(height: 12),
-                  MidnightCountdown(
-                    onElapsed: () => context.read<HomeCubit>().load(),
-                    style: const TextStyle(
-                      color: Color(0xFFF1C40F),
-                      fontWeight: FontWeight.w800,
-                      fontSize: 20,
-                      fontFeatures: [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                ],
               ],
             ),
           ),

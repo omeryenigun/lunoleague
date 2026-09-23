@@ -39,7 +39,11 @@ void main() {
     expect(session.outcome!.leaguePoints, 0);
     expect(session.outcome!.rankAfter, isNull);
     expect(session.outcome!.streak, 1);
-    expect(server.startDaily(), throwsA(isA<AppFailure>()));
+    final review = await server.startDaily();
+    expect(review.sessionId, session.sessionId);
+    expect(review.isFinished, isTrue);
+    expect(review.guesses.map((guess) => guess.guess), [detail.word]);
+    expect(review.outcome, isNull);
     expect(await server.leagueStandings(), isEmpty);
     expect(server.claimDailyReward(), throwsA(isA<AppFailure>()));
   });
@@ -107,7 +111,9 @@ void main() {
     expect(session.outcome!.won, isTrue);
     expect(session.outcome!.xpEarned, greaterThan(0));
     expect(session.outcome!.coinEarned, 25);
-    expect(server.startDaily(), throwsA(isA<AppFailure>()));
+    final review = await server.startDaily();
+    expect(review.sessionId, session.sessionId);
+    expect(review.isFinished, isTrue);
   });
 
   test('hint reduces xp', () async {
@@ -313,7 +319,9 @@ void main() {
     final detail = await timed.adminGetSession(session.sessionId);
     session = await timed.submitGuess(session.sessionId, detail!.word);
     expect(session.outcome!.won, isTrue);
-    await expectLater(timed.startDaily(), throwsA(isA<AppFailure>()));
+    final review = await timed.startDaily();
+    expect(review.sessionId, session.sessionId);
+    expect(review.isFinished, isTrue);
     now = DateTime(2026, 9, 9);
     await timed.homeSnapshot();
     final next = await timed.startDaily();
@@ -692,7 +700,9 @@ void main() {
     await store.put('users', user.id, saved);
     await store.putMeta('daily_done_${user.id}_tr', 'cleared');
 
-    expect(locked.startDaily(), throwsA(isA<AppFailure>()));
+    final review = await locked.startDaily();
+    expect(review.sessionId, session.sessionId);
+    expect(review.isFinished, isTrue);
     expect((await locked.homeSnapshot()).dailyStatus, DailyStatus.completed);
   });
 

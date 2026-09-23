@@ -126,7 +126,8 @@ class GameView extends StatelessWidget {
                                   fontSize: 22,
                                 ),
                               ),
-                              _PlayClock(startedAt: session.startedAt),
+                              if (!session.isFinished)
+                                _PlayClock(startedAt: session.startedAt),
                               const SizedBox(width: 8),
                               _AttemptPill(
                                 current: session.currentAttempt,
@@ -166,43 +167,45 @@ class GameView extends StatelessWidget {
                             ),
                           ),
                         ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                          child: Row(
-                            children: [
-                              _HintChip(
-                                label: l10n.t('hint_letter').replaceAll('💡 ', ''),
-                                onTap: () => context
-                                    .read<GameCubit>()
-                                    .hint(HintLevel.letter),
-                              ),
-                              const SizedBox(width: 10),
-                              _HintChip(
-                                label: l10n.t('hint_meaning').replaceAll('💡 ', ''),
-                                onTap: () => context
-                                    .read<GameCubit>()
-                                    .hint(HintLevel.meaning),
-                              ),
-                              const Spacer(),
-                              _CoinDisplay(coins: state.coins),
-                            ],
+                        if (!session.isFinished) ...[
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                            child: Row(
+                              children: [
+                                _HintChip(
+                                  label: l10n.t('hint_letter').replaceAll('💡 ', ''),
+                                  onTap: () => context
+                                      .read<GameCubit>()
+                                      .hint(HintLevel.letter),
+                                ),
+                                const SizedBox(width: 10),
+                                _HintChip(
+                                  label: l10n.t('hint_meaning').replaceAll('💡 ', ''),
+                                  onTap: () => context
+                                      .read<GameCubit>()
+                                      .hint(HintLevel.meaning),
+                                ),
+                                const Spacer(),
+                                _CoinDisplay(coins: state.coins),
+                              ],
+                            ),
                           ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
-                          child: TurkishKeyboard(
-                            locale: state.gameLocale,
-                            states: session.keyboard,
-                            onLetter: (l) {
-                              sl<AudioManager>().keyPress();
-                              sl<HapticManager>().light();
-                              context.read<GameCubit>().tapLetter(l);
-                            },
-                            onEnter: () => context.read<GameCubit>().submit(),
-                            onBackspace: () =>
-                                context.read<GameCubit>().backspace(),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+                            child: TurkishKeyboard(
+                              locale: state.gameLocale,
+                              states: session.keyboard,
+                              onLetter: (l) {
+                                sl<AudioManager>().keyPress();
+                                sl<HapticManager>().light();
+                                context.read<GameCubit>().tapLetter(l);
+                              },
+                              onEnter: () => context.read<GameCubit>().submit(),
+                              onBackspace: () =>
+                                  context.read<GameCubit>().backspace(),
+                            ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
             ),

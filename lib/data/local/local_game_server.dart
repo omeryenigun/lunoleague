@@ -779,8 +779,16 @@ class LocalGameServer implements GameServer {
   String _dailyLockKey(UserEntity user) => 'daily_done_${user.id}_${user.locale}';
 
   Future<bool> _dailyClosed(UserEntity user, String today) async {
+    if (await _findFinishedDaily(user, today) != null) return true;
     if (user.playedDailyOn(today)) return true;
     if (await _store.getMeta(_dailyLockKey(user)) == today) return true;
+    return false;
+  }
+
+  Future<Map<String, dynamic>?> _findFinishedDaily(
+    UserEntity user,
+    String today,
+  ) async {
     final sessions = await _store.values('game_sessions');
     for (final session in sessions) {
       if (session['userId'] != user.id) continue;
@@ -795,10 +803,10 @@ class LocalGameServer implements GameServer {
       final started = DateTime.tryParse(session['startedAt'] as String? ?? '');
       if (started != null && DateKeys.dayKey(started) == today) {
         await _store.putMeta(_dailyLockKey(user), today);
-        return true;
+        return session;
       }
     }
-    return false;
+    return null;
   }
 
   Future<bool> _hasOpenDaily(UserEntity user) async {
@@ -865,6 +873,8 @@ class LocalGameServer implements GameServer {
     user = await _applyMissedStreak(user);
     final today = DateKeys.dayKey(_now);
     if (await _dailyClosed(user, today)) {
+      final finished = await _findFinishedDaily(user, today);
+      if (finished != null) return _sessionToView(finished);
       throw AppFailure(UserMessages.dailyCompleted, code: 'DAILY_DONE');
     }
     final existing = await _findActive(user.id, GameType.daily, language: user.locale);
