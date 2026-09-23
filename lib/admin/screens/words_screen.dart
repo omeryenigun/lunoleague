@@ -18,10 +18,14 @@ class WordsScreen extends StatefulWidget {
 }
 
 class _WordsScreenState extends State<WordsScreen> {
+  static const _pageSize = 50;
+
   String _query = '';
   WordStatus? _status;
   var _reloadToken = 0;
   var _importing = false;
+  var _page = 0;
+  String? _scope;
 
   Future<List<WordEntity>> _load(String locale, LeagueTier league) async {
     final all = await adminServer(context).adminListWords();
@@ -29,13 +33,22 @@ class _WordsScreenState extends State<WordsScreen> {
       if (w.language != locale) return false;
       if (w.length != league.wordLength) return false;
       if (_status != null && w.status != _status) return false;
-      if (_query.isEmpty) return true;
-      final q = _query.toLowerCase();
+      return true;
+    }).toList()
+      ..sort((a, b) => a.displayWord.compareTo(b.displayWord));
+  }
+
+  bool _searchReady(String locale) =>
+      GameLocale.resolve(locale).letterCount(_query.trim()) >= 3;
+
+  List<WordEntity> _visible(List<WordEntity> words, String locale) {
+    if (!_searchReady(locale)) return words;
+    final q = _query.trim().toLowerCase();
+    return words.where((w) {
       return w.word.toLowerCase().contains(q) ||
           w.category.toLowerCase().contains(q) ||
           w.definition.toLowerCase().contains(q);
-    }).toList()
-      ..sort((a, b) => a.displayWord.compareTo(b.displayWord));
+    }).toList();
   }
 
   Future<void> _saveDefinition(WordEntity w, String definition) async {
@@ -51,6 +64,11 @@ class _WordsScreenState extends State<WordsScreen> {
   Widget build(BuildContext context) {
     final locale = AdminLocaleScope.of(context);
     final league = AdminLocaleScope.leagueOf(context);
+    final scope = '$locale-${league.name}';
+    if (_scope != scope) {
+      _scope = scope;
+      _page = 0;
+    }
     return Column(
       children: [
         Padding(
@@ -59,10 +77,16 @@ class _WordsScreenState extends State<WordsScreen> {
             children: [
               Expanded(
                 child: TextField(
-                  decoration: const InputDecoration(
-                    hintText: 'Kelime, kategori veya anlam ara',
+                  decoration: InputDecoration(
+                    hintText: 'En az 3 harf yaz',
+                    helperText: _query.trim().isEmpty || _searchReady(locale)
+                        ? null
+                        : 'Arama 3 harfte başlar',
                   ),
-                  onChanged: (v) => setState(() => _query = v),
+                  onChanged: (v) => setState(() {
+                    _query = v;
+                    _page = 0;
+                  }),
                 ),
               ),
               IconButton(
@@ -91,13 +115,19 @@ class _WordsScreenState extends State<WordsScreen> {
               FilterChip(
                 label: const Text('Hepsi'),
                 selected: _status == null,
-                onSelected: (_) => setState(() => _status = null),
+                onSelected: (_) => setState(() {
+                  _status = null;
+                  _page = 0;
+                }),
               ),
               for (final s in WordStatus.values)
                 FilterChip(
                   label: Text(s.name),
                   selected: _status == s,
-                  onSelected: (_) => setState(() => _status = s),
+                  onSelected: (_) => setState(() {
+                    _status = s;
+                    _page = 0;
+                  }),
                 ),
             ],
           ),
@@ -106,19 +136,27 @@ class _WordsScreenState extends State<WordsScreen> {
         Expanded(
           child: AdminBody(
             key: ValueKey(
-              '$_reloadToken-$locale-${league.name}-$_status-$_query',
+              '$_reloadToken-$locale-${league.name}-$_status',
             ),
             future: _load(locale, league),
             builder: (context, words) {
-              if (words.isEmpty) {
-                return const Center(
+              final visible = _visible(words, locale);
+              if (visible.isEmpty) {
+                return Center(
                   child: Text(
-                    'Kelime yok',
-                    style: TextStyle(color: AppColors.textSecondary),
+                    words.isEmpty ? 'Kelime yok' : 'Sonuç yok',
+                    style: const TextStyle(color: AppColors.textSecondary),
                   ),
                 );
               }
-              return LayoutBuilder(
+              final pages = (visible.length / _pageSize).ceil();
+              final page = _page.clamp(0, pages - 1);
+              final start = page * _pageSize;
+              final slice = visible.skip(start).take(_pageSize).toList();
+              return Column(
+                children: [
+                  Expanded(
+                    child: LayoutBuilder(
                 builder: (context, constraints) {
                   return SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
@@ -144,7 +182,7 @@ class _WordsScreenState extends State<WordsScreen> {
                             DataColumn(label: Text('')),
                           ],
                           rows: [
-                            for (final w in words)
+                            for (final w in slice)
                               DataRow(
                                 cells: [
                                   DataCell(
@@ -204,6 +242,15 @@ class _WordsScreenState extends State<WordsScreen> {
                     ),
                   );
                 },
+                    ),
+                  ),
+                  _Pager(
+                    page: page,
+                    pages: pages,
+                    total: visible.length,
+                    onPage: (next) => setState(() => _page = next),
+                  ),
+                ],
               );
             },
           ),
@@ -376,6 +423,46 @@ class _WordsScreenState extends State<WordsScreen> {
       );
       setState(() => _reloadToken++);
     }
+  }
+}
+
+class _Pager extends StatelessWidget {
+  const _Pager({
+    required this.page,
+    required this.pages,
+    required this.total,
+    required this.onPage,
+  });
+
+  final int page;
+  final int pages;
+  final int total;
+  final ValueChanged<int> onPage;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 8, 8),
+      child: Row(
+        children: [
+          Text(
+            '${page + 1} / $pages · $total kelime',
+            style: const TextStyle(color: AppColors.textSecondary),
+          ),
+          const Spacer(),
+          IconButton(
+            tooltip: 'Önceki',
+            onPressed: page > 0 ? () => onPage(page - 1) : null,
+            icon: const Icon(Icons.chevron_left),
+          ),
+          IconButton(
+            tooltip: 'Sonraki',
+            onPressed: page + 1 < pages ? () => onPage(page + 1) : null,
+            icon: const Icon(Icons.chevron_right),
+          ),
+        ],
+      ),
+    );
   }
 }
 
