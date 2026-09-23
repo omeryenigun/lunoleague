@@ -142,10 +142,10 @@ class _WordsScreenState extends State<WordsScreen> {
             builder: (context, words) {
               final visible = _visible(words, locale);
               if (visible.isEmpty) {
-                return Center(
+                return const Center(
                   child: Text(
-                    words.isEmpty ? 'Kelime yok' : 'Sonuç yok',
-                    style: const TextStyle(color: AppColors.textSecondary),
+                    '0 satır listelendi',
+                    style: TextStyle(color: AppColors.textSecondary),
                   ),
                 );
               }
@@ -247,6 +247,7 @@ class _WordsScreenState extends State<WordsScreen> {
                   _Pager(
                     page: page,
                     pages: pages,
+                    shown: slice.length,
                     total: visible.length,
                     onPage: (next) => setState(() => _page = next),
                   ),
@@ -430,12 +431,14 @@ class _Pager extends StatelessWidget {
   const _Pager({
     required this.page,
     required this.pages,
+    required this.shown,
     required this.total,
     required this.onPage,
   });
 
   final int page;
   final int pages;
+  final int shown;
   final int total;
   final ValueChanged<int> onPage;
 
@@ -446,7 +449,7 @@ class _Pager extends StatelessWidget {
       child: Row(
         children: [
           Text(
-            '${page + 1} / $pages · $total kelime',
+            '$shown satır listelendi · ${page + 1} / $pages · toplam $total',
             style: const TextStyle(color: AppColors.textSecondary),
           ),
           const Spacer(),

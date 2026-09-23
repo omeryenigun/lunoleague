@@ -816,4 +816,40 @@ zurna,tr,İkinci,Tekrar.,zurna,müzik,,,
     );
     expect((await server.adminListWords()).length, count);
   });
+
+  test('auto assign refills a day whose word was deleted', () async {
+    final words = (await server.adminListWords())
+        .where((w) => w.playable && w.language == 'tr' && w.length == 5)
+        .toList();
+    final gone = words.first;
+    final kept = words[1];
+    await server.adminSetDaily(
+      dateKey: '2026-09-01',
+      league: LeagueTier.bronze,
+      wordId: gone.id,
+    );
+    await server.adminSetDaily(
+      dateKey: '2026-09-02',
+      league: LeagueTier.bronze,
+      wordId: kept.id,
+    );
+    await server.adminDeleteWord(gone.id);
+
+    final assigned = await server.adminAutoAssignMonth(
+      year: 2026,
+      month: 9,
+      league: LeagueTier.bronze,
+      locale: 'tr',
+    );
+    final map = await server.adminDailyMap();
+    final replacement = map['2026-09-01_tr_bronze'];
+    expect(map['2026-09-02_tr_bronze'], kept.id);
+    expect(replacement, isNotNull);
+    expect(replacement, isNot(gone.id));
+    expect(
+      (await server.adminListWords()).any((word) => word.id == replacement),
+      isTrue,
+    );
+    expect(assigned, 29);
+  });
 }

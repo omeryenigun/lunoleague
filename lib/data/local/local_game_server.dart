@@ -2096,7 +2096,16 @@ class LocalGameServer implements GameServer {
     final lang = GameLocale.resolve(locale).id;
     final daysInMonth = DateTime(year, month + 1, 0).day;
     final map = await adminDailyMap();
-    final pool = (await _playable(league.wordLength, language: lang)).toList()
+    final byId = {
+      for (final word in (await _store.values('words')).map(WordEntity.fromMap))
+        word.id: word,
+    };
+    final pool = byId.values
+        .where(
+          (w) =>
+              w.playable && w.length == league.wordLength && w.language == lang,
+        )
+        .toList()
       ..shuffle(_random);
     if (pool.isEmpty) {
       throw AppFailure(
@@ -2104,19 +2113,30 @@ class LocalGameServer implements GameServer {
         code: 'NO_WORD',
       );
     }
+    bool held(String? wordId) {
+      final word = wordId == null ? null : byId[wordId];
+      return word != null &&
+          word.playable &&
+          word.language == lang &&
+          word.length == league.wordLength;
+    }
+
+    String? liveId(String key) {
+      final id = map['${key}_${lang}_${league.name}'] ??
+          (lang == 'tr' ? map['${key}_${league.name}'] : null);
+      return held(id) ? id : null;
+    }
+
     final usedInMonth = <String>{};
     for (var day = 1; day <= daysInMonth; day++) {
-      final key = DateKeys.dayKey(DateTime(year, month, day));
-      final existing = map['${key}_${lang}_${league.name}'] ??
-          (lang == 'tr' ? map['${key}_${league.name}'] : null);
-      if (existing != null) usedInMonth.add(existing);
+      final id = liveId(DateKeys.dayKey(DateTime(year, month, day)));
+      if (id != null) usedInMonth.add(id);
     }
     var assigned = 0;
     var poolIndex = 0;
     for (var day = 1; day <= daysInMonth; day++) {
       final key = DateKeys.dayKey(DateTime(year, month, day));
-      final existing = map['${key}_${lang}_${league.name}'] ??
-          (lang == 'tr' ? map['${key}_${league.name}'] : null);
+      final existing = liveId(key);
       if (existing != null) continue;
       WordEntity? pick;
       for (var tries = 0; tries < pool.length; tries++) {
