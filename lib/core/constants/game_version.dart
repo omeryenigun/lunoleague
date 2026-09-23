@@ -1,5 +1,5 @@
 /// Luno League sürümü. Son rakam API yüklemesinde artar.
-const gameVersionCode = '0.0.8';
+const gameVersionCode = '0.0.9';
 
 class GameVersion {
   const GameVersion(this.major, this.minor, this.patch);
