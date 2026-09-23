@@ -8,8 +8,6 @@ class AppConstants {
   static const adminPassword = 'admin';
   static const sessionTimeoutMinutes = 60;
   static const endlessBreakAdEvery = 3;
-  /// Temporary tester login. Turn off before Play production.
-  static const allowDevAuthBypass = true;
   static const turkishAlphabet =
       'ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ';
 }

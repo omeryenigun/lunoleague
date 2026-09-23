@@ -2,13 +2,12 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:kelimelig/admin/admin_locale.dart';
+import 'package:kelimelig/admin/game_scope.dart';
 import 'package:kelimelig/admin/widgets/admin_widgets.dart';
 import 'package:kelimelig/core/constants/enums.dart';
 import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/domain/entities/word_entity.dart';
-import 'package:kelimelig/domain/game/game_server.dart';
-import 'package:kelimelig/injection.dart';
 
 class DailyScreen extends StatefulWidget {
   const DailyScreen({super.key});
@@ -59,8 +58,9 @@ class _DailyScreenState extends State<DailyScreen> {
   }
 
   Future<({List<WordEntity> words, Map<String, String> map})> _load() async {
-    final words = await sl<GameServer>().adminListWords();
-    final map = await sl<GameServer>().adminDailyMap();
+    final server = adminServer(context);
+    final words = await server.adminListWords();
+    final map = await server.adminDailyMap();
     return (words: words, map: map);
   }
 
@@ -104,7 +104,7 @@ class _DailyScreenState extends State<DailyScreen> {
   Future<void> _bulkAuto(String language, LeagueTier league) async {
     setState(() => _bulkAssigning = true);
     try {
-      final n = await sl<GameServer>().adminAutoAssignMonth(
+      final n = await adminServer(context).adminAutoAssignMonth(
         year: _year,
         month: _month,
         league: league,
@@ -148,7 +148,7 @@ class _DailyScreenState extends State<DailyScreen> {
           : pool.where((w) => w.id != current).toList();
       final pick = (candidates.isNotEmpty ? candidates : pool)[
           _random.nextInt((candidates.isNotEmpty ? candidates : pool).length)];
-      await sl<GameServer>().adminSetDaily(
+      await adminServer(context).adminSetDaily(
         dateKey: day,
         league: league,
         wordId: pick.id,
@@ -194,7 +194,7 @@ class _DailyScreenState extends State<DailyScreen> {
     if (picked == null || !mounted) return;
     setState(() => _dayBusy = day);
     try {
-      await sl<GameServer>().adminSetDaily(
+      await adminServer(context).adminSetDaily(
         dateKey: day,
         league: league,
         wordId: picked.id,
@@ -223,9 +223,10 @@ class _DailyScreenState extends State<DailyScreen> {
         final wordsById = {for (final w in data.words) w.id: w};
         final pool = _pool(data.words, language, league);
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+        return SizedBox.expand(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
               child: Wrap(
@@ -296,86 +297,175 @@ class _DailyScreenState extends State<DailyScreen> {
             ),
             const Divider(height: 1),
             Expanded(
-              child: ListView.separated(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount: _daysInMonth.length,
-                separatorBuilder: (_, _) =>
-                    const Divider(height: 1, color: Color(0x1494A3B8)),
-                itemBuilder: (context, i) {
-                  final day = _daysInMonth[i];
-                  final wordId = _wordIdFor(data.map, day, language, league);
-                  final word = wordId == null ? null : wordsById[wordId];
-                  final date = DateKeys.parseDay(day);
-                  final busy = _dayBusy == day;
-                  return ListTile(
-                    leading: SizedBox(
-                      width: 52,
-                      child: Text(
-                        '${date.day}\n${_weekdays[date.weekday - 1]}',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          height: 1.15,
-                          color: word == null
-                              ? AppColors.danger
-                              : AppColors.textPrimary,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minWidth: constraints.maxWidth,
+                        ),
+                        child: DataTable(
+                          headingRowColor:
+                              WidgetStateProperty.all(AppColors.surface),
+                          dataRowMinHeight: 48,
+                          dataRowMaxHeight: 64,
+                          columnSpacing: 24,
+                          columns: const [
+                            DataColumn(label: Text('Tarih')),
+                            DataColumn(label: Text('Kelime')),
+                            DataColumn(label: Text('Açıklama')),
+                            DataColumn(label: Text('İşlem')),
+                          ],
+                          rows: [
+                            for (final day in _daysInMonth)
+                              () {
+                                final wordId = _wordIdFor(
+                                  data.map,
+                                  day,
+                                  language,
+                                  league,
+                                );
+                                final word =
+                                    wordId == null ? null : wordsById[wordId];
+                                final date = DateKeys.parseDay(day);
+                                final busy = _dayBusy == day;
+                                final isToday =
+                                    day == DateKeys.dayKey(DateTime.now());
+                                return DataRow(
+                                  color: isToday
+                                      ? WidgetStateProperty.all(
+                                          AppColors.cosmicGreen
+                                              .withValues(alpha: 0.14),
+                                        )
+                                      : null,
+                                  cells: [
+                                    DataCell(
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            '${date.day} ${_weekdays[date.weekday - 1]}',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                              color: isToday
+                                                  ? AppColors.cosmicGreen
+                                                  : word == null
+                                                      ? AppColors.danger
+                                                      : AppColors.textPrimary,
+                                            ),
+                                          ),
+                                          if (isToday) ...[
+                                            const SizedBox(width: 8),
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 7,
+                                                vertical: 2,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.cosmicGreen
+                                                    .withValues(alpha: 0.22),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                                border: Border.all(
+                                                  color: AppColors.cosmicGreen
+                                                      .withValues(alpha: 0.45),
+                                                ),
+                                              ),
+                                              child: const Text(
+                                                'BUGÜN',
+                                                style: TextStyle(
+                                                  color: AppColors.cosmicGreen,
+                                                  fontWeight: FontWeight.w900,
+                                                  fontSize: 10,
+                                                  letterSpacing: 0.4,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                    DataCell(
+                                      SizedBox(
+                                        width: 140,
+                                        child: Text(
+                                          word?.displayWord ?? '— atanmamış —',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            color: word == null
+                                                ? AppColors.warning
+                                                : AppColors.textPrimary,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    DataCell(
+                                      SizedBox(
+                                        width: 320,
+                                        child: Text(
+                                          word?.definition.isNotEmpty == true
+                                              ? word!.definition
+                                              : '—',
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: AppColors.textSecondary,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    DataCell(
+                                      busy
+                                          ? const SizedBox(
+                                              width: 20,
+                                              height: 20,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            )
+                                          : Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                TextButton(
+                                                  onPressed: () => _autoDay(
+                                                    day: day,
+                                                    language: language,
+                                                    league: league,
+                                                    pool: pool,
+                                                    map: data.map,
+                                                  ),
+                                                  child: const Text('Oto'),
+                                                ),
+                                                TextButton(
+                                                  onPressed: () => _manualDay(
+                                                    day: day,
+                                                    language: language,
+                                                    league: league,
+                                                    pool: pool,
+                                                    map: data.map,
+                                                    wordsById: wordsById,
+                                                  ),
+                                                  child: const Text('Manuel'),
+                                                ),
+                                              ],
+                                            ),
+                                    ),
+                                  ],
+                                );
+                              }(),
+                          ],
                         ),
                       ),
                     ),
-                    title: Text(
-                      word?.displayWord ?? '— atanmamış —',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: word == null
-                            ? AppColors.warning
-                            : AppColors.textPrimary,
-                      ),
-                    ),
-                    subtitle: Text(
-                      word?.definition.isNotEmpty == true
-                          ? word!.definition
-                          : '${language.toUpperCase()} · ${league.label}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    trailing: busy
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Wrap(
-                            spacing: 6,
-                            children: [
-                              OutlinedButton(
-                                onPressed: () => _autoDay(
-                                  day: day,
-                                  language: language,
-                                  league: league,
-                                  pool: pool,
-                                  map: data.map,
-                                ),
-                                child: const Text('Oto'),
-                              ),
-                              FilledButton(
-                                onPressed: () => _manualDay(
-                                  day: day,
-                                  language: language,
-                                  league: league,
-                                  pool: pool,
-                                  map: data.map,
-                                  wordsById: wordsById,
-                                ),
-                                child: const Text('Manuel'),
-                              ),
-                            ],
-                          ),
                   );
                 },
               ),
             ),
           ],
+          ),
         );
       },
     );

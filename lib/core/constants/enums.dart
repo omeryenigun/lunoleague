@@ -14,18 +14,21 @@ enum HintLevel { letter, meaning }
 
 enum WordStatus { draft, review, approved, active }
 
-enum AuthProvider { anonymous, google, apple }
+enum AuthProvider { anonymous, google, apple, email }
 
 enum AdminUserKind { all, registered, guest, banned }
 
 enum TransactionType { earn, spend }
 
 extension LeagueTierX on LeagueTier {
-  String get label => switch (this) {
-        LeagueTier.bronze => 'Bronz',
-        LeagueTier.silver => 'Gümüş',
-        LeagueTier.gold => 'Altın',
+  /// Localized display name. Admin UI may keep [label] (TR).
+  String labelFor(String locale) => switch (this) {
+        LeagueTier.bronze => locale == 'en' ? 'Bronze' : 'Bronz',
+        LeagueTier.silver => locale == 'en' ? 'Silver' : 'Gümüş',
+        LeagueTier.gold => locale == 'en' ? 'Gold' : 'Altın',
       };
+
+  String get label => labelFor('tr');
 
   String get symbol => switch (this) {
         LeagueTier.bronze => '🥉',

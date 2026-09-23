@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -9,9 +11,9 @@ import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
 import 'package:kelimelig/core/theme/cosmic_glass.dart';
 import 'package:kelimelig/core/theme/shimmer_title.dart';
+import 'package:kelimelig/core/widgets/midnight_countdown.dart';
 import 'package:kelimelig/features/game/cubit/game_cubit.dart';
 import 'package:kelimelig/features/game/presentation/widgets/guess_board.dart';
-import 'package:kelimelig/features/game/presentation/widgets/mock_ad_dialog.dart';
 import 'package:kelimelig/features/game/presentation/widgets/result_screen.dart';
 import 'package:kelimelig/features/game/presentation/widgets/turkish_keyboard.dart';
 import 'package:kelimelig/features/word_book/presentation/word_card_screen.dart';
@@ -51,10 +53,16 @@ class GameView extends StatelessWidget {
         final outcome = state.session?.outcome;
         if (outcome != null) {
           sl<HapticManager>().success();
+          final audio = sl<AudioManager>();
+          if (audio.enabled) {
+            final steps = state.session?.wordLength ?? 5;
+            await Future<void>.delayed(Duration(milliseconds: 150 * steps));
+          }
+          if (!context.mounted) return;
           if (outcome.won) {
-            await sl<AudioManager>().win();
+            await audio.win();
           } else {
-            await sl<AudioManager>().lose();
+            await audio.lose();
           }
         }
       },
@@ -75,31 +83,11 @@ class GameView extends StatelessWidget {
                 ),
               );
             },
-            onReplay: () async {
-              if (outcome.showEndlessBreakAd) {
-                await showMockRewardedAd(
-                  context,
-                  title: 'Kısa ara',
-                  message:
-                      'Her 3 Endless galibiyetinde bir geçiş reklamı (önizleme).',
-                  canDecline: false,
-                  confirmLabel: 'Devam',
-                );
-              }
+            onReplay: () {
               if (context.mounted) context.read<GameCubit>().start();
             },
-            onReviveWithAd: !outcome.won && outcome.canReviveEndlessWithAd
-                ? () async {
-                    final watched = await showMockRewardedAd(
-                      context,
-                      title: 'Serini koru',
-                      message:
-                          'Reklamı izleyerek ${outcome.endlessRun} kelimelik Endless serin sıfırlanmaz. +5 coin.',
-                    );
-                    if (!watched || !context.mounted) return;
-                    await context.read<GameCubit>().reviveAndStart();
-                  }
-                : null,
+            onReviveWithAd: null,
+            onEndAd: null,
           );
         }
 
@@ -112,12 +100,16 @@ class GameView extends StatelessWidget {
           body: CosmicBackdrop(
             child: SafeArea(
               child: state.loading || session == null
-                  ? Center(
-                      child: Text(
-                        state.error ?? l10n.t('loading'),
-                        style: const TextStyle(color: Color(0xFF94A3B8)),
-                      ),
-                    )
+                  ? state.errorCode == 'DAILY_DONE'
+                      ? SizedBox.expand(
+                          child: _DailyClosed(onHome: () => context.go('/home')),
+                        )
+                      : Center(
+                          child: Text(
+                            state.error ?? l10n.t('loading'),
+                            style: const TextStyle(color: Color(0xFF94A3B8)),
+                          ),
+                        )
                   : Column(
                       children: [
                         Padding(
@@ -134,6 +126,8 @@ class GameView extends StatelessWidget {
                                   fontSize: 22,
                                 ),
                               ),
+                              _PlayClock(startedAt: session.startedAt),
+                              const SizedBox(width: 8),
                               _AttemptPill(
                                 current: session.currentAttempt,
                                 max: session.maxAttempts,
@@ -215,6 +209,107 @@ class GameView extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _DailyClosed extends StatelessWidget {
+  const _DailyClosed({required this.onHome});
+
+  final VoidCallback onHome;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = sl<L10n>();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+      child: Column(
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: CosmicGlassIconButton(
+              icon: Icons.chevron_left_rounded,
+              onPressed: onHome,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            l10n.t('daily_done'),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFFF0FDF4),
+              fontWeight: FontWeight.w800,
+              fontSize: 22,
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 16),
+          const MidnightCountdown(),
+          const SizedBox(height: 10),
+          Text(
+            l10n.t('daily_next_midnight'),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFF94A3B8),
+              fontWeight: FontWeight.w600,
+              height: 1.4,
+            ),
+          ),
+          const Spacer(),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlayClock extends StatefulWidget {
+  const _PlayClock({required this.startedAt});
+
+  final DateTime startedAt;
+
+  @override
+  State<_PlayClock> createState() => _PlayClockState();
+}
+
+class _PlayClockState extends State<_PlayClock> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final elapsed = DateTime.now().difference(widget.startedAt);
+    final total = elapsed.isNegative ? 0 : elapsed.inSeconds;
+    final minutes = total ~/ 60;
+    final seconds = (total % 60).toString().padLeft(2, '0');
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0x991E293B),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0x2694A3B8)),
+      ),
+      child: Text(
+        '$minutes:$seconds',
+        style: const TextStyle(
+          color: Color(0xFFF0FDF4),
+          fontWeight: FontWeight.w800,
+          fontSize: 15,
+          fontFeatures: [FontFeature.tabularFigures()],
+        ),
+      ),
     );
   }
 }

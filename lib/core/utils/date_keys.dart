@@ -61,4 +61,20 @@ class DateKeys {
     final end = DateTime(n.year + 1, 1, 1);
     return end.difference(n);
   }
+
+  /// Time left until the next local midnight, when the new daily opens.
+  static Duration untilMidnight([DateTime? now]) {
+    final n = now ?? DateTime.now();
+    final next = DateTime(n.year, n.month, n.day + 1);
+    final left = next.difference(n);
+    return left.isNegative ? Duration.zero : left;
+  }
+
+  static String formatClock(Duration duration) {
+    final total = duration.inSeconds;
+    final hours = (total ~/ 3600).toString().padLeft(2, '0');
+    final minutes = ((total ~/ 60) % 60).toString().padLeft(2, '0');
+    final seconds = (total % 60).toString().padLeft(2, '0');
+    return '$hours:$minutes:$seconds';
+  }
 }

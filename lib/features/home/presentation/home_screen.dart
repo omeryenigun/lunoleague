@@ -6,11 +6,11 @@ import 'package:kelimelig/core/l10n/l10n.dart';
 import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
 import 'package:kelimelig/core/theme/cosmic_glass.dart';
-import 'package:kelimelig/core/theme/shimmer_title.dart';
 import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/domain/entities/game_models.dart';
 import 'package:kelimelig/domain/entities/user_entity.dart';
-import 'package:kelimelig/features/auth/presentation/dev_bypass_button.dart';
+import 'package:kelimelig/core/widgets/game_logo.dart';
+import 'package:kelimelig/core/widgets/midnight_countdown.dart';
 import 'package:kelimelig/features/home/cubit/home_cubit.dart';
 import 'package:kelimelig/injection.dart';
 
@@ -57,28 +57,9 @@ class _HomeView extends StatelessWidget {
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
                   children: [
-                    Row(
-                      children: [
-                        const Expanded(
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: ShimmerTitle(
-                              fontSize: 26,
-                              textAlign: TextAlign.left,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
+                    const Center(child: GameLogo(size: 112)),
+                    const SizedBox(height: 20),
                     _LeagueCard(user: user, snap: snap),
-                    if (user.isAnonymous && DevBypassButton.enabled) ...[
-                      const SizedBox(height: 12),
-                      DevBypassButton(
-                        displayName: user.displayName,
-                        onDone: () => context.read<HomeCubit>().load(),
-                      ),
-                    ],
                     const SizedBox(height: 14),
                     _DailyCta(user: user, snap: snap),
                     const SizedBox(height: 14),
@@ -111,23 +92,22 @@ class _LeagueCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = sl<L10n>();
-    final accent = user.isAnonymous
-        ? const Color(0xFF94A3B8)
-        : AppColors.forLeague(user.currentLeague);
-    final title = user.isAnonymous
-        ? l10n.t('guest')
-        : l10n.t('league_named').replaceAll('{tier}', user.currentLeague.label.toUpperCase());
+    final accent = AppColors.forLeague(user.currentLeague);
+    final title = l10n.t('league_named').replaceAll(
+      '{tier}',
+      user.currentLeague.labelFor(l10n.id).toUpperCase(),
+    );
     return CosmicGlassCard(
-      colors: user.isAnonymous
-          ? const [Color(0xFF64748B), Color(0xFF334155)]
-          : const [AppColors.cosmicGold, Color(0xFFF39C12), Color(0xFFE67E22)],
-      onTap: () => context.push('/settings'),
+      colors: const [AppColors.cosmicGold, Color(0xFFF39C12), Color(0xFFE67E22)],
+      onTap: () => user.isAnonymous
+          ? context.go('/profile')
+          : context.push('/settings'),
       child: Column(
         children: [
           Row(
             children: [
               Text(
-                user.isAnonymous ? '👤' : user.currentLeague.symbol,
+                user.currentLeague.symbol,
                 style: const TextStyle(fontSize: 18),
               ),
               const SizedBox(width: 8),
@@ -144,7 +124,16 @@ class _LeagueCard extends StatelessWidget {
                   ),
                 ),
               ),
-              if (snap.leagueRank != null)
+              if (user.isAnonymous)
+                Text(
+                  l10n.t('league_register_note'),
+                  style: const TextStyle(
+                    color: Color(0xFFF1C40F),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                  ),
+                )
+              else if (snap.leagueRank != null)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
@@ -236,21 +225,31 @@ class _DailyCta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final enabled = snap.dailyStatus != DailyStatus.completed;
+    final done = snap.dailyStatus == DailyStatus.completed;
+    final enabled = !done;
     final resume = snap.dailyStatus == DailyStatus.started;
     final l10n = sl<L10n>();
-    final subtitle = snap.dailyStatus == DailyStatus.completed
-        ? l10n.t('daily_done')
+    final subtitle = done
+        ? l10n.t('daily_next_midnight')
         : resume
             ? l10n.t('daily_resume_sub')
             : user.isAnonymous
                 ? l10n.t('daily_guest')
                 : l10n.t('daily_reg');
-    final title = resume ? l10n.t('daily_resume') : l10n.t('daily_play');
+    final title = done
+        ? l10n.t('daily_done')
+        : resume
+            ? l10n.t('daily_resume')
+            : l10n.t('daily_play');
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: enabled ? () => context.push('/game/daily') : null,
+        onTap: enabled
+            ? () async {
+                await context.push('/game/daily');
+                if (context.mounted) await context.read<HomeCubit>().load();
+              }
+            : null,
         borderRadius: BorderRadius.circular(20),
         child: Ink(
           decoration: BoxDecoration(
@@ -292,7 +291,7 @@ class _DailyCta extends StatelessWidget {
                     fontSize: 21,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 0.2,
-                    color: enabled ? AppColors.cosmicBg : const Color(0xFF94A3B8),
+                    color: enabled ? AppColors.cosmicBg : const Color(0xFFF0FDF4),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -303,9 +302,21 @@ class _DailyCta extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                     color: enabled
                         ? AppColors.cosmicBg.withValues(alpha: 0.75)
-                        : const Color(0xFF64748B),
+                        : const Color(0xFF94A3B8),
                   ),
                 ),
+                if (done) ...[
+                  const SizedBox(height: 12),
+                  MidnightCountdown(
+                    onElapsed: () => context.read<HomeCubit>().load(),
+                    style: const TextStyle(
+                      color: Color(0xFFF1C40F),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 20,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -670,7 +681,7 @@ class _PeriodBoardCard extends StatelessWidget {
                 ),
               ),
               Text(
-                snap.user.currentLeague.label,
+                snap.user.currentLeague.labelFor(l10n.id),
                 style: TextStyle(
                   color: accent,
                   fontSize: 12,

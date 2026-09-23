@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:kelimelig/admin/game_scope.dart';
 import 'package:kelimelig/admin/screens/user_detail_screen.dart';
 import 'package:kelimelig/admin/widgets/admin_widgets.dart';
 import 'package:kelimelig/core/constants/enums.dart';
 import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/domain/entities/user_entity.dart';
-import 'package:kelimelig/domain/game/game_server.dart';
-import 'package:kelimelig/injection.dart';
 
 class UsersScreen extends StatefulWidget {
   const UsersScreen({super.key});
@@ -19,7 +18,7 @@ class _UsersScreenState extends State<UsersScreen> {
   var _query = '';
 
   Future<List<UserEntity>> _load() =>
-      sl<GameServer>().adminListUsers(query: _query, kind: _kind);
+      adminServer(context).adminListUsers(query: _query, kind: _kind);
 
   @override
   Widget build(BuildContext context) {

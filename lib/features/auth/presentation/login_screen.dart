@@ -6,7 +6,6 @@ import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
 import 'package:kelimelig/core/theme/shimmer_title.dart';
 import 'package:kelimelig/features/auth/cubit/auth_cubit.dart';
-import 'package:kelimelig/features/auth/presentation/dev_bypass_button.dart';
 import 'package:kelimelig/features/auth/presentation/language_switch_button.dart';
 import 'package:kelimelig/injection.dart';
 
@@ -19,7 +18,9 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen>
     with SingleTickerProviderStateMixin {
-  final _name = TextEditingController();
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  var _obscure = true;
   late final AnimationController _enter;
   late final Animation<double> _fade;
   late final Animation<Offset> _slide;
@@ -38,23 +39,59 @@ class _LoginScreenState extends State<LoginScreen>
 
   @override
   void dispose() {
-    _name.dispose();
+    _email.dispose();
+    _password.dispose();
     _enter.dispose();
     super.dispose();
   }
 
+  InputDecoration _fieldDecoration(String label, {String? hint}) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      filled: true,
+      fillColor: const Color(0xB30F172A),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(
+          color: AppColors.cosmicGreen.withValues(alpha: 0.35),
+        ),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(
+          color: AppColors.cosmicBlue.withValues(alpha: 0.28),
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(
+          color: AppColors.cosmicGreen,
+          width: 1.6,
+        ),
+      ),
+    );
+  }
+
   Future<void> _afterLogin() async {
     final cubit = context.read<AuthCubit>();
-    if (_name.text.trim().length >= 2) {
-      await cubit.setName(_name.text.trim());
-    }
+    if (cubit.state.error != null || cubit.state.user == null) return;
     await cubit.finishOnboarding();
-    if (!mounted) return;
+    if (!mounted || cubit.state.error != null) return;
     if (context.canPop()) {
       context.pop();
     } else {
       context.go('/home');
     }
+  }
+
+  Future<void> _signInEmail() async {
+    final cubit = context.read<AuthCubit>();
+    await cubit.signInEmail(
+      email: _email.text,
+      password: _password.text,
+    );
+    await _afterLogin();
   }
 
   @override
@@ -79,7 +116,8 @@ class _LoginScreenState extends State<LoginScreen>
                 builder: (context, state) {
                   return ListView(
                     padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
-                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
                     children: [
                       Row(
                         children: [
@@ -101,7 +139,7 @@ class _LoginScreenState extends State<LoginScreen>
                       const ShimmerTitle(fontSize: 36),
                       const SizedBox(height: 10),
                       Text(
-                        l10n.t('login'),
+                        l10n.t('sign_in_title'),
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                           fontWeight: FontWeight.w800,
@@ -121,54 +159,80 @@ class _LoginScreenState extends State<LoginScreen>
                       ),
                       const SizedBox(height: 28),
                       TextField(
-                        controller: _name,
-                        textInputAction: TextInputAction.done,
-                        keyboardType: TextInputType.text,
+                        controller: _email,
+                        textInputAction: TextInputAction.next,
+                        keyboardType: TextInputType.emailAddress,
+                        autocorrect: false,
                         style: const TextStyle(fontWeight: FontWeight.w700),
-                        decoration: InputDecoration(
-                          labelText: l10n.t('username'),
-                          hintText: 'Ömer veya WordMaster42',
-                          filled: true,
-                          fillColor: const Color(0xB30F172A),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide(
-                              color: AppColors.cosmicGreen.withValues(alpha: 0.35),
-                            ),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide(
-                              color: AppColors.cosmicBlue.withValues(alpha: 0.28),
-                            ),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(
-                              color: AppColors.cosmicGreen,
-                              width: 1.6,
+                        decoration: _fieldDecoration(l10n.t('email_label')),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _password,
+                        obscureText: _obscure,
+                        textInputAction: TextInputAction.done,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                        decoration: _fieldDecoration(l10n.t('password_label'))
+                            .copyWith(
+                          suffixIcon: IconButton(
+                            onPressed: () =>
+                                setState(() => _obscure = !_obscure),
+                            icon: Icon(
+                              _obscure
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
                             ),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 22),
-                      if (DevBypassButton.enabled) ...[
-                        DevBypassButton(
-                          primary: true,
-                          resolveName: () => _name.text,
-                          onDone: _afterLogin,
-                        ),
-                        const SizedBox(height: 16),
-                      ],
+                      const SizedBox(height: 18),
                       CosmicContinueButton(
-                        label: l10n.t('google'),
+                        label: l10n.t('sign_in_title'),
                         showArrow: false,
+                        onPressed: state.loading ? null : _signInEmail,
+                      ),
+                      const SizedBox(height: 10),
+                      TextButton(
+                        onPressed: state.loading ? null : () => context.push('/register'),
+                        child: Text(l10n.t('email_register')),
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        children: [
+                          const Expanded(child: Divider(color: Color(0xFF334155))),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Text(
+                              l10n.t('or_divider'),
+                              style: const TextStyle(
+                                color: Color(0xFF64748B),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          const Expanded(child: Divider(color: Color(0xFF334155))),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      OutlinedButton(
                         onPressed: state.loading
                             ? null
                             : () async {
                                 await context.read<AuthCubit>().google();
                                 await _afterLogin();
                               },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFFF0FDF4),
+                          side: BorderSide(
+                            color:
+                                AppColors.cosmicGreen.withValues(alpha: 0.5),
+                          ),
+                          minimumSize: const Size.fromHeight(48),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: Text(l10n.t('google')),
                       ),
                       if (Theme.of(context).platform == TargetPlatform.iOS) ...[
                         const SizedBox(height: 12),

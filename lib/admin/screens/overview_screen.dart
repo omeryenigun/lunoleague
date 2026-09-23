@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:kelimelig/admin/admin_locale.dart';
+import 'package:kelimelig/admin/game_scope.dart';
 import 'package:kelimelig/admin/widgets/admin_widgets.dart';
 import 'package:kelimelig/core/constants/enums.dart';
 import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/domain/entities/admin_models.dart';
-import 'package:kelimelig/domain/game/game_server.dart';
-import 'package:kelimelig/injection.dart';
 
 class OverviewScreen extends StatefulWidget {
   const OverviewScreen({super.key});
@@ -19,7 +18,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
   Future<AdminOverview>? _future;
 
   Future<AdminOverview> _load(String locale) =>
-      sl<GameServer>().adminOverview(locale: locale);
+      adminServer(context).adminOverview(locale: locale);
 
   @override
   void didChangeDependencies() {
@@ -110,7 +109,9 @@ class _OverviewScreenState extends State<OverviewScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  '${locale.toUpperCase()} · Daily atanmamış ligler: ${o.missingDailyLeagues.map((e) => e.label).join(', ')}',
+                  '${locale.toUpperCase()} · Daily atanmamış ligler: '
+                  '${o.missingDailyLeagues.map((e) => e.label).join(', ')}'
+                  ' (oyuncu girerse otomatik doldurulabilir)',
                   style: const TextStyle(color: AppColors.warning),
                 ),
               ),

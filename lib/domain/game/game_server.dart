@@ -2,19 +2,36 @@ import 'package:kelimelig/core/constants/enums.dart';
 import 'package:kelimelig/domain/entities/admin_models.dart';
 import 'package:kelimelig/domain/entities/app_config.dart';
 import 'package:kelimelig/domain/entities/game_models.dart';
+import 'package:kelimelig/domain/entities/shop_product.dart';
 import 'package:kelimelig/domain/entities/user_entity.dart';
 import 'package:kelimelig/domain/entities/word_entity.dart';
 
 abstract class GameServer {
   Future<UserEntity?> currentUser();
   Future<UserEntity> signInAnonymously();
-  Future<UserEntity> signInWithGoogle({String? displayName});
+  /// Links a real Google account. Empty [googleId] must not create a user.
+  Future<UserEntity> signInWithGoogle({
+    required String googleId,
+    String? email,
+    String? displayName,
+  });
   Future<UserEntity> signInWithApple({String? displayName});
+  Future<UserEntity> registerWithEmail({
+    required String email,
+    required String password,
+    String? displayName,
+    String? avatar,
+  });
+  Future<UserEntity> signInWithEmail({
+    required String email,
+    required String password,
+  });
   Future<UserEntity> setDisplayName(String name);
   Future<UserEntity> completeOnboarding();
   Future<UserEntity> updateSettings({
     bool? soundOn,
     bool? hapticOn,
+    bool? animationsOn,
     bool? notificationsOn,
   });
   Future<void> signOut();
@@ -32,6 +49,16 @@ abstract class GameServer {
   Future<DailyRewardResult> claimDailyReward();
   Future<int> watchRewardedAd();
   Future<void> restoreEndlessRunAfterAd();
+  Future<List<ShopProduct>> listShopProducts();
+  /// Grants the catalog item only when [purchaseToken] is a confirmed Play purchase.
+  Future<UserEntity> purchaseShopProduct(
+    String productId, {
+    required String purchaseToken,
+  });
+  Future<List<ShopProduct>> adminListShopProducts({bool includeInactive = true});
+  Future<ShopProduct> adminUpsertShopProduct(ShopProduct product);
+  Future<void> adminDeleteShopProduct(String productId);
+  Future<List<ShopProduct>> adminResetShopCatalog();
   Future<void> saveWord(String wordId);
   Future<List<SavedWord>> wordBook();
   Future<List<LeaderboardEntry>> leaderboard();
@@ -71,10 +98,13 @@ abstract class GameServer {
   });
   Future<AdminSessionDetail?> adminGetSession(String sessionId);
   Future<void> adminBanUser(String userId, bool banned, {String? reason});
+  Future<UserEntity> adminSetDisplayName(String userId, String name);
   Future<UserEntity> adminAdjustCoins(String userId, int delta, {String reason = 'ADMIN_GRANT'});
   Future<List<LeaderboardEntry>> adminLeagueStandings(
     LeagueTier league, {
     String locale = 'tr',
+    RankPeriod period = RankPeriod.week,
+    String? periodId,
   });
   Future<AppConfig> getConfig();
   Future<AppConfig> adminUpdateConfig(AppConfig config);

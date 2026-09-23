@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:kelimelig/admin/game_scope.dart';
 import 'package:kelimelig/admin/widgets/admin_widgets.dart';
 import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/domain/entities/app_config.dart';
-import 'package:kelimelig/domain/game/game_server.dart';
-import 'package:kelimelig/injection.dart';
 
 enum _ConfigKind { number, streakMap, intList }
 
@@ -201,7 +200,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
   Future<void> _save(AppConfig updated, String id) async {
     setState(() => _busyId = id);
     try {
-      await sl<GameServer>().adminUpdateConfig(updated);
+      await adminServer(context).adminUpdateConfig(updated);
       if (!mounted) return;
       setState(() {
         _busyId = null;
@@ -327,7 +326,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
   Widget build(BuildContext context) {
     return AdminBody(
       key: ValueKey(_reloadToken),
-      future: sl<GameServer>().getConfig(),
+      future: adminServer(context).getConfig(),
       builder: (context, AppConfig c) {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -1,0 +1,12 @@
+.git
+.dart_tool
+build
+android
+ios
+test
+windows
+linux
+macos
+.idea
+.env
+*.iml

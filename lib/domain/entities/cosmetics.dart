@@ -1,6 +1,3 @@
-import 'package:flutter/material.dart';
-import 'package:kelimelig/core/theme/colors.dart';
-
 class Cosmetics {
   static const themeDefault = 'theme_default';
   static const themeSeason = 'theme_season';
@@ -21,12 +18,5 @@ class Cosmetics {
         frameSeason => 'Sezon çerçevesi',
         frameHonor => 'Onur çerçevesi',
         _ => 'Varsayılan çerçeve',
-      };
-
-  static Color frameColor(String id) => switch (id) {
-        frameMonth => AppColors.gold,
-        frameSeason => AppColors.accent,
-        frameHonor => const Color(0xFFE8D5A3),
-        _ => AppColors.border,
       };
 }

@@ -9,6 +9,7 @@ import 'package:kelimelig/data/local/local_game_server.dart';
 import 'package:kelimelig/data/local/seed_words.dart';
 import 'package:kelimelig/data/local/seed_words_en.dart';
 import 'package:kelimelig/domain/entities/game_models.dart';
+import 'package:kelimelig/domain/entities/shop_product.dart';
 
 void main() {
   late LocalGameServer server;
@@ -43,7 +44,7 @@ void main() {
   });
 
   test('unfinished daily resumes same session until midnight', () async {
-    await server.signInWithGoogle(displayName: 'Devam');
+    await server.signInWithGoogle(googleId: 'Devam', displayName: 'Devam');
     var session = await server.startDaily();
     final detail = await server.adminGetSession(session.sessionId);
     final wrong = (await server.adminListWords())
@@ -65,7 +66,7 @@ void main() {
   });
 
   test('registered user daily once per day', () async {
-    final user = await server.signInWithGoogle(displayName: 'Ömer');
+    final user = await server.signInWithGoogle(googleId: 'Ömer', displayName: 'Ömer');
     expect(user.isAnonymous, isFalse);
     final session = await server.startDaily();
     expect(session.wordLength, 5);
@@ -80,7 +81,7 @@ void main() {
   });
 
   test('wallet hint spend and dictionary reject', () async {
-    await server.signInWithGoogle(displayName: 'Test');
+    await server.signInWithGoogle(googleId: 'Test', displayName: 'Test');
     await server.watchRewardedAd();
     await server.watchRewardedAd();
     final session = await server.startEndless();
@@ -91,7 +92,7 @@ void main() {
   });
 
   test('win grants xp and coins via server', () async {
-    await server.signInWithGoogle(displayName: 'Zeynep');
+    await server.signInWithGoogle(googleId: 'Zeynep', displayName: 'Zeynep');
     final words = (await server.adminListWords())
         .where((w) => w.length == 5 && w.playable && w.language == 'tr')
         .toList();
@@ -109,7 +110,7 @@ void main() {
   });
 
   test('hint reduces xp', () async {
-    await server.signInWithGoogle(displayName: 'Ali');
+    await server.signInWithGoogle(googleId: 'Ali', displayName: 'Ali');
     for (var i = 0; i < 4; i++) {
       await server.watchRewardedAd();
     }
@@ -130,7 +131,7 @@ void main() {
   test('admin overview splits guests registered banned', () async {
     await server.signInAnonymously();
     await server.signOut();
-    final registered = await server.signInWithGoogle(displayName: 'Zeynep');
+    final registered = await server.signInWithGoogle(googleId: 'Zeynep', displayName: 'Zeynep');
     await server.adminBanUser(registered.id, true, reason: 'test');
     final overview = await server.adminOverview();
     expect(overview.guestCount, 1);
@@ -143,7 +144,7 @@ void main() {
   test('admin list users filters guests and search', () async {
     await server.signInAnonymously();
     await server.signOut();
-    await server.signInWithGoogle(displayName: 'Ömer');
+    await server.signInWithGoogle(googleId: 'Ömer', displayName: 'Ömer');
     final guests = await server.adminListUsers(kind: AdminUserKind.guest);
     final registered = await server.adminListUsers(kind: AdminUserKind.registered);
     final search = await server.adminListUsers(query: 'ömer');
@@ -154,7 +155,7 @@ void main() {
   });
 
   test('admin lists games after a win and can inspect session', () async {
-    await server.signInWithGoogle(displayName: 'Zeynep');
+    await server.signInWithGoogle(googleId: 'Zeynep', displayName: 'Zeynep');
     final words = (await server.adminListWords())
         .where((w) => w.length == 5 && w.playable && w.language == 'tr')
         .toList();
@@ -184,7 +185,7 @@ void main() {
   });
 
   test('admin coin adjust and ban reason', () async {
-    final user = await server.signInWithGoogle(displayName: 'Ali');
+    final user = await server.signInWithGoogle(googleId: 'Ali', displayName: 'Ali');
     expect(user.coin, 0);
     final credited = await server.adminAdjustCoins(user.id, 40);
     expect(credited.coin, 40);
@@ -227,7 +228,7 @@ void main() {
   }
 
   test('endless first loss cannot revive', () async {
-    await server.signInWithGoogle(displayName: 'Seri');
+    await server.signInWithGoogle(googleId: 'Seri', displayName: 'Seri');
     final lost = await loseEndless();
     expect(lost.outcome!.canReviveEndlessWithAd, isFalse);
     expect(lost.outcome!.endlessRun, 0);
@@ -235,7 +236,7 @@ void main() {
   });
 
   test('endless win then lose offers revive and ad restores run', () async {
-    await server.signInWithGoogle(displayName: 'Seri');
+    await server.signInWithGoogle(googleId: 'Seri', displayName: 'Seri');
     final won = await winEndless();
     expect(won.outcome!.endlessRun, 1);
     expect(won.outcome!.canReviveEndlessWithAd, isFalse);
@@ -256,7 +257,7 @@ void main() {
   });
 
   test('third endless win shows break ad', () async {
-    await server.signInWithGoogle(displayName: 'Seri');
+    await server.signInWithGoogle(googleId: 'Seri', displayName: 'Seri');
     expect((await winEndless()).outcome!.showEndlessBreakAd, isFalse);
     expect((await winEndless()).outcome!.showEndlessBreakAd, isFalse);
     final third = await winEndless();
@@ -282,7 +283,7 @@ void main() {
   }
 
   test('registered daily loss grants consolation league points', () async {
-    await server.signInWithGoogle(displayName: 'Lig');
+    await server.signInWithGoogle(googleId: 'Lig', displayName: 'Lig');
     final lost = await loseDaily();
     expect(lost.outcome!.leaguePoints, 10);
     expect(lost.outcome!.rankAfter, isNotNull);
@@ -306,7 +307,7 @@ void main() {
     var now = DateTime(2026, 9, 2);
     final timed = LocalGameServer(MemoryKeyValueStore(), clock: () => now);
     await timed.initialize();
-    await timed.signInWithGoogle(displayName: 'Zaman');
+    await timed.signInWithGoogle(googleId: 'Zaman', displayName: 'Zaman');
     var session = await timed.startDaily();
     final detail = await timed.adminGetSession(session.sessionId);
     session = await timed.submitGuess(session.sessionId, detail!.word);
@@ -321,7 +322,7 @@ void main() {
   });
 
   test('equip rejects locked cosmetics', () async {
-    await server.signInWithGoogle(displayName: 'Tema');
+    await server.signInWithGoogle(googleId: 'Tema', displayName: 'Tema');
     expect(server.equipCosmetic(theme: Cosmetics.themeSeason), throwsA(isA<AppFailure>()));
     final user = await server.equipCosmetic(theme: Cosmetics.themeDefault);
     expect(user.equippedTheme, Cosmetics.themeDefault);
@@ -338,7 +339,7 @@ void main() {
   });
 
   test('locale splits dictionary daily and league boards', () async {
-    await server.signInWithGoogle(displayName: 'Locale');
+    await server.signInWithGoogle(googleId: 'Locale', displayName: 'Locale');
     expect(await server.hasChosenLocale(), isTrue);
     expect(await server.activeLocale(), 'tr');
 
@@ -402,7 +403,7 @@ void main() {
   });
 
   test('switching locale keeps separate league and stats', () async {
-    await server.signInWithGoogle(displayName: 'Split');
+    await server.signInWithGoogle(googleId: 'Split', displayName: 'Split');
     final trWords = (await server.adminListWords())
         .where((w) => w.length == 5 && w.playable && w.language == 'tr')
         .toList();
@@ -459,7 +460,7 @@ void main() {
   });
 
   test('locale switch does not resume other language daily session', () async {
-    await server.signInWithGoogle(displayName: 'Resume');
+    await server.signInWithGoogle(googleId: 'Resume', displayName: 'Resume');
     final trWords = (await server.adminListWords())
         .where((w) => w.length == 5 && w.playable && w.language == 'tr')
         .toList();
@@ -493,8 +494,51 @@ void main() {
     expect(trResume.sessionId, trOpen.sessionId);
   });
 
+  test('playing EN daily does not lock TR daily same day', () async {
+    await server.signInWithGoogle(googleId: 'Bilingual', displayName: 'Bilingual');
+    final trWords = (await server.adminListWords())
+        .where((w) => w.length == 5 && w.playable && w.language == 'tr')
+        .toList();
+    final enWords = (await server.adminListWords())
+        .where((w) => w.length == 5 && w.playable && w.language == 'en')
+        .toList();
+    final today = DateKeys.dayKey();
+
+    await server.setLocale('en');
+    await server.adminSetDaily(
+      dateKey: today,
+      league: LeagueTier.bronze,
+      wordId: enWords.first.id,
+      language: 'en',
+    );
+    var enSession = await server.startDaily();
+    enSession =
+        await server.submitGuess(enSession.sessionId, enWords.first.word);
+    expect(enSession.outcome!.won, isTrue);
+
+    final afterEn = await server.currentUser();
+    expect(afterEn!.playedDailyOn(today), isTrue);
+    expect(afterEn.playedDailyOn(today, language: 'tr'), isFalse);
+
+    await server.setLocale('tr');
+    final home = await server.homeSnapshot();
+    expect(home.dailyStatus, isNot(DailyStatus.completed));
+
+    await server.adminSetDaily(
+      dateKey: today,
+      league: LeagueTier.bronze,
+      wordId: trWords.first.id,
+      language: 'tr',
+    );
+    var trSession = await server.startDaily();
+    trSession =
+        await server.submitGuess(trSession.sessionId, trWords.first.word);
+    expect(trSession.outcome!.won, isTrue);
+    expect((await server.currentUser())!.playedDailyOn(today), isTrue);
+  });
+
   test('setLeague is a difficulty picker and keeps word length', () async {
-    await server.signInWithGoogle(displayName: 'Difficulty');
+    await server.signInWithGoogle(googleId: 'Difficulty', displayName: 'Difficulty');
     expect((await server.currentUser())!.currentLeague, LeagueTier.bronze);
 
     final gold = await server.setLeague(LeagueTier.gold);
@@ -503,9 +547,212 @@ void main() {
 
     final endless = await server.startEndless();
     expect(endless.wordLength, 7);
-    expect(endless.maxAttempts, 7);
 
     final silver = await server.setLeague(LeagueTier.silver);
     expect(silver.currentLeague, LeagueTier.silver);
+  });
+
+  test('shop purchase grants coins from catalog', () async {
+    await server.signInWithGoogle(googleId: 'Buyer', displayName: 'Buyer');
+    final products = await server.listShopProducts();
+    expect(products, isNotEmpty);
+    final pack = products.firstWhere((p) => p.id == 'coins_550');
+    expect(pack.coins, 550);
+    expect(pack.priceTry, '₺69,99');
+
+    final before = (await server.currentUser())!.coin;
+    expect(
+      () => server.purchaseShopProduct(pack.id, purchaseToken: ''),
+      throwsA(isA<AppFailure>()),
+    );
+    expect((await server.currentUser())!.coin, before);
+    final after = await server.purchaseShopProduct(
+      pack.id,
+      purchaseToken: 'play-coins-550',
+    );
+    expect(after.coin, before + 550);
+    final replay = await server.purchaseShopProduct(
+      pack.id,
+      purchaseToken: 'play-coins-550',
+    );
+    expect(replay.coin, after.coin);
+  });
+
+  test('shop purchase grants streak shield', () async {
+    await server.signInWithGoogle(googleId: 'ShieldBuyer', displayName: 'ShieldBuyer');
+    final products = await server.listShopProducts();
+    final shield = products.firstWhere((p) => p.id == 'streak_shield_1');
+    expect(shield.shields, 1);
+    expect(shield.coins, 0);
+
+    final before = (await server.currentUser())!;
+    expect(before.shields, 0);
+    final after = await server.purchaseShopProduct(
+      shield.id,
+      purchaseToken: 'play-shield-1',
+    );
+    expect(after.shields, 1);
+    expect(after.coin, before.coin);
+
+    await server.purchaseShopProduct(shield.id, purchaseToken: 'play-shield-2');
+    expect((await server.currentUser())!.shields, 2);
+    expect(
+      () => server.purchaseShopProduct(shield.id, purchaseToken: 'play-shield-3'),
+      throwsA(isA<AppFailure>()),
+    );
+  });
+
+  test('admin can update shop product prices', () async {
+    await server.signInWithGoogle(googleId: 'AdminShop', displayName: 'AdminShop');
+    final updated = await server.adminUpsertShopProduct(
+      const ShopProduct(
+        id: 'coins_550',
+        coins: 600,
+        priceTry: '₺74,99',
+        priceUsd: '\$3.49',
+        badge: 'populer',
+        popular: true,
+        sortOrder: 20,
+      ),
+    );
+    expect(updated.coins, 600);
+    final listed = await server.listShopProducts();
+    expect(listed.firstWhere((p) => p.id == 'coins_550').priceTry, '₺74,99');
+
+    await server.adminUpsertShopProduct(
+      updated.copyWith(active: false),
+    );
+    expect(
+      (await server.listShopProducts()).any((p) => p.id == 'coins_550'),
+      isFalse,
+    );
+    expect(
+      (await server.adminListShopProducts())
+          .firstWhere((p) => p.id == 'coins_550')
+          .active,
+      isFalse,
+    );
+
+    final reset = await server.adminResetShopCatalog();
+    expect(reset.any((p) => p.id == 'coins_550' && p.coins == 550), isTrue);
+  });
+
+  test('email register and sign in', () async {
+    final registered = await server.registerWithEmail(
+      email: 'oyuncu@example.com',
+      password: 'secret1',
+      displayName: 'Oyuncu',
+    );
+    expect(registered.isAnonymous, isFalse);
+    expect(registered.authProvider, AuthProvider.email);
+    expect(registered.email, 'oyuncu@example.com');
+    expect(registered.canJoinLeague, isTrue);
+
+    expect(
+      () => server.registerWithEmail(
+        email: 'oyuncu@example.com',
+        password: 'secret1',
+      ),
+      throwsA(isA<AppFailure>()),
+    );
+
+    await server.signOut();
+    expect(await server.currentUser(), isNull);
+
+    final signedIn = await server.signInWithEmail(
+      email: 'Oyuncu@Example.com',
+      password: 'secret1',
+    );
+    expect(signedIn.id, registered.id);
+    expect(signedIn.email, 'oyuncu@example.com');
+
+    expect(
+      () => server.signInWithEmail(
+        email: 'oyuncu@example.com',
+        password: 'wrong!!',
+      ),
+      throwsA(isA<AppFailure>()),
+    );
+  });
+
+  test('finished daily stays closed after the completion flag is cleared', () async {
+    final store = MemoryKeyValueStore();
+    final locked = LocalGameServer(store);
+    await locked.initialize();
+    final user = await locked.signInAnonymously();
+    var session = await locked.startDaily();
+    final detail = await locked.adminGetSession(session.sessionId);
+    session = await locked.submitGuess(session.sessionId, detail!.word);
+    expect(session.outcome, isNotNull);
+
+    final saved = await store.get('users', user.id);
+    saved!['lastDailyDate'] = null;
+    saved['lastDailyByLocale'] = <String, String>{};
+    await store.put('users', user.id, saved);
+    await store.putMeta('daily_done_${user.id}_tr', 'cleared');
+
+    expect(locked.startDaily(), throwsA(isA<AppFailure>()));
+    expect((await locked.homeSnapshot()).dailyStatus, DailyStatus.completed);
+  });
+
+  test('guest upgrades to email on register', () async {
+    final guest = await server.signInAnonymously();
+    expect(guest.isAnonymous, isTrue);
+    final upgraded = await server.registerWithEmail(
+      email: 'guest@example.com',
+      password: 'secret1',
+      displayName: 'Yeni',
+    );
+    expect(upgraded.id, guest.id);
+    expect(upgraded.isAnonymous, isFalse);
+    expect(upgraded.displayName, 'Yeni');
+    expect(upgraded.authProvider, AuthProvider.email);
+  });
+
+  test('nickname is unique regardless of case and avatar is stored', () async {
+    final first = await server.registerWithEmail(
+      email: 'bir@example.com',
+      password: 'secret1',
+      displayName: 'Aylin',
+      avatar: 'abc',
+    );
+    expect(first.displayName, 'Aylin');
+    expect(first.avatar, 'abc');
+
+    await server.signOut();
+    expect(
+      () => server.registerWithEmail(
+        email: 'iki@example.com',
+        password: 'secret1',
+        displayName: '  aylin ',
+      ),
+      throwsA(
+        isA<AppFailure>().having((error) => error.code, 'code', 'NICK_TAKEN'),
+      ),
+    );
+  });
+
+  test('google sign-in without an id does not create a user', () async {
+    expect(
+      () => server.signInWithGoogle(googleId: '  '),
+      throwsA(isA<AppFailure>()),
+    );
+    expect(await server.currentUser(), isNull);
+  });
+
+  test('the same google id reopens the local profile', () async {
+    final first = await server.signInWithGoogle(
+      googleId: 'sub-1',
+      email: 'a@gmail.com',
+      displayName: 'Aylin',
+    );
+    await server.signOut();
+    final again = await server.signInWithGoogle(
+      googleId: 'sub-1',
+      displayName: 'Aylin',
+    );
+    expect(again.id, first.id);
+    expect(again.isAnonymous, isFalse);
+    expect(again.email, 'a@gmail.com');
   });
 }

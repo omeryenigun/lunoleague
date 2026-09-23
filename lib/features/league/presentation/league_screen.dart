@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:go_router/go_router.dart';
 import 'package:kelimelig/core/constants/enums.dart';
 import 'package:kelimelig/core/l10n/l10n.dart';
 import 'package:kelimelig/core/theme/colors.dart';
@@ -8,8 +6,6 @@ import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
 import 'package:kelimelig/core/theme/shimmer_title.dart';
 import 'package:kelimelig/domain/entities/game_models.dart';
 import 'package:kelimelig/domain/game/game_server.dart';
-import 'package:kelimelig/features/auth/cubit/auth_cubit.dart';
-import 'package:kelimelig/features/auth/presentation/dev_bypass_button.dart';
 import 'package:kelimelig/injection.dart';
 
 class LeagueScreen extends StatefulWidget {
@@ -84,17 +80,6 @@ class _LeagueScreenState extends State<LeagueScreen>
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      if (DevBypassButton.enabled) ...[
-                        const SizedBox(height: 16),
-                        DevBypassButton(
-                          displayName: context
-                              .read<AuthCubit>()
-                              .state
-                              .user
-                              ?.displayName,
-                          onDone: () => context.go('/home'),
-                        ),
-                      ],
                       const Spacer(),
                     ],
                   ),
@@ -147,7 +132,7 @@ class _LeagueScreenState extends State<LeagueScreen>
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            '${data.league.label} ${l10n.t('league').toLowerCase()}',
+                            '${data.league.labelFor(l10n.id)} ${l10n.t('league').toLowerCase()}',
                             style: TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.w900,

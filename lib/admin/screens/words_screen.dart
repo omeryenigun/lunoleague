@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:kelimelig/admin/admin_locale.dart';
+import 'package:kelimelig/admin/game_scope.dart';
 import 'package:kelimelig/admin/widgets/admin_widgets.dart';
 import 'package:kelimelig/core/constants/enums.dart';
 import 'package:kelimelig/core/l10n/game_locale.dart';
 import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/domain/entities/word_entity.dart';
-import 'package:kelimelig/domain/game/game_server.dart';
-import 'package:kelimelig/injection.dart';
 
 class WordsScreen extends StatefulWidget {
   const WordsScreen({super.key});
@@ -21,7 +20,7 @@ class _WordsScreenState extends State<WordsScreen> {
   var _reloadToken = 0;
 
   Future<List<WordEntity>> _load(String locale, LeagueTier league) async {
-    final all = await sl<GameServer>().adminListWords();
+    final all = await adminServer(context).adminListWords();
     return all.where((w) {
       if (w.language != locale) return false;
       if (w.length != league.wordLength) return false;
@@ -38,7 +37,7 @@ class _WordsScreenState extends State<WordsScreen> {
   Future<void> _saveDefinition(WordEntity w, String definition) async {
     final trimmed = definition.trim();
     if (trimmed == w.definition) return;
-    await sl<GameServer>().adminUpsertWord(
+    await adminServer(context).adminUpsertWord(
       w.copyWith(definition: trimmed, updatedAt: DateTime.now()),
     );
     setState(() => _reloadToken++);
@@ -163,7 +162,7 @@ class _WordsScreenState extends State<WordsScreen> {
                                     Switch(
                                       value: w.playable,
                                       onChanged: (v) async {
-                                        await sl<GameServer>().adminUpsertWord(
+                                        await adminServer(context).adminUpsertWord(
                                           w.copyWith(
                                             isActive: v,
                                             status: v
@@ -199,6 +198,7 @@ class _WordsScreenState extends State<WordsScreen> {
   }
 
   Future<void> _edit(WordEntity? existing, String defaultLocale) async {
+    final server = adminServer(context);
     final word = TextEditingController(text: existing?.word ?? '');
     final def = TextEditingController(text: existing?.definition ?? '');
     final ex = TextEditingController(text: existing?.exampleSentence ?? '');
@@ -272,7 +272,7 @@ class _WordsScreenState extends State<WordsScreen> {
             if (existing != null)
               TextButton(
                 onPressed: () async {
-                  await sl<GameServer>().adminDeleteWord(existing.id);
+                  await server.adminDeleteWord(existing.id);
                   if (ctx.mounted) Navigator.pop(ctx, true);
                 },
                 child: const Text('Sil'),
@@ -291,7 +291,7 @@ class _WordsScreenState extends State<WordsScreen> {
     );
     if (ok == true && word.text.trim().isNotEmpty) {
       final now = DateTime.now();
-      await sl<GameServer>().adminUpsertWord(
+      await server.adminUpsertWord(
         WordEntity(
           id: existing?.id ?? '',
           word: word.text.trim(),

@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:kelimelig/core/l10n/l10n.dart';
 import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
-import 'package:kelimelig/core/theme/shimmer_title.dart';
+import 'package:kelimelig/core/widgets/game_logo.dart';
 import 'package:kelimelig/features/auth/cubit/auth_cubit.dart';
 import 'package:kelimelig/injection.dart';
 
@@ -15,17 +15,15 @@ class SplashScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocListener<AuthCubit, AuthState>(
       listenWhen: (p, c) => p.loading && !c.loading,
-      listener: (context, state) {
+      listener: (context, state) async {
         if (!sl<L10n>().chosen) {
           context.go('/language');
           return;
         }
-        final user = state.user;
-        if (user == null || !user.onboardingDone) {
-          context.go('/onboarding');
-        } else {
-          context.go('/home');
+        if (state.user == null) {
+          await context.read<AuthCubit>().anonymous();
         }
+        if (context.mounted) context.go('/home');
       },
       child: const Scaffold(
         backgroundColor: AppColors.cosmicBg,
@@ -34,7 +32,7 @@ class SplashScreen extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                ShimmerTitle(),
+                const GameLogo(size: 180),
                 SizedBox(height: 12),
                 _SplashTagline(),
                 SizedBox(height: 28),

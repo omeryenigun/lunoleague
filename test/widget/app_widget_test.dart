@@ -12,6 +12,7 @@ import 'package:kelimelig/domain/entities/game_models.dart';
 import 'package:kelimelig/domain/game/game_server.dart';
 import 'package:kelimelig/domain/game/word_matching_engine.dart';
 import 'package:kelimelig/features/auth/cubit/auth_cubit.dart';
+import 'package:kelimelig/core/router/app_router.dart';
 import 'package:kelimelig/features/auth/presentation/login_screen.dart';
 import 'package:kelimelig/features/game/presentation/game_screen.dart';
 import 'package:kelimelig/features/game/presentation/widgets/result_screen.dart';
@@ -75,7 +76,7 @@ void main() {
   });
 
   testWidgets('home shows daily cta for registered user', (tester) async {
-    await sl<GameServer>().signInWithGoogle(displayName: 'Ömer');
+    await sl<GameServer>().signInWithGoogle(googleId: 'Ömer', displayName: 'Ömer');
     await sl<GameServer>().completeOnboarding();
     await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
     await tester.pump();
@@ -93,7 +94,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.text('GÜNLÜK OYNA'), findsOneWidget);
-    expect(find.text('MİSAFİR'), findsOneWidget);
+    expect(find.text('BRONZ LİG'), findsOneWidget);
+    expect(find.text('Kayıt gerekir'), findsOneWidget);
     expect(find.text('Kayıtlı hesap gerekir'), findsNothing);
     expect(find.textContaining('Lig için kayıt gerekir'), findsOneWidget);
   });
@@ -139,8 +141,10 @@ void main() {
         ),
       ),
     );
-    expect(find.text('HARİKA!'), findsOneWidget);
-    expect(find.text('Kelimeyi Öğren'), findsOneWidget);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 900));
+    expect(find.text('KAZANDIN!'), findsOneWidget);
+    expect(find.textContaining('Öğren'), findsOneWidget);
     expect(find.text('Paylaş'), findsOneWidget);
   });
 
@@ -177,22 +181,25 @@ void main() {
         ),
       ),
     );
-    expect(find.text('BU KEZ OLMADI'), findsOneWidget);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 900));
+    expect(find.text('KAYBETTİN'), findsOneWidget);
     expect(find.text('Reklam izle, seriyi koru'), findsOneWidget);
     expect(find.text('Seriyi sıfırla'), findsOneWidget);
     expect(find.textContaining('4 kelimelik serin'), findsOneWidget);
   });
 
   testWidgets('profile shows display name', (tester) async {
-    await sl<GameServer>().signInWithGoogle(displayName: 'Ömer A.');
+    await sl<GameServer>().signInWithGoogle(googleId: 'Ömer A.', displayName: 'Ömer A.');
     await tester.pumpWidget(const MaterialApp(home: ProfileScreen()));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Ömer A.'), findsOneWidget);
-    expect(find.textContaining('Bronz'), findsOneWidget);
+    expect(find.textContaining('BRONZ'), findsOneWidget);
   });
 
   testWidgets('daily game win via keyboard', (tester) async {
-    await sl<GameServer>().signInWithGoogle(displayName: 'Oyuncu');
+    await sl<GameServer>().signInWithGoogle(googleId: 'Oyuncu', displayName: 'Oyuncu');
     final words = await sl<GameServer>().adminListWords();
     final kalem = words.firstWhere((w) => w.word == 'kalem');
     await sl<GameServer>().adminSetDaily(
@@ -210,12 +217,28 @@ void main() {
     }
     await tester.tap(find.descendant(of: kb, matching: find.text('ENTER')));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('HARİKA'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 800));
+    expect(find.text('KAZANDIN!'), findsOneWidget);
+  });
+
+  testWidgets('returning user opens Luno League home', (tester) async {
+    await sl<GameServer>().signInWithGoogle(
+      googleId: 'home-user',
+      displayName: 'Ömer',
+    );
+    await sl<GameServer>().completeOnboarding();
+    await tester.pumpWidget(const KelimeLigApp());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(find.text('Game Server'), findsNothing);
+    expect(find.text('Luno Fall'), findsNothing);
   });
 
   testWidgets('hides Apple sign-in on Android', (tester) async {
+    tester.view.physicalSize = const Size(400, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
     await tester.pumpWidget(
       MaterialApp(
         theme: ThemeData(platform: TargetPlatform.android, useMaterial3: true),
@@ -228,9 +251,11 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('Google ile giriş'), findsOneWidget);
-    expect(find.text('Test olarak gir'), findsOneWidget);
+    expect(find.text('Kayıt ol'), findsOneWidget);
+    expect(find.text('E-posta ile giriş'), findsOneWidget);
+    expect(find.text('Test olarak gir'), findsNothing);
     expect(find.text('Apple ile giriş'), findsNothing);
-    expect(find.textContaining('Google gerekir'), findsOneWidget);
+    expect(find.textContaining('e-posta gerekir'), findsOneWidget);
   });
 
   testWidgets('shows Apple sign-in on iOS', (tester) async {
@@ -249,6 +274,6 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('Apple ile giriş'), findsOneWidget);
-    expect(find.textContaining('Google veya Apple'), findsOneWidget);
+    expect(find.textContaining('Apple veya e-posta'), findsOneWidget);
   });
 }

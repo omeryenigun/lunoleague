@@ -6,6 +6,7 @@ import 'package:kelimelig/core/l10n/l10n.dart';
 import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
 import 'package:kelimelig/core/theme/shimmer_title.dart';
+import 'package:kelimelig/core/widgets/game_logo.dart';
 import 'package:kelimelig/domain/game/game_server.dart';
 import 'package:kelimelig/features/auth/cubit/auth_cubit.dart';
 import 'package:kelimelig/injection.dart';
@@ -60,12 +61,11 @@ class _LanguageScreenState extends State<LanguageScreen>
       if (mounted) context.go('/home');
       return;
     }
-    final user = context.read<AuthCubit>().state.user;
-    if (user == null || !user.onboardingDone) {
-      context.go('/onboarding');
-    } else {
-      context.go('/home');
+    final cubit = context.read<AuthCubit>();
+    if (cubit.state.user == null) {
+      await cubit.anonymous();
     }
+    if (mounted) context.go('/home');
   }
 
   @override
@@ -96,7 +96,9 @@ class _LanguageScreenState extends State<LanguageScreen>
                             ),
                           ),
                         const Spacer(),
-                        const ShimmerTitle(),
+                        const GameLogo(size: 120),
+                        const SizedBox(height: 12),
+                        const ShimmerTitle(fontSize: 32),
                         const SizedBox(height: 10),
                         Container(
                           width: 88,

@@ -16,6 +16,7 @@ class GameState extends Equatable {
     this.input = const [],
     this.flipping = false,
     this.error,
+    this.errorCode,
     this.league,
     this.coins = 0,
     this.locale = 'tr',
@@ -26,6 +27,7 @@ class GameState extends Equatable {
   final List<String> input;
   final bool flipping;
   final String? error;
+  final String? errorCode;
   final LeagueTier? league;
   final int coins;
   final String locale;
@@ -33,7 +35,8 @@ class GameState extends Equatable {
   GameLocale get gameLocale => GameLocale.resolve(locale);
 
   @override
-  List<Object?> get props => [loading, session, input, flipping, error, league, coins, locale];
+  List<Object?> get props =>
+      [loading, session, input, flipping, error, errorCode, league, coins, locale];
 
   GameState copyWith({
     bool? loading,
@@ -41,6 +44,7 @@ class GameState extends Equatable {
     List<String>? input,
     bool? flipping,
     String? error,
+    String? errorCode,
     bool clearError = false,
     LeagueTier? league,
     int? coins,
@@ -52,6 +56,7 @@ class GameState extends Equatable {
       input: input ?? this.input,
       flipping: flipping ?? this.flipping,
       error: clearError ? null : error,
+      errorCode: clearError ? null : errorCode,
       league: league ?? this.league,
       coins: coins ?? this.coins,
       locale: locale ?? this.locale,
@@ -80,6 +85,8 @@ class GameCubit extends Cubit<GameState> {
         coins: user?.coin ?? 0,
         locale: locale,
       ));
+    } on AppFailure catch (e) {
+      emit(GameState(loading: false, error: e.message, errorCode: e.code));
     } catch (e) {
       emit(GameState(loading: false, error: _msg(e)));
     }

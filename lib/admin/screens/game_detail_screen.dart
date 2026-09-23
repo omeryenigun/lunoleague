@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:kelimelig/admin/game_scope.dart';
 import 'package:kelimelig/admin/widgets/admin_widgets.dart';
 import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/domain/entities/admin_models.dart';
-import 'package:kelimelig/domain/game/game_server.dart';
-import 'package:kelimelig/injection.dart';
 
 class GameDetailScreen extends StatelessWidget {
   const GameDetailScreen({super.key, required this.sessionId});
@@ -15,7 +14,7 @@ class GameDetailScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Oyun detayı')),
       body: AdminBody(
-        future: sl<GameServer>().adminGetSession(sessionId),
+        future: adminServer(context).adminGetSession(sessionId),
         builder: (context, AdminSessionDetail? detail) {
           if (detail == null) {
             return const Center(child: Text('Oturum bulunamadı'));

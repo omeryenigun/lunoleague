@@ -116,6 +116,7 @@ class UserEntity {
   const UserEntity({
     required this.id,
     required this.displayName,
+    this.email,
     required this.authProvider,
     required this.isAnonymous,
     required this.level,
@@ -148,6 +149,7 @@ class UserEntity {
     this.lastPlayedWeek,
     this.soundOn = true,
     this.hapticOn = true,
+    this.animationsOn = true,
     this.notificationsOn = true,
     this.leagueShields = 0,
     this.equippedTheme = Cosmetics.themeDefault,
@@ -163,10 +165,12 @@ class UserEntity {
     this.lastDailyByLocale = const {},
     this.leagueByLocale = const {},
     this.progressByLocale = const {},
+    this.avatar,
   });
 
   final String id;
   final String displayName;
+  final String? email;
   final AuthProvider authProvider;
   final bool isAnonymous;
   final int level;
@@ -199,6 +203,7 @@ class UserEntity {
   final String? lastPlayedWeek;
   final bool soundOn;
   final bool hapticOn;
+  final bool animationsOn;
   final bool notificationsOn;
   final int leagueShields;
   final String equippedTheme;
@@ -214,6 +219,7 @@ class UserEntity {
   final Map<String, String> lastDailyByLocale;
   final Map<String, String> leagueByLocale;
   final Map<String, LocaleProgress> progressByLocale;
+  final String? avatar;
 
   UserEntity stampCurrentLocale() {
     final map = Map<String, LocaleProgress>.from(progressByLocale);
@@ -235,10 +241,20 @@ class UserEntity {
 
   bool playedDailyOn(String day, {String? language}) {
     final lang = language ?? locale;
-    final byLocale = lastDailyByLocale[lang];
-    if (byLocale != null) return byLocale == day;
-    if (lang == 'tr') return lastDailyDate == day;
-    return false;
+    return lastDailyFor(lang) == day;
+  }
+
+  /// Per-locale last daily completion day. Legacy `lastDailyDate` only
+  /// applies to TR when no locale map entries exist yet (pre-migration users).
+  String? lastDailyFor(String language) {
+    final byLocale = lastDailyByLocale[language];
+    if (byLocale != null) return byLocale;
+    if (language == 'tr' &&
+        lastDailyByLocale.isEmpty &&
+        lastDailyDate != null) {
+      return lastDailyDate;
+    }
+    return null;
   }
 
   bool get hasWeekTitle =>
@@ -255,6 +271,8 @@ class UserEntity {
 
   UserEntity copyWith({
     String? displayName,
+    String? email,
+    bool clearEmail = false,
     AuthProvider? authProvider,
     bool? isAnonymous,
     int? level,
@@ -287,6 +305,7 @@ class UserEntity {
     String? lastPlayedWeek,
     bool? soundOn,
     bool? hapticOn,
+    bool? animationsOn,
     bool? notificationsOn,
     bool clearLastDaily = false,
     int? leagueShields,
@@ -306,10 +325,12 @@ class UserEntity {
     Map<String, LocaleProgress>? progressByLocale,
     bool clearFastest = false,
     bool clearLastPlayedWeek = false,
+    String? avatar,
   }) {
     return UserEntity(
       id: id,
       displayName: displayName ?? this.displayName,
+      email: clearEmail ? null : (email ?? this.email),
       authProvider: authProvider ?? this.authProvider,
       isAnonymous: isAnonymous ?? this.isAnonymous,
       level: level ?? this.level,
@@ -346,6 +367,7 @@ class UserEntity {
           : (lastPlayedWeek ?? this.lastPlayedWeek),
       soundOn: soundOn ?? this.soundOn,
       hapticOn: hapticOn ?? this.hapticOn,
+      animationsOn: animationsOn ?? this.animationsOn,
       notificationsOn: notificationsOn ?? this.notificationsOn,
       leagueShields: leagueShields ?? this.leagueShields,
       equippedTheme: equippedTheme ?? this.equippedTheme,
@@ -361,12 +383,14 @@ class UserEntity {
       lastDailyByLocale: lastDailyByLocale ?? this.lastDailyByLocale,
       leagueByLocale: leagueByLocale ?? this.leagueByLocale,
       progressByLocale: progressByLocale ?? this.progressByLocale,
+      avatar: avatar ?? this.avatar,
     );
   }
 
   Map<String, dynamic> toMap() => {
         'id': id,
         'displayName': displayName,
+        'email': email,
         'authProvider': authProvider.name,
         'isAnonymous': isAnonymous,
         'level': level,
@@ -399,6 +423,7 @@ class UserEntity {
         'lastPlayedWeek': lastPlayedWeek,
         'soundOn': soundOn,
         'hapticOn': hapticOn,
+        'animationsOn': animationsOn,
         'notificationsOn': notificationsOn,
         'leagueShields': leagueShields,
         'equippedTheme': equippedTheme,
@@ -416,12 +441,14 @@ class UserEntity {
         'progressByLocale': {
           for (final e in progressByLocale.entries) e.key: e.value.toMap(),
         },
+        'avatar': avatar,
       };
 
   factory UserEntity.fromMap(Map<dynamic, dynamic> map) {
     return UserEntity(
       id: map['id'] as String,
       displayName: map['displayName'] as String? ?? 'Oyuncu',
+      email: map['email'] as String?,
       authProvider: AuthProvider.values.byName(
         map['authProvider'] as String? ?? 'anonymous',
       ),
@@ -458,6 +485,7 @@ class UserEntity {
       lastPlayedWeek: map['lastPlayedWeek'] as String?,
       soundOn: map['soundOn'] as bool? ?? true,
       hapticOn: map['hapticOn'] as bool? ?? true,
+      animationsOn: map['animationsOn'] as bool? ?? true,
       notificationsOn: map['notificationsOn'] as bool? ?? true,
       leagueShields: map['leagueShields'] as int? ?? 0,
       equippedTheme: map['equippedTheme'] as String? ?? Cosmetics.themeDefault,
@@ -477,6 +505,7 @@ class UserEntity {
       lastDailyByLocale: _stringMap(map['lastDailyByLocale']),
       leagueByLocale: _stringMap(map['leagueByLocale']),
       progressByLocale: _progressMap(map['progressByLocale'], map['leagueByLocale']),
+      avatar: map['avatar'] as String?,
     );
   }
 }

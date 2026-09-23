@@ -3,12 +3,15 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:kelimelig/core/constants/enums.dart';
 import 'package:kelimelig/core/l10n/game_locale.dart';
+import 'package:kelimelig/core/constants/user_messages.dart';
 import 'package:kelimelig/core/l10n/l10n.dart';
 import 'package:kelimelig/core/services/ad_service.dart';
 import 'package:kelimelig/core/services/audio_manager.dart';
 import 'package:kelimelig/core/services/haptic_manager.dart';
+import 'package:kelimelig/core/services/motion_manager.dart';
 import 'package:kelimelig/core/services/notification_service.dart';
 import 'package:kelimelig/core/theme/colors.dart';
+import 'package:kelimelig/core/widgets/game_version_label.dart';
 import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
 import 'package:kelimelig/core/theme/shimmer_title.dart';
 import 'package:kelimelig/domain/game/game_server.dart';
@@ -102,6 +105,7 @@ class SettingsScreen extends StatelessWidget {
                     const SizedBox(height: 14),
                     _DifficultyTabs(
                       selected: league,
+                      locale: l10n.id,
                       enabled: user != null,
                       onChanged: (picked) async {
                         await sl<GameServer>().setLeague(picked);
@@ -143,6 +147,18 @@ class SettingsScreen extends StatelessWidget {
                       },
                     ),
                     _ToggleRow(
+                      label: '✨ ${l10n.t('animations')}',
+                      value: user?.animationsOn ?? true,
+                      showDivider: true,
+                      onChanged: (v) async {
+                        sl<MotionManager>().enabled = v;
+                        await sl<GameServer>().updateSettings(animationsOn: v);
+                        if (context.mounted) {
+                          context.read<AuthCubit>().bootstrap();
+                        }
+                      },
+                    ),
+                    _ToggleRow(
                       label: '🔔 ${l10n.t('notifications')}',
                       value: user?.notificationsOn ?? true,
                       showDivider: false,
@@ -166,21 +182,48 @@ class SettingsScreen extends StatelessWidget {
                 label: l10n.t('settings_extra'),
                 child: Column(
                   children: [
-                    _ActionRow(
-                      icon: '🎬',
-                      label: l10n.t('watch_ad'),
-                      trailing: '+5 🪙',
-                      color: AppColors.cosmicGold,
-                      onTap: () async {
-                        final ok = await sl<AdService>().showRewarded();
-                        if (!ok) return;
-                        final coins = await sl<GameServer>().watchRewardedAd();
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('+$coins coin')),
-                          );
-                        }
+                    FutureBuilder(
+                      future: sl<GameServer>().getConfig(),
+                      builder: (context, snap) {
+                        final reward = snap.data?.adCoinReward ?? 5;
+                        return _ActionRow(
+                          icon: '🎬',
+                          label: l10n.t('watch_ad'),
+                          trailing: '+$reward 🪙',
+                          color: AppColors.cosmicGold,
+                          onTap: () async {
+                            final ok = await sl<AdService>().showRewarded();
+                            if (!ok) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(UserMessages.adUnavailable),
+                                  ),
+                                );
+                              }
+                              return;
+                            }
+                            final coins =
+                                await sl<GameServer>().watchRewardedAd();
+                            if (context.mounted) {
+                              await context.read<AuthCubit>().refreshUser();
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('+$coins coin')),
+                                );
+                              }
+                            }
+                          },
+                        );
                       },
+                    ),
+                    const SizedBox(height: 4),
+                    _ActionRow(
+                      icon: '🛒',
+                      label: l10n.t('shop'),
+                      trailing: '›',
+                      color: AppColors.cosmicGreen,
+                      onTap: () => context.go('/shop'),
                     ),
                     const SizedBox(height: 4),
                     _ActionRow(
@@ -196,6 +239,8 @@ class SettingsScreen extends StatelessWidget {
                   ],
                 ),
               ),
+              const SizedBox(height: 22),
+              const Center(child: GameVersionLabel()),
             ],
           ),
         ),
@@ -242,11 +287,13 @@ class _SettingsSection extends StatelessWidget {
 class _DifficultyTabs extends StatelessWidget {
   const _DifficultyTabs({
     required this.selected,
+    required this.locale,
     required this.enabled,
     required this.onChanged,
   });
 
   final LeagueTier selected;
+  final String locale;
   final bool enabled;
   final ValueChanged<LeagueTier> onChanged;
 
@@ -267,6 +314,7 @@ class _DifficultyTabs extends StatelessWidget {
             Expanded(
               child: _DiffTab(
                 tier: LeagueTier.values[i],
+                locale: locale,
                 active: selected == LeagueTier.values[i],
                 onTap: enabled
                     ? () => onChanged(LeagueTier.values[i])
@@ -283,11 +331,13 @@ class _DifficultyTabs extends StatelessWidget {
 class _DiffTab extends StatelessWidget {
   const _DiffTab({
     required this.tier,
+    required this.locale,
     required this.active,
     required this.onTap,
   });
 
   final LeagueTier tier;
+  final String locale;
   final bool active;
   final VoidCallback? onTap;
 
@@ -327,7 +377,7 @@ class _DiffTab extends StatelessWidget {
                   const SizedBox(width: 4),
                   Flexible(
                     child: Text(
-                      tier.label,
+                      tier.labelFor(locale),
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: active

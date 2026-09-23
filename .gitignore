@@ -31,6 +31,7 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+/admin_web/
 /coverage/
 
 # Symbolication related
@@ -53,3 +54,10 @@ android/*.keystore
 
 # Widget Preview related
 .widget_preview/
+
+# Railway local link
+.railway/
+
+# API build
+server/.dart_tool/
+server/build/

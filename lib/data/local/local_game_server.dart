@@ -6,6 +6,7 @@ import 'package:kelimelig/core/constants/user_messages.dart';
 import 'package:kelimelig/core/errors/failures.dart';
 import 'package:kelimelig/core/l10n/game_locale.dart';
 import 'package:kelimelig/core/utils/date_keys.dart';
+import 'package:kelimelig/core/utils/password_hash.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
 import 'package:kelimelig/data/local/seed_words.dart';
 import 'package:kelimelig/data/local/seed_words_en.dart';
@@ -13,6 +14,7 @@ import 'package:kelimelig/domain/entities/admin_models.dart';
 import 'package:kelimelig/domain/entities/cosmetics.dart';
 import 'package:kelimelig/domain/entities/app_config.dart';
 import 'package:kelimelig/domain/entities/game_models.dart';
+import 'package:kelimelig/domain/entities/shop_product.dart';
 import 'package:kelimelig/domain/entities/user_entity.dart';
 import 'package:kelimelig/domain/entities/word_entity.dart';
 import 'package:kelimelig/domain/game/game_server.dart';
@@ -28,6 +30,8 @@ class LocalGameServer implements GameServer {
     Uuid uuid = const Uuid(),
     DateTime Function()? clock,
     Random? random,
+    this.confirmPurchase,
+    this.grantUnverifiedAds = true,
   })  : _engine = engine,
         _progression = progression,
         _uuid = uuid,
@@ -40,6 +44,14 @@ class LocalGameServer implements GameServer {
   final Uuid _uuid;
   final DateTime Function() _clock;
   final Random _random;
+
+  /// When set, a shop token must pass this check before coins are granted.
+  /// The live API verifies the Play receipt. Tests leave this unset.
+  final Future<bool> Function(String productId, String purchaseToken)?
+      confirmPurchase;
+
+  /// Live API sets this false so a client request cannot mint ad coins.
+  final bool grantUnverifiedAds;
 
   static const _currentUserKey = 'currentUserId';
   static const _seededKey = 'seeded';
@@ -55,9 +67,47 @@ class LocalGameServer implements GameServer {
       }
       await _store.put('app_config', 'default', AppConfig.defaults().toMap());
       await _seedNpcs();
+      await _seedShopCatalog();
       await _store.putMeta(_seededKey, '1');
     }
     await _ensureLocaleContent();
+    await _ensureShopCatalog();
+  }
+
+  Future<void> _seedShopCatalog() async {
+    for (final p in ShopCatalog.products) {
+      await _store.put('shop_products', p.id, p.toMap());
+    }
+  }
+
+  Future<void> _ensureShopCatalog() async {
+    final existing = await _store.values('shop_products');
+    if (existing.isEmpty) {
+      await _seedShopCatalog();
+      return;
+    }
+    final ids = existing.map((e) => e['id'] as String).toSet();
+    for (final p in ShopCatalog.products) {
+      if (!ids.contains(p.id)) {
+        await _store.put('shop_products', p.id, p.toMap());
+      }
+    }
+  }
+
+  Future<List<ShopProduct>> _loadShopProducts({bool onlyActive = false}) async {
+    await _ensureShopCatalog();
+    final list = (await _store.values('shop_products'))
+        .map(ShopProduct.fromMap)
+        .where((p) => !onlyActive || p.active)
+        .toList()
+      ..sort((a, b) {
+        final byOrder = a.sortOrder.compareTo(b.sortOrder);
+        if (byOrder != 0) return byOrder;
+        final byCoins = a.coins.compareTo(b.coins);
+        if (byCoins != 0) return byCoins;
+        return a.shields.compareTo(b.shields);
+      });
+    return list;
   }
 
   Future<void> _ensureLocaleContent() async {
@@ -185,6 +235,8 @@ class LocalGameServer implements GameServer {
     required AuthProvider provider,
     required bool anonymous,
     String? displayName,
+    String? email,
+    String? avatar,
   }) async {
     final now = _now;
     final id = _uuid.v4();
@@ -195,6 +247,7 @@ class LocalGameServer implements GameServer {
           (anonymous
               ? (locale == 'en' ? 'Guest' : 'Misafir')
               : (locale == 'en' ? 'Player' : 'Oyuncu')),
+      email: email,
       authProvider: provider,
       isAnonymous: anonymous,
       level: 1,
@@ -211,6 +264,7 @@ class LocalGameServer implements GameServer {
       createdAt: now,
       lastLoginAt: now,
       locale: locale,
+      avatar: avatar,
     );
     await _saveUser(user);
     await _store.put('wallets', id, {'balance': 0, 'updatedAt': now.toIso8601String()});
@@ -231,29 +285,190 @@ class LocalGameServer implements GameServer {
   }
 
   @override
-  Future<UserEntity> signInWithGoogle({String? displayName}) =>
-      _upgradeOrCreate(AuthProvider.google, displayName ?? 'Google Oyuncu');
+  Future<UserEntity> signInWithGoogle({
+    required String googleId,
+    String? email,
+    String? displayName,
+  }) async {
+    final id = googleId.trim();
+    if (id.isEmpty) {
+      throw AppFailure(UserMessages.googleNotConfigured, code: 'NO_GOOGLE');
+    }
+    final linked = await _store.get('google_accounts', id);
+    final linkedUserId = linked?['userId'] as String?;
+    if (linkedUserId != null) {
+      final map = await _store.get('users', linkedUserId);
+      if (map != null) {
+        final existing = UserEntity.fromMap(map);
+        await _store.putMeta(_currentUserKey, existing.id);
+        return _saveUser(
+          existing.copyWith(
+            lastLoginAt: _now,
+            email: email ?? existing.email,
+            isAnonymous: false,
+          ),
+        );
+      }
+    }
+    final typed = displayName?.trim();
+    final name = (typed != null && typed.length >= 2) ? typed : 'Oyuncu';
+    final user = await _upgradeOrCreate(
+      AuthProvider.google,
+      name,
+      email: email,
+    );
+    await _store.put('google_accounts', id, {
+      'googleId': id,
+      'userId': user.id,
+      'email': email,
+      'createdAt': _now.toIso8601String(),
+    });
+    return user;
+  }
 
   @override
   Future<UserEntity> signInWithApple({String? displayName}) =>
       _upgradeOrCreate(AuthProvider.apple, displayName ?? 'Apple Oyuncu');
 
-  Future<UserEntity> _upgradeOrCreate(AuthProvider provider, String name) async {
+  @override
+  Future<UserEntity> registerWithEmail({
+    required String email,
+    required String password,
+    String? displayName,
+    String? avatar,
+  }) async {
+    final normalized = PasswordHash.normalizeEmail(email);
+    if (!PasswordHash.isValidEmail(normalized)) {
+      throw AppFailure(UserMessages.invalidEmail, code: 'BAD_EMAIL');
+    }
+    if (password.length < 6) {
+      throw AppFailure(UserMessages.weakPassword, code: 'WEAK_PASSWORD');
+    }
+    if (await _store.get('auth_accounts', normalized) != null) {
+      throw AppFailure(UserMessages.emailTaken, code: 'EMAIL_TAKEN');
+    }
+
+    final nameFromEmail = normalized.split('@').first;
+    final typed = displayName?.trim() ?? '';
+    if (typed.isNotEmpty && typed.length < 2) {
+      throw AppFailure(UserMessages.nicknameShort, code: 'SHORT_NICK');
+    }
+    final name = typed.isNotEmpty
+        ? typed
+        : (nameFromEmail.length >= 2 ? nameFromEmail : 'Oyuncu');
+
+    final salt = _uuid.v4();
+    final hash = PasswordHash.hash(password, salt);
+
+    final existing = await _userOrNull();
+    final keepId =
+        (existing != null && existing.isAnonymous) ? existing.id : null;
+    await _ensureNicknameFree(name, exceptUserId: keepId);
+    late final UserEntity user;
+    if (existing != null && existing.isAnonymous) {
+      user = await _saveUser(
+        existing.copyWith(
+          authProvider: AuthProvider.email,
+          isAnonymous: false,
+          email: normalized,
+          displayName: name,
+          avatar: avatar ?? existing.avatar,
+          lastLoginAt: _now,
+        ),
+      );
+    } else {
+      user = await _newUser(
+        provider: AuthProvider.email,
+        anonymous: false,
+        displayName: name,
+        email: normalized,
+        avatar: avatar,
+      );
+    }
+
+    await _store.put('auth_accounts', normalized, {
+      'email': normalized,
+      'passwordHash': hash,
+      'salt': salt,
+      'userId': user.id,
+      'createdAt': _now.toIso8601String(),
+    });
+    return user;
+  }
+
+  @override
+  Future<UserEntity> signInWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    final normalized = PasswordHash.normalizeEmail(email);
+    if (!PasswordHash.isValidEmail(normalized)) {
+      throw AppFailure(UserMessages.invalidEmail, code: 'BAD_EMAIL');
+    }
+    final account = await _store.get('auth_accounts', normalized);
+    if (account == null) {
+      throw AppFailure(UserMessages.badCredentials, code: 'BAD_CREDENTIALS');
+    }
+    final salt = account['salt'] as String? ?? '';
+    final expected = account['passwordHash'] as String? ?? '';
+    if (!PasswordHash.verify(password, salt, expected)) {
+      throw AppFailure(UserMessages.badCredentials, code: 'BAD_CREDENTIALS');
+    }
+    final userId = account['userId'] as String;
+    final map = await _store.get('users', userId);
+    if (map == null) {
+      throw AppFailure(UserMessages.serverError, code: 'NO_USER');
+    }
+    var user = UserEntity.fromMap(map);
+    if (user.isBanned) {
+      throw AppFailure(UserMessages.banned, code: 'BANNED');
+    }
+    user = await _saveUser(
+      user.copyWith(
+        email: normalized,
+        authProvider: AuthProvider.email,
+        isAnonymous: false,
+        lastLoginAt: _now,
+      ),
+    );
+    await _store.putMeta(_currentUserKey, user.id);
+    return user;
+  }
+
+  Future<UserEntity> _upgradeOrCreate(
+    AuthProvider provider,
+    String name, {
+    String? email,
+  }) async {
     final existing = await _userOrNull();
     if (existing != null && existing.isAnonymous) {
       return _saveUser(
         existing.copyWith(
           authProvider: provider,
           isAnonymous: false,
-          displayName: existing.displayName == 'Misafir' ? name : existing.displayName,
+          email: email ?? existing.email,
+          displayName: (existing.displayName == 'Misafir' ||
+                  existing.displayName == 'Guest')
+              ? name
+              : existing.displayName,
           lastLoginAt: _now,
         ),
       );
     }
     if (existing != null) {
-      return _saveUser(existing.copyWith(lastLoginAt: _now));
+      return _saveUser(
+        existing.copyWith(
+          lastLoginAt: _now,
+          email: email ?? existing.email,
+        ),
+      );
     }
-    return _newUser(provider: provider, anonymous: false, displayName: name);
+    return _newUser(
+      provider: provider,
+      anonymous: false,
+      displayName: name,
+      email: email,
+    );
   }
 
   @override
@@ -263,8 +478,28 @@ class LocalGameServer implements GameServer {
       throw AppFailure('Kullanıcı adı en az 2 karakter olmalı.');
     }
     final user = await _requireUser();
+    await _ensureNicknameFree(trimmed, exceptUserId: user.id);
     return _saveUser(user.copyWith(displayName: trimmed));
   }
+
+  Future<void> _ensureNicknameFree(String name, {String? exceptUserId}) async {
+    final key = _nickKey(name);
+    final users = await _store.values('users');
+    for (final map in users) {
+      final id = map['id'] as String?;
+      if (id == exceptUserId) continue;
+      final existing = (map['displayName'] as String? ?? '').trim();
+      if (existing.isEmpty) continue;
+      final anon = map['isAnonymous'] as bool? ?? false;
+      if (anon && (existing == 'Misafir' || existing == 'Guest')) continue;
+      if (_nickKey(existing) == key) {
+        throw AppFailure(UserMessages.nicknameTaken, code: 'NICK_TAKEN');
+      }
+    }
+  }
+
+  String _nickKey(String name) =>
+      name.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 
   @override
   Future<UserEntity> completeOnboarding() async {
@@ -276,6 +511,7 @@ class LocalGameServer implements GameServer {
   Future<UserEntity> updateSettings({
     bool? soundOn,
     bool? hapticOn,
+    bool? animationsOn,
     bool? notificationsOn,
   }) async {
     final user = await _requireUser();
@@ -283,6 +519,7 @@ class LocalGameServer implements GameServer {
       user.copyWith(
         soundOn: soundOn,
         hapticOn: hapticOn,
+        animationsOn: animationsOn,
         notificationsOn: notificationsOn,
       ),
     );
@@ -324,7 +561,7 @@ class LocalGameServer implements GameServer {
 
   Future<UserEntity> _applyMissedStreak(UserEntity user) async {
     final today = DateKeys.dayKey(_now);
-    final last = user.lastDailyDate;
+    final last = user.lastDailyFor(user.locale);
     if (last == null || last == today) return user;
     final gap = DateKeys.daysBetween(last, today);
     if (gap <= 1) return user;
@@ -349,7 +586,8 @@ class LocalGameServer implements GameServer {
     user = await _applyMissedStreak(user);
     user = await _maybeRolloverLeague(user);
     final today = DateKeys.dayKey(_now);
-    final daily = user.playedDailyOn(today)
+    final closed = await _dailyClosed(user, today);
+    final daily = closed
         ? DailyStatus.completed
         : await _hasOpenDaily(user)
             ? DailyStatus.started
@@ -422,23 +660,33 @@ class LocalGameServer implements GameServer {
   Future<WordEntity> _dailyWord(UserEntity user) async {
     final day = DateKeys.dayKey(_now);
     final locale = user.locale;
-    final keyed = _dailyKey(day, locale, user.currentLeague);
-    final legacy = '${day}_${user.currentLeague.name}';
+    final league = user.currentLeague;
+    final keyed = _dailyKey(day, locale, league);
+    final legacy = '${day}_${league.name}';
     var existing = await _store.get('daily_games', keyed);
     if (existing == null && locale == 'tr') {
       existing = await _store.get('daily_games', legacy);
     }
     if (existing != null) {
       final word = await _store.get('words', existing['wordId'] as String);
-      if (word != null) return WordEntity.fromMap(word);
+      if (word != null) {
+        final entity = WordEntity.fromMap(word);
+        if (entity.playable &&
+            entity.language == locale &&
+            entity.length == league.wordLength) {
+          return entity;
+        }
+      }
     }
-    final picked = await _pickWord(user.currentLeague, language: locale);
+    // Fallback when admin has not assigned (or assignment is invalid).
+    final picked = await _pickWord(league, language: locale);
     final row = {
       'date': day,
-      'league': user.currentLeague.name,
+      'league': league.name,
       'language': locale,
       'wordId': picked.id,
       'isActive': true,
+      'source': 'auto',
       'createdAt': _now.toIso8601String(),
     };
     await _store.put('daily_games', keyed, row);
@@ -526,6 +774,31 @@ class LocalGameServer implements GameServer {
     return DateTime.parse(raw['expiresAt'] as String).isAfter(_now);
   }
 
+  String _dailyLockKey(UserEntity user) => 'daily_done_${user.id}_${user.locale}';
+
+  Future<bool> _dailyClosed(UserEntity user, String today) async {
+    if (user.playedDailyOn(today)) return true;
+    if (await _store.getMeta(_dailyLockKey(user)) == today) return true;
+    final sessions = await _store.values('game_sessions');
+    for (final session in sessions) {
+      if (session['userId'] != user.id) continue;
+      if (session['gameType'] != GameType.daily.name) continue;
+      final language = session['language'] as String? ?? 'tr';
+      if (language != user.locale) continue;
+      final status = session['status'] as String?;
+      final finished = status == GameStatus.won.name ||
+          status == GameStatus.lost.name ||
+          status == GameStatus.completed.name;
+      if (!finished) continue;
+      final started = DateTime.tryParse(session['startedAt'] as String? ?? '');
+      if (started != null && DateKeys.dayKey(started) == today) {
+        await _store.putMeta(_dailyLockKey(user), today);
+        return true;
+      }
+    }
+    return false;
+  }
+
   Future<bool> _hasOpenDaily(UserEntity user) async {
     final existing = await _findActive(user.id, GameType.daily, language: user.locale);
     return existing != null && _sessionStillOpen(existing);
@@ -589,7 +862,7 @@ class LocalGameServer implements GameServer {
     }
     user = await _applyMissedStreak(user);
     final today = DateKeys.dayKey(_now);
-    if (user.playedDailyOn(today)) {
+    if (await _dailyClosed(user, today)) {
       throw AppFailure(UserMessages.dailyCompleted, code: 'DAILY_DONE');
     }
     final existing = await _findActive(user.id, GameType.daily, language: user.locale);
@@ -711,10 +984,10 @@ class LocalGameServer implements GameServer {
     if (type == GameType.daily) {
       final today = DateKeys.dayKey(_now);
       if (!user.playedDailyOn(today)) {
-        if (user.lastDailyDate != null &&
-            DateKeys.daysBetween(user.lastDailyDate!, today) == 1) {
+        final last = user.lastDailyFor(user.locale);
+        if (last != null && DateKeys.daysBetween(last, today) == 1) {
           streak = user.streak + 1;
-        } else if (user.lastDailyDate == null || user.streak == 0) {
+        } else if (last == null || user.streak == 0) {
           streak = 1;
         } else {
           streak = user.streak + 1;
@@ -740,6 +1013,7 @@ class LocalGameServer implements GameServer {
           streak: streak,
           longestStreak: streak > user.longestStreak ? streak : user.longestStreak,
         );
+        await _store.putMeta(_dailyLockKey(user), today);
       }
     } else {
       if (won) {
@@ -799,14 +1073,18 @@ class LocalGameServer implements GameServer {
       next = (await _userOrNull())!;
     }
 
-    secret.copyWith(usedCount: secret.usedCount + 1);
-    await _store.put('words', secret.id, secret.copyWith(usedCount: secret.usedCount + 1).toMap());
+    await _store.put(
+      'words',
+      secret.id,
+      secret.copyWith(usedCount: secret.usedCount + 1).toMap(),
+    );
 
     await _store.put('game_results', _uuid.v4(), {
       'userId': next.id,
       'sessionId': raw['id'],
       'gameType': type.name,
       'wordId': secret.id,
+      'language': secret.language,
       'guesses': guesses,
       'won': won,
       'timeSpent': seconds,
@@ -962,6 +1240,9 @@ class LocalGameServer implements GameServer {
 
   @override
   Future<int> watchRewardedAd() async {
+    if (!grantUnverifiedAds) {
+      throw AppFailure(UserMessages.adUnavailable, code: 'NO_AD_PROOF');
+    }
     final user = await _requireUser();
     final config = await _config();
     await _saveUser(user.copyWith(coin: user.coin + config.adCoinReward));
@@ -978,6 +1259,109 @@ class LocalGameServer implements GameServer {
       await _store.putMeta(_runMetaKey(user, 'endless_run'), '$atRisk');
     }
     await _store.putMeta(_runMetaKey(user, 'endless_run_at_risk'), '');
+  }
+
+  @override
+  Future<List<ShopProduct>> listShopProducts() =>
+      _loadShopProducts(onlyActive: true);
+
+  @override
+  Future<UserEntity> purchaseShopProduct(
+    String productId, {
+    required String purchaseToken,
+  }) async {
+    final token = purchaseToken.trim();
+    if (token.isEmpty) {
+      throw AppFailure(UserMessages.billingUnavailable, code: 'NO_PURCHASE');
+    }
+    final proof = confirmPurchase;
+    if (proof != null && !await proof(productId, token)) {
+      throw AppFailure(
+        UserMessages.billingUnavailable,
+        code: 'UNVERIFIED_PURCHASE',
+      );
+    }
+    final user = await _requireUser();
+    if (user.isBanned) {
+      throw AppFailure(UserMessages.banned, code: 'BANNED');
+    }
+    if (await _store.get('purchases', token) != null) {
+      return user;
+    }
+    final map = await _store.get('shop_products', productId);
+    final product = map == null ? null : ShopProduct.fromMap(map);
+    if (product == null ||
+        !product.active ||
+        (!product.grantsCoins && !product.grantsShields)) {
+      throw AppFailure(UserMessages.serverError, code: 'NO_PRODUCT');
+    }
+    if (product.grantsShields &&
+        user.shields >= AppConstants.maxStreakShields) {
+      throw AppFailure(UserMessages.shieldsFull, code: 'SHIELDS_FULL');
+    }
+    final shields = product.grantsShields
+        ? (user.shields + product.shields)
+            .clamp(0, AppConstants.maxStreakShields)
+        : user.shields;
+    final next = await _saveUser(
+      user.copyWith(
+        coin: user.coin + product.coins,
+        shields: shields,
+      ),
+    );
+    await _store.put('purchases', token, {
+      'productId': product.id,
+      'userId': user.id,
+      'createdAt': _now.toIso8601String(),
+    });
+    if (product.grantsCoins) {
+      await _creditWallet(user.id, product.coins, 'IAP_${product.id}', token);
+    }
+    return next;
+  }
+
+  @override
+  Future<List<ShopProduct>> adminListShopProducts({
+    bool includeInactive = true,
+  }) =>
+      _loadShopProducts(onlyActive: !includeInactive);
+
+  @override
+  Future<ShopProduct> adminUpsertShopProduct(ShopProduct product) async {
+    final id = product.id.trim();
+    if (id.isEmpty) {
+      throw AppFailure('Ürün id zorunlu', code: 'BAD_PRODUCT');
+    }
+    if (product.coins < 0 || product.shields < 0) {
+      throw AppFailure('Coin / kalkan negatif olamaz', code: 'BAD_PRODUCT');
+    }
+    if (product.coins <= 0 && product.shields <= 0) {
+      throw AppFailure(
+        'Coin veya streak kalkanı miktarı girilmeli',
+        code: 'BAD_PRODUCT',
+      );
+    }
+    if (product.priceTry.trim().isEmpty || product.priceUsd.trim().isEmpty) {
+      throw AppFailure('TRY ve USD fiyatları zorunlu', code: 'BAD_PRODUCT');
+    }
+    final saved = product.copyWith(id: id);
+    await _store.put('shop_products', id, saved.toMap());
+    return saved;
+  }
+
+  @override
+  Future<void> adminDeleteShopProduct(String productId) async {
+    await _store.delete('shop_products', productId);
+  }
+
+  @override
+  Future<List<ShopProduct>> adminResetShopCatalog() async {
+    final existing = await _store.values('shop_products');
+    for (final row in existing) {
+      await _store.delete('shop_products', row['id'] as String);
+    }
+    await _seedShopCatalog();
+    return _loadShopProducts();
   }
 
   @override
@@ -1252,9 +1636,14 @@ class LocalGameServer implements GameServer {
   }) =>
       '${period.name}_${periodId}_${locale}_${league.name}_$userId';
 
-  Future<void> _ensurePeriodBoard(RankPeriod period, String periodId, UserEntity user) async {
-    final npcs = await _npcsFor(user.currentLeague, user.locale);
-    final seed = periodId.hashCode ^ period.index ^ user.currentLeague.index ^ user.locale.hashCode;
+  Future<void> _seedPeriodNpcs(
+    RankPeriod period,
+    String periodId,
+    LeagueTier league,
+    String locale,
+  ) async {
+    final npcs = await _npcsFor(league, locale);
+    final seed = periodId.hashCode ^ period.index ^ league.index ^ locale.hashCode;
     final rnd = Random(seed);
     final band = switch (period) {
       RankPeriod.month => (120, 500),
@@ -1264,19 +1653,23 @@ class LocalGameServer implements GameServer {
     };
     for (final npc in npcs) {
       final id = npc['id'] as String;
-      final key = _periodKey(period, periodId, user.currentLeague, id, locale: user.locale);
+      final key = _periodKey(period, periodId, league, id, locale: locale);
       if (await _store.get('period_scores', key) != null) continue;
       await _store.put('period_scores', key, {
         'userId': id,
         'displayName': npc['displayName'],
         'period': period.name,
         'periodId': periodId,
-        'league': user.currentLeague.name,
-        'locale': user.locale,
+        'league': league.name,
+        'locale': locale,
         'points': band.$1 + rnd.nextInt(band.$2),
         'isNpc': true,
       });
     }
+  }
+
+  Future<void> _ensurePeriodBoard(RankPeriod period, String periodId, UserEntity user) async {
+    await _seedPeriodNpcs(period, periodId, user.currentLeague, user.locale);
     final meKey = _periodKey(period, periodId, user.currentLeague, user.id, locale: user.locale);
     if (await _store.get('period_scores', meKey) == null) {
       await _store.put('period_scores', meKey, {
@@ -1542,12 +1935,30 @@ class LocalGameServer implements GameServer {
     String language = 'tr',
   }) async {
     final locale = GameLocale.resolve(language).id;
+    final wordMap = await _store.get('words', wordId);
+    if (wordMap == null) {
+      throw AppFailure(UserMessages.serverError, code: 'NO_WORD');
+    }
+    final word = WordEntity.fromMap(wordMap);
+    if (word.language != locale) {
+      throw AppFailure(
+        'Kelime dili ${word.language.toUpperCase()}, beklenen ${locale.toUpperCase()}.',
+        code: 'WORD_LOCALE',
+      );
+    }
+    if (word.length != league.wordLength) {
+      throw AppFailure(
+        'Kelime ${word.length} harf; ${league.label} için ${league.wordLength} harf gerekir.',
+        code: 'WORD_LENGTH',
+      );
+    }
     final row = {
       'date': dateKey,
       'league': league.name,
       'language': locale,
       'wordId': wordId,
       'isActive': true,
+      'source': 'admin',
       'createdAt': _now.toIso8601String(),
     };
     await _store.put('daily_games', _dailyKey(dateKey, locale, league), row);
@@ -1621,6 +2032,8 @@ class LocalGameServer implements GameServer {
     for (final r in results) {
       final created = DateTime.parse(r['createdAt'] as String);
       if (DateKeys.dayKey(created) != today) continue;
+      final lang = r['language'] as String? ?? 'tr';
+      if (lang != locale) continue;
       if (r['gameType'] == GameType.daily.name) {
         dailyDone++;
       } else if (r['gameType'] == GameType.endless.name) {
@@ -1780,6 +2193,19 @@ class LocalGameServer implements GameServer {
   }
 
   @override
+  Future<UserEntity> adminSetDisplayName(String userId, String name) async {
+    final trimmed = name.trim();
+    if (trimmed.length < 2) {
+      throw AppFailure('Kullanıcı adı en az 2 karakter olmalı.');
+    }
+    final map = await _store.get('users', userId);
+    if (map == null) {
+      throw AppFailure(UserMessages.serverError, code: 'NO_USER');
+    }
+    return _saveUser(UserEntity.fromMap(map).copyWith(displayName: trimmed));
+  }
+
+  @override
   Future<void> adminBanUser(String userId, bool banned, {String? reason}) async {
     final map = await _store.get('users', userId);
     if (map == null) return;
@@ -1817,12 +2243,37 @@ class LocalGameServer implements GameServer {
   Future<List<LeaderboardEntry>> adminLeagueStandings(
     LeagueTier league, {
     String locale = 'tr',
+    RankPeriod period = RankPeriod.week,
+    String? periodId,
   }) async {
-    final leagueId = await _seedLeagueNpcs(league, locale: locale);
-    final rows = (await _store.values('league_players'))
-        .where((e) => e['leagueId'] == leagueId)
-        .toList()
-      ..sort((a, b) => (b['points'] as int).compareTo(a['points'] as int));
+    final lang = GameLocale.resolve(locale).id;
+    final id = periodId ?? switch (period) {
+          RankPeriod.week => DateKeys.weekId(_now),
+          RankPeriod.month => DateKeys.monthId(_now),
+          RankPeriod.season => DateKeys.seasonId(_now),
+          RankPeriod.year => DateKeys.yearId(_now),
+        };
+
+    if (period == RankPeriod.week) {
+      final leagueId = await _seedLeagueNpcs(league, locale: lang);
+      final rows = (await _store.values('league_players'))
+          .where((e) => e['leagueId'] == leagueId)
+          .toList()
+        ..sort((a, b) => (b['points'] as int).compareTo(a['points'] as int));
+      return [
+        for (var i = 0; i < rows.length; i++)
+          LeaderboardEntry(
+            userId: rows[i]['userId'] as String,
+            displayName: rows[i]['displayName'] as String,
+            points: rows[i]['points'] as int,
+            rank: i + 1,
+            isCurrentUser: false,
+          ),
+      ];
+    }
+
+    await _seedPeriodNpcs(period, id, league, lang);
+    final rows = await _periodRows(period, id, league, lang);
     return [
       for (var i = 0; i < rows.length; i++)
         LeaderboardEntry(

@@ -9,12 +9,13 @@ class MainShell extends StatelessWidget {
 
   final Widget child;
 
-  static const _tabs = ['/home', '/league', '/profile', '/settings'];
+  static const _tabs = ['/home', '/league', '/shop', '/profile', '/settings'];
 
   int _index(String location) {
     if (location.startsWith('/league')) return 1;
-    if (location.startsWith('/profile')) return 2;
-    if (location.startsWith('/settings')) return 3;
+    if (location.startsWith('/shop')) return 2;
+    if (location.startsWith('/profile')) return 3;
+    if (location.startsWith('/settings')) return 4;
     return 0;
   }
 
@@ -58,17 +59,24 @@ class MainShell extends StatelessWidget {
                     ),
                     _NavItem(
                       selected: selected == 2,
-                      icon: Icons.person_outline,
-                      activeIcon: Icons.person,
-                      label: l10n.t('profile'),
+                      icon: Icons.storefront_outlined,
+                      activeIcon: Icons.storefront,
+                      label: l10n.t('shop'),
                       onTap: () => context.go(_tabs[2]),
                     ),
                     _NavItem(
                       selected: selected == 3,
+                      icon: Icons.person_outline,
+                      activeIcon: Icons.person,
+                      label: l10n.t('profile'),
+                      onTap: () => context.go(_tabs[3]),
+                    ),
+                    _NavItem(
+                      selected: selected == 4,
                       icon: Icons.settings_outlined,
                       activeIcon: Icons.settings,
                       label: l10n.t('settings'),
-                      onTap: () => context.go(_tabs[3]),
+                      onTap: () => context.go(_tabs[4]),
                     ),
                   ],
                 ),

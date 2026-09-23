@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:kelimelig/admin/game_scope.dart';
 import 'package:kelimelig/admin/screens/game_detail_screen.dart';
 import 'package:kelimelig/admin/widgets/admin_widgets.dart';
 import 'package:kelimelig/core/constants/enums.dart';
 import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/domain/entities/admin_models.dart';
-import 'package:kelimelig/domain/game/game_server.dart';
-import 'package:kelimelig/injection.dart';
 
 class UserDetailScreen extends StatefulWidget {
   const UserDetailScreen({super.key, required this.userId});
@@ -17,17 +16,20 @@ class UserDetailScreen extends StatefulWidget {
 }
 
 class _UserDetailScreenState extends State<UserDetailScreen> {
+  final _name = TextEditingController();
   final _reason = TextEditingController();
   final _coins = TextEditingController();
+  var _nameReady = false;
 
   @override
   void dispose() {
+    _name.dispose();
     _reason.dispose();
     _coins.dispose();
     super.dispose();
   }
 
-  Future<AdminUserDetail> _load() => sl<GameServer>().adminUserDetail(widget.userId);
+  Future<AdminUserDetail> _load() => adminServer(context).adminUserDetail(widget.userId);
 
   @override
   Widget build(BuildContext context) {
@@ -37,6 +39,10 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
         future: _load(),
         builder: (context, detail) {
           final u = detail.user;
+          if (!_nameReady) {
+            _name.text = u.displayName;
+            _nameReady = true;
+          }
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -52,6 +58,19 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
                 Text('Ban: ${u.banReason ?? 'neden yok'}', style: const TextStyle(color: AppColors.danger)),
               const Divider(height: 32),
               TextField(
+                controller: _name,
+                decoration: const InputDecoration(labelText: 'Görünen ad'),
+              ),
+              const SizedBox(height: 8),
+              ElevatedButton(
+                onPressed: () async {
+                  await adminServer(context).adminSetDisplayName(u.id, _name.text);
+                  if (context.mounted) setState(() => _nameReady = false);
+                },
+                child: const Text('Adı kaydet'),
+              ),
+              const SizedBox(height: 16),
+              TextField(
                 controller: _reason,
                 decoration: const InputDecoration(labelText: 'Ban nedeni'),
               ),
@@ -61,7 +80,7 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
                   Expanded(
                     child: ElevatedButton(
                       onPressed: () async {
-                        await sl<GameServer>().adminBanUser(
+                        await adminServer(context).adminBanUser(
                           u.id,
                           true,
                           reason: _reason.text.trim().isEmpty ? null : _reason.text.trim(),
@@ -75,7 +94,7 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
                   Expanded(
                     child: OutlinedButton(
                       onPressed: () async {
-                        await sl<GameServer>().adminBanUser(u.id, false);
+                        await adminServer(context).adminBanUser(u.id, false);
                         setState(() {});
                       },
                       child: const Text('Ban kaldır'),
@@ -94,7 +113,7 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
                 onPressed: () async {
                   final d = int.tryParse(_coins.text.trim()) ?? 0;
                   if (d == 0) return;
-                  await sl<GameServer>().adminAdjustCoins(u.id, d);
+                  await adminServer(context).adminAdjustCoins(u.id, d);
                   _coins.clear();
                   setState(() {});
                 },

@@ -4,6 +4,6 @@ import 'package:kelimelig/injection.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await configureDependencies();
+  await configureDependencies(syncRemote: true);
   runApp(const KelimeLigApp());
 }

@@ -9,6 +9,7 @@ import 'package:kelimelig/core/theme/appearance.dart';
 import 'package:kelimelig/features/auth/cubit/auth_cubit.dart';
 import 'package:kelimelig/features/auth/presentation/language_screen.dart';
 import 'package:kelimelig/features/auth/presentation/login_screen.dart';
+import 'package:kelimelig/features/auth/presentation/register_screen.dart';
 import 'package:kelimelig/features/auth/presentation/onboarding_screen.dart';
 import 'package:kelimelig/features/auth/presentation/splash_screen.dart';
 import 'package:kelimelig/features/game/presentation/game_screen.dart';
@@ -19,6 +20,7 @@ import 'package:kelimelig/features/profile/presentation/profile_screen.dart';
 import 'package:kelimelig/features/profile/presentation/statistics_screen.dart';
 import 'package:kelimelig/features/settings/presentation/settings_screen.dart';
 import 'package:kelimelig/features/shell/main_shell.dart';
+import 'package:kelimelig/features/shop/presentation/shop_screen.dart';
 import 'package:kelimelig/features/word_book/presentation/word_book_screen.dart';
 import 'package:kelimelig/injection.dart';
 
@@ -72,11 +74,19 @@ class _AppViewState extends State<_AppView> {
         ),
         GoRoute(path: '/onboarding', builder: (_, _) => const OnboardingScreen()),
         GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
+        GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
+        GoRoute(path: '/hub', redirect: (_, _) => '/home'),
+        GoRoute(path: '/fall', redirect: (_, _) => '/home'),
+        GoRoute(path: '/fall/league', redirect: (_, _) => '/home'),
+        GoRoute(path: '/fall/shop', redirect: (_, _) => '/home'),
+        GoRoute(path: '/fall/profile', redirect: (_, _) => '/home'),
+        GoRoute(path: '/fall/play', redirect: (_, _) => '/home'),
         ShellRoute(
           builder: (context, state, child) => MainShell(child: child),
           routes: [
             GoRoute(path: '/home', builder: (_, _) => const HomeScreen()),
             GoRoute(path: '/league', builder: (_, _) => const LeagueScreen()),
+            GoRoute(path: '/shop', builder: (_, _) => const ShopScreen()),
             GoRoute(path: '/profile', builder: (_, _) => const ProfileScreen()),
             GoRoute(path: '/settings', builder: (_, _) => const SettingsScreen()),
           ],

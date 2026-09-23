@@ -88,9 +88,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Future<void> _enterGame() async {
     final cubit = context.read<AuthCubit>();
     if (cubit.state.user == null) {
-      context.go('/login');
-      return;
+      await cubit.anonymous();
     }
+    if (!mounted) return;
     await cubit.finishOnboarding();
     if (mounted) context.go('/home');
   }

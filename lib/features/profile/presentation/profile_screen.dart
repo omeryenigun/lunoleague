@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -11,7 +12,6 @@ import 'package:kelimelig/core/theme/shimmer_title.dart';
 import 'package:kelimelig/domain/entities/user_entity.dart';
 import 'package:kelimelig/domain/game/game_server.dart';
 import 'package:kelimelig/features/auth/cubit/auth_cubit.dart';
-import 'package:kelimelig/features/auth/presentation/dev_bypass_button.dart';
 import 'package:kelimelig/injection.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -30,6 +30,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _openLogin() async {
     await context.push('/login');
+    if (mounted) {
+      await context.read<AuthCubit>().bootstrap();
+      _reload();
+    }
+  }
+
+  Future<void> _openRegister() async {
+    await context.push('/register');
     if (mounted) {
       await context.read<AuthCubit>().bootstrap();
       _reload();
@@ -67,7 +75,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ],
                   ),
                   const SizedBox(height: 18),
-                  const _AvatarRing(),
+                  _AvatarRing(avatar: u.avatar),
                   const SizedBox(height: 12),
                   Text(
                     u.displayName,
@@ -107,7 +115,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: Text(
                         u.isAnonymous
                             ? l10n.t('guest_badge')
-                            : '${u.currentLeague.symbol} ${u.currentLeague.label.toUpperCase()} LİG',
+                            : '${u.currentLeague.symbol} ${u.currentLeague.labelFor(l10n.id).toUpperCase()} ${l10n.t('league').toUpperCase()}',
                         style: TextStyle(
                           color: u.isAnonymous
                               ? const Color(0xFFCBD5E1)
@@ -147,15 +155,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                           const SizedBox(height: 14),
                           CosmicContinueButton(
-                            label: l10n.t('login_or_register'),
+                            label: l10n.t('sign_in_title'),
                             showArrow: false,
                             onPressed: _openLogin,
+                          ),
+                          const SizedBox(height: 10),
+                          OutlinedButton(
+                            onPressed: _openRegister,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFFF0FDF4),
+                              minimumSize: const Size.fromHeight(48),
+                              side: BorderSide(
+                                color: AppColors.cosmicBlue.withValues(alpha: 0.45),
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                            child: Text(l10n.t('email_register')),
                           ),
                           const SizedBox(height: 10),
                           OutlinedButton.icon(
                             onPressed: () async {
                               final auth = context.read<AuthCubit>();
                               await auth.google();
+                              if (!mounted) return;
+                              final error = auth.state.error;
+                              if (error != null) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(error)),
+                                );
+                                return;
+                              }
+                              if (auth.state.user?.authProvider !=
+                                  AuthProvider.google) {
+                                return;
+                              }
                               await auth.finishOnboarding();
                               if (mounted) _reload();
                             },
@@ -181,13 +216,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 if (mounted) _reload();
                               },
                               child: Text(l10n.t('apple')),
-                            ),
-                          ],
-                          if (DevBypassButton.enabled) ...[
-                            const SizedBox(height: 12),
-                            DevBypassButton(
-                              displayName: u.displayName,
-                              onDone: _reload,
                             ),
                           ],
                         ],
@@ -316,7 +344,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 }
 
 class _AvatarRing extends StatefulWidget {
-  const _AvatarRing();
+  const _AvatarRing({this.avatar});
+
+  final String? avatar;
 
   @override
   State<_AvatarRing> createState() => _AvatarRingState();
@@ -355,21 +385,35 @@ class _AvatarRingState extends State<_AvatarRing>
               child: child,
             );
           },
-          child: const Center(
-            child: Text(
-              '👑',
-              style: TextStyle(
-                fontSize: 46,
-                shadows: [
-                  Shadow(color: Color(0x80F1C40F), blurRadius: 18),
-                ],
-              ),
-            ),
-          ),
+          child: Center(child: _avatarFace(widget.avatar)),
         ),
       ),
     );
   }
+}
+
+Widget _avatarFace(String? avatar) {
+  if (avatar != null && avatar.isNotEmpty) {
+    try {
+      return ClipOval(
+        child: Image.memory(
+          base64Decode(avatar),
+          width: 88,
+          height: 88,
+          fit: BoxFit.cover,
+        ),
+      );
+    } catch (_) {}
+  }
+  return const Text(
+    '👑',
+    style: TextStyle(
+      fontSize: 46,
+      shadows: [
+        Shadow(color: Color(0x80F1C40F), blurRadius: 18),
+      ],
+    ),
+  );
 }
 
 class _RingPainter extends CustomPainter {

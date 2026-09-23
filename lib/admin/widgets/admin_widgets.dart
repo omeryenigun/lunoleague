@@ -69,5 +69,6 @@ String adminProviderLabel(String name) => switch (name) {
       'anonymous' => 'Misafir',
       'google' => 'Google',
       'apple' => 'Apple',
+      'email' => 'E-posta',
       _ => name,
     };

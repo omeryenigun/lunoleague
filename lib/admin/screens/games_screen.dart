@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:kelimelig/admin/game_scope.dart';
 import 'package:kelimelig/admin/screens/game_detail_screen.dart';
 import 'package:kelimelig/admin/widgets/admin_widgets.dart';
 import 'package:kelimelig/core/constants/enums.dart';
 import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/domain/entities/admin_models.dart';
-import 'package:kelimelig/domain/game/game_server.dart';
-import 'package:kelimelig/injection.dart';
 
 class GamesScreen extends StatefulWidget {
   const GamesScreen({super.key});
@@ -19,7 +18,7 @@ class _GamesScreenState extends State<GamesScreen> {
   bool? _won;
 
   Future<List<AdminGameRecord>> _load() =>
-      sl<GameServer>().adminListGames(type: _type, won: _won);
+      adminServer(context).adminListGames(type: _type, won: _won);
 
   static String _fmt(DateTime? dt) {
     if (dt == null) return '—';
@@ -52,7 +51,7 @@ class _GamesScreenState extends State<GamesScreen> {
         hintUsed: false,
         xpEarned: 100,
         coinEarned: 25,
-        leaguePoints: 10,
+        leaguePoints: 0,
         createdAt: now.subtract(const Duration(hours: 1)),
         startedAt: now.subtract(const Duration(hours: 1, minutes: 3)),
         endedAt: now.subtract(const Duration(hours: 1)),
@@ -137,7 +136,7 @@ class _GamesScreenState extends State<GamesScreen> {
         hintUsed: true,
         xpEarned: 5,
         coinEarned: 3,
-        leaguePoints: 4,
+        leaguePoints: 0,
         createdAt: now.subtract(const Duration(hours: 8)),
         startedAt: now.subtract(const Duration(hours: 8, minutes: 4)),
         endedAt: now.subtract(const Duration(hours: 8)),
