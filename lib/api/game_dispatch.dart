@@ -110,12 +110,16 @@ Future<Object?> dispatchGame(
       return wireSession(await game.startDaily());
     case 'startEndless':
       return wireSession(await game.startEndless());
-    case 'duelSeek':
-      return (await game.duelSeek()).toMap();
+    case 'duelCreate':
+      return (await game.duelCreate()).toMap();
+    case 'duelJoin':
+      return (await game.duelJoin(args['code'] as String? ?? '')).toMap();
     case 'duelPoll':
       return (await game.duelPoll()).toMap();
     case 'duelCancel':
       return (await game.duelCancel()).toMap();
+    case 'duelStart':
+      return (await game.duelStart()).toMap();
     case 'roomCreate':
       return (await game.roomCreate()).toMap();
     case 'roomJoin':

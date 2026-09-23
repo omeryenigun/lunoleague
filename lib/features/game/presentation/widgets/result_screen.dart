@@ -12,6 +12,80 @@ import 'package:kelimelig/domain/game/word_matching_engine.dart';
 import 'package:kelimelig/injection.dart';
 import 'package:share_plus/share_plus.dart';
 
+String buildShareText({
+  required L10n l10n,
+  required GameOutcome outcome,
+  required List<EvaluatedGuess> guesses,
+  required int maxAttempts,
+  required bool isDaily,
+}) {
+  final won = outcome.won;
+  final title = won ? l10n.t('result_win_title') : l10n.t('result_lose_title');
+  final detail = won
+      ? l10n
+          .t('result_guesses')
+          .replaceAll('{n}', '${outcome.guesses}')
+          .replaceAll('{m}', '$maxAttempts')
+      : isDaily
+          ? l10n.t('result_lose_sub_daily')
+          : l10n.t('result_lose_sub');
+  final score = l10n
+      .t('share_score')
+      .replaceAll('{n}', '${outcome.guesses}')
+      .replaceAll('{m}', '$maxAttempts');
+  final time = l10n.t('share_time').replaceAll('{t}', _shareClock(outcome.timeSpentSeconds));
+  final rewards = [
+    l10n.t('share_xp').replaceAll('{n}', _shareSigned(outcome.xpEarned)),
+    l10n.t('share_coins').replaceAll('{n}', _shareSigned(outcome.coinEarned)),
+  ].join(' · ');
+  final lines = <String>[
+    AppConstants.appName,
+    title,
+    detail,
+    '$score · $time',
+    rewards,
+  ];
+  if (isDaily || outcome.leaguePoints != 0) {
+    lines.add(
+      l10n.t('share_league').replaceAll('{n}', _shareSigned(outcome.leaguePoints)),
+    );
+  }
+  if (isDaily) {
+    lines.add('🔥 ${l10n.t('result_streak_days').replaceAll('{n}', '${outcome.streak}')}');
+  } else if (outcome.endlessRun > 0) {
+    lines.add(l10n.t('share_run').replaceAll('{n}', '${outcome.endlessRun}'));
+  }
+  if (outcome.rankAfter != null) {
+    lines.add(l10n.t('share_rank').replaceAll('{n}', '${outcome.rankAfter}'));
+  }
+  if (outcome.unlockedAchievements.isNotEmpty) {
+    lines.add(
+      '${l10n.t('result_achievement')}: ${outcome.unlockedAchievements.join(', ')}',
+    );
+  }
+  final buf = StringBuffer('${lines.join('\n')}\n\n');
+  for (final guess in guesses) {
+    for (final status in guess.statuses) {
+      buf.write(switch (status) {
+        LetterStatus.correct => '🟩',
+        LetterStatus.present => '🟨',
+        _ => '⬜',
+      });
+    }
+    buf.writeln();
+  }
+  return buf.toString().trimRight();
+}
+
+String _shareSigned(int value) => value > 0 ? '+$value' : '$value';
+
+String _shareClock(int seconds) {
+  final safe = seconds < 0 ? 0 : seconds;
+  final minutes = (safe ~/ 60).toString().padLeft(2, '0');
+  final rest = (safe % 60).toString().padLeft(2, '0');
+  return '$minutes:$rest';
+}
+
 class ResultScreen extends StatefulWidget {
   const ResultScreen({
     super.key,
@@ -186,20 +260,14 @@ class _ResultScreenState extends State<ResultScreen>
   }
 
   Future<void> _share() async {
-    final buf = StringBuffer('${AppConstants.appName}\n');
-    for (final g in widget.guesses) {
-      for (final s in g.statuses) {
-        buf.write(switch (s) {
-          LetterStatus.correct => '🟩',
-          LetterStatus.present => '🟨',
-          _ => '⬜',
-        });
-      }
-      buf.writeln();
-    }
-    buf.writeln('${outcome.guesses}/${widget.maxAttempts}');
-    if (widget.isDaily) buf.writeln('🔥 ${outcome.streak}');
-    await SharePlus.instance.share(ShareParams(text: buf.toString()));
+    final text = buildShareText(
+      l10n: sl<L10n>(),
+      outcome: outcome,
+      guesses: widget.guesses,
+      maxAttempts: widget.maxAttempts,
+      isDaily: widget.isDaily,
+    );
+    await SharePlus.instance.share(ShareParams(text: text));
   }
 
   @override

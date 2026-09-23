@@ -282,9 +282,9 @@ class _RoomButton extends StatelessWidget {
     return CosmicGlassCard(
       onTap: onTap,
       colors: const [
-        AppColors.cosmicPurple,
-        Color(0xFF6C3483),
-        AppColors.cosmicPurple,
+        AppColors.cosmicBlue,
+        Color(0xFF1B4F72),
+        AppColors.cosmicBlue,
       ],
       child: Center(
         child: Text(

@@ -45,9 +45,11 @@ abstract class GameServer {
   Future<HomeSnapshot> homeSnapshot();
   Future<GameSessionView> startDaily();
   Future<GameSessionView> startEndless();
-  Future<MatchSnapshot> duelSeek();
+  Future<MatchSnapshot> duelCreate();
+  Future<MatchSnapshot> duelJoin(String code);
   Future<MatchSnapshot> duelPoll();
   Future<MatchSnapshot> duelCancel();
+  Future<MatchSnapshot> duelStart();
   Future<MatchSnapshot> roomCreate();
   Future<MatchSnapshot> roomJoin(String code);
   Future<MatchSnapshot> roomPoll();

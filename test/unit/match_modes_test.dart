@@ -8,6 +8,15 @@ import 'package:kelimelig/data/remote/session_kv.dart';
 import 'package:kelimelig/domain/entities/match_snapshot.dart';
 import 'package:kelimelig/domain/game/match_rank.dart';
 
+Future<void> inviteDuel(LocalGameServer host, LocalGameServer guest) async {
+  final created = await host.duelCreate();
+  expect(created.status, 'lobby');
+  expect(created.code, hasLength(6));
+  await guest.duelJoin(created.code!);
+  final started = await host.duelStart();
+  expect(started.status, 'playing');
+}
+
 void main() {
   test('solved ranks above a miss, then fewer guesses, then a shorter clock', () {
     MatchRow row({
@@ -41,16 +50,16 @@ void main() {
   });
 
   test('guests pair, share a word, and a miss ranks below a solve', () async {
+    var now = DateTime(2026, 9, 23, 12);
     final root = MemoryKeyValueStore();
-    final a = LocalGameServer(SessionKv(root));
-    final b = LocalGameServer(SessionKv(root));
+    final a = LocalGameServer(SessionKv(root), clock: () => now);
+    final b = LocalGameServer(SessionKv(root), clock: () => now);
     await a.initialize();
     await a.signInAnonymously();
     await b.signInAnonymously();
 
-    expect((await a.duelSeek()).status, 'searching');
-    final ready = await b.duelSeek();
-    expect(ready.status, 'ready');
+    await inviteDuel(a, b);
+    now = now.add(const Duration(seconds: 4));
     final sessionA = await a.openAssigned(GameType.duel);
     final sessionB = await b.openAssigned(GameType.duel);
     final secret = (await a.adminGetSession(sessionA.sessionId))!;
@@ -83,8 +92,8 @@ void main() {
     await a.signInWithGoogle(googleId: 'ada', displayName: 'Ada');
     await b.signInWithGoogle(googleId: 'bora', displayName: 'Bora');
 
-    await a.duelSeek();
-    await b.duelSeek();
+    await inviteDuel(a, b);
+    now = now.add(const Duration(seconds: 4));
     final sessionA = await a.openAssigned(GameType.duel);
     final sessionB = await b.openAssigned(GameType.duel);
     final secret = (await a.adminGetSession(sessionA.sessionId))!.word;
@@ -115,8 +124,8 @@ void main() {
     await c.initialize();
     await c.signInAnonymously();
     await d.signInAnonymously();
-    await c.duelSeek();
-    await d.duelSeek();
+    await inviteDuel(c, d);
+    later = later.add(const Duration(seconds: 4));
     final sessionC = await c.openAssigned(GameType.duel);
     final sessionD = await d.openAssigned(GameType.duel);
     final word = (await c.adminGetSession(sessionC.sessionId))!.word;
@@ -128,35 +137,47 @@ void main() {
     expect(byTime.rows.first.millis, lessThan(byTime.rows[1].millis));
   });
 
-  test('english queue does not match a turkish player', () async {
+  test('a duel code invites one friend and does not match strangers', () async {
+    var now = DateTime(2026, 9, 23, 17);
     final root = MemoryKeyValueStore();
-    final a = LocalGameServer(SessionKv(root));
-    final b = LocalGameServer(SessionKv(root));
+    final a = LocalGameServer(SessionKv(root), clock: () => now);
+    final b = LocalGameServer(SessionKv(root), clock: () => now);
+    final c = LocalGameServer(SessionKv(root), clock: () => now);
     await a.initialize();
     await a.signInAnonymously();
     await b.signInAnonymously();
+    await c.signInAnonymously();
     await a.setLocale('en');
-    expect((await a.duelSeek()).status, 'searching');
-    expect((await b.duelSeek()).status, 'searching');
-    await b.setLocale('en');
-    expect((await b.duelSeek()).status, 'ready');
+
+    final mine = await a.duelCreate();
+    final theirs = await b.duelCreate();
+    expect(mine.code, isNot(theirs.code));
+    expect(mine.status, 'lobby');
+    expect(theirs.status, 'lobby');
+
+    await expectLater(
+      c.duelJoin('000000'),
+      throwsA(isA<AppFailure>().having((e) => e.code, 'code', 'DUEL_MISSING')),
+    );
+    await expectLater(
+      a.duelStart(),
+      throwsA(isA<AppFailure>().having((e) => e.code, 'code', 'DUEL_WAIT')),
+    );
+
+    await b.duelJoin(mine.code!);
+    await expectLater(
+      c.duelJoin(mine.code!),
+      throwsA(isA<AppFailure>().having((e) => e.code, 'code', 'DUEL_FULL')),
+    );
+    final started = await a.duelStart();
+    expect(started.status, 'playing');
+    now = now.add(const Duration(seconds: 4));
     final session = await a.openAssigned(GameType.duel);
     expect((await a.adminGetSession(session.sessionId))!.word.length, 5);
-  });
-
-  test('queue expires when nobody joins', () async {
-    var now = DateTime(2026, 9, 23, 18);
-    final server = LocalGameServer(
-      SessionKv(MemoryKeyValueStore()),
-      clock: () => now,
-    );
-    await server.initialize();
-    await server.signInAnonymously();
-    await server.duelSeek();
-    now = now.add(const Duration(seconds: 46));
-    await expectLater(
-      server.duelPoll(),
-      throwsA(isA<AppFailure>().having((e) => e.code, 'code', 'NO_OPPONENT')),
+    expect(
+      (await b.adminGetSession((await b.openAssigned(GameType.duel)).sessionId))!
+          .wordId,
+      (await a.adminGetSession(session.sessionId))!.wordId,
     );
   });
 

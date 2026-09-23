@@ -13,6 +13,8 @@ import 'package:kelimelig/core/widgets/game_logo.dart';
 import 'package:kelimelig/features/home/cubit/home_cubit.dart';
 import 'package:kelimelig/injection.dart';
 
+const _homeCardPadding = EdgeInsets.symmetric(horizontal: 14, vertical: 10);
+
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
@@ -54,26 +56,26 @@ class _HomeView extends StatelessWidget {
                 color: AppColors.cosmicGreen,
                 onRefresh: () => context.read<HomeCubit>().load(),
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
                   children: [
-                    const Center(child: GameLogo(size: 112)),
-                    const SizedBox(height: 20),
+                    const Center(child: GameLogo(size: 84)),
+                    const SizedBox(height: 18),
                     _LeagueCard(user: user, snap: snap),
-                    const SizedBox(height: 14),
-                    _DailyCta(user: user, snap: snap),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
+                    _DailyCta(user: user),
+                    const SizedBox(height: 12),
                     _EndlessCard(best: user.endlessBest),
                     if (snap.dailyRewardAvailable && !user.isAnonymous) ...[
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 12),
                       _RewardCard(day: snap.rewardCycleDay),
                     ],
                     if (!user.isAnonymous) ...[
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 12),
                       _PeriodBoardsCarousel(snap: snap),
                     ],
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     const _ModeCard(duel: true),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     const _ModeCard(duel: false),
                   ],
                 ),
@@ -101,6 +103,7 @@ class _LeagueCard extends StatelessWidget {
       user.currentLeague.labelFor(l10n.id).toUpperCase(),
     );
     return CosmicGlassCard(
+      padding: _homeCardPadding,
       colors: const [AppColors.cosmicGold, Color(0xFFF39C12), Color(0xFFE67E22)],
       onTap: () => user.isAnonymous
           ? context.go('/profile')
@@ -169,7 +172,7 @@ class _LeagueCard extends StatelessWidget {
               ),
             ),
           ],
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
           Row(
             children: [
               _Stat(icon: '🔥', value: '${user.streak}', color: AppColors.cosmicRed),
@@ -221,80 +224,78 @@ class _Stat extends StatelessWidget {
 }
 
 class _DailyCta extends StatelessWidget {
-  const _DailyCta({required this.user, required this.snap});
+  const _DailyCta({required this.user});
 
   final UserEntity user;
-  final HomeSnapshot snap;
 
   @override
   Widget build(BuildContext context) {
-    final resume = snap.dailyStatus == DailyStatus.started;
     final l10n = sl<L10n>();
-    final subtitle = resume
-        ? l10n.t('daily_resume_sub')
-        : user.isAnonymous
-            ? l10n.t('daily_guest')
-            : l10n.t('daily_reg');
-    final title = resume ? l10n.t('daily_resume') : l10n.t('daily_play');
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () async {
-          await context.push('/game/daily');
-          if (context.mounted) await context.read<HomeCubit>().load();
-        },
-        borderRadius: BorderRadius.circular(20),
-        child: Ink(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                AppColors.cosmicGreen,
-                AppColors.cosmicTeal,
-                Color(0xFF27AE60),
+    final subtitle = user.isAnonymous ? l10n.t('daily_guest') : l10n.t('daily_reg');
+    const colors = [AppColors.cosmicGreen, AppColors.cosmicTeal];
+    return CosmicGlassCard(
+      padding: _homeCardPadding,
+      colors: const [
+        AppColors.cosmicGreen,
+        AppColors.cosmicTeal,
+        Color(0xFF27AE60),
+      ],
+      onTap: () async {
+        await context.push('/game/daily');
+        if (context.mounted) await context.read<HomeCubit>().load();
+      },
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: colors,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.cosmicGreen.withValues(alpha: 0.5),
+                  blurRadius: 22,
+                ),
               ],
             ),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.cosmicGreen.withValues(alpha: 0.4),
-                blurRadius: 30,
-                offset: const Offset(0, 6),
-              ),
-              BoxShadow(
-                color: AppColors.cosmicTeal.withValues(alpha: 0.22),
-                blurRadius: 60,
-              ),
-            ],
+            alignment: Alignment.center,
+            child: const Icon(
+              Icons.calendar_today_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
           ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
+          const SizedBox(width: 14),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  title,
+                  l10n.t('daily_play'),
                   style: const TextStyle(
-                    fontSize: 21,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.2,
-                    color: AppColors.cosmicBg,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 17,
+                    color: Color(0xFFF8FAFC),
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 3),
                 Text(
                   subtitle,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.cosmicBg.withValues(alpha: 0.75),
+                  style: const TextStyle(
+                    color: Color(0xFF94A3B8),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
             ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -310,8 +311,9 @@ class _ModeCard extends StatelessWidget {
     final l10n = sl<L10n>();
     final colors = duel
         ? const [AppColors.cosmicBlue, AppColors.cosmicTeal]
-        : const [AppColors.cosmicPurple, Color(0xFF6C3483)];
+        : const [AppColors.cosmicBlue, Color(0xFF1B4F72)];
     return CosmicGlassCard(
+      padding: _homeCardPadding,
       colors: [
         colors[0],
         colors[1],
@@ -321,8 +323,8 @@ class _ModeCard extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 52,
-            height: 52,
+            width: 44,
+            height: 44,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14),
               gradient: LinearGradient(
@@ -341,7 +343,7 @@ class _ModeCard extends StatelessWidget {
             child: Icon(
               duel ? Icons.bolt_rounded : Icons.meeting_room_rounded,
               color: Colors.white,
-              size: 28,
+              size: 24,
             ),
           ),
           const SizedBox(width: 14),
@@ -384,6 +386,7 @@ class _EndlessCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = sl<L10n>();
     return CosmicGlassCard(
+      padding: _homeCardPadding,
       colors: const [
         AppColors.cosmicPurple,
         Color(0xFF8E44AD),
@@ -393,8 +396,8 @@ class _EndlessCard extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 52,
-            height: 52,
+            width: 44,
+            height: 44,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14),
               gradient: const LinearGradient(
@@ -414,7 +417,7 @@ class _EndlessCard extends StatelessWidget {
               '∞',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 26,
+                fontSize: 22,
                 fontWeight: FontWeight.w800,
                 height: 1,
               ),

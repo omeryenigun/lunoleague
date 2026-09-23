@@ -926,57 +926,51 @@ class LocalGameServer implements GameServer {
     return _sessionToView(session);
   }
 
-  static const _queueWait = Duration(seconds: 45);
   static const _presence = Duration(seconds: 20);
   static const _roomCap = 10;
 
   @override
-  Future<MatchSnapshot> duelSeek() async {
+  Future<MatchSnapshot> duelCreate() async {
     final user = await _requireUser();
-    await _dropStaleQueue();
     final open = await _duelFor(user.id, openOnly: true);
     if (open != null) return _duelView(open, user.id);
-
-    Map<String, dynamic>? opponent;
-    for (final row in await _store.values('duel_queue')) {
-      if (row['userId'] == user.id) continue;
-      if (row['locale'] != user.locale) continue;
-      if (row['league'] != user.currentLeague.name) continue;
-      opponent = row;
-      break;
-    }
-    if (opponent == null) {
-      await _store.put('duel_queue', user.id, {
-        'userId': user.id,
-        'name': user.displayName,
-        'locale': user.locale,
-        'league': user.currentLeague.name,
-        'createdAt': _now.toIso8601String(),
-      });
-      return _searching(user);
-    }
-
-    final oppId = opponent['userId'] as String;
-    await _store.delete('duel_queue', oppId);
-    await _store.delete('duel_queue', user.id);
-    final oppMap = await _store.get('users', oppId);
-    if (oppMap == null) return _searching(user);
-    final opp = UserEntity.fromMap(oppMap);
-    final word = await _pickWord(user.currentLeague, language: user.locale);
-    final mine = await _createSession(user: user, type: GameType.duel, word: word);
-    final theirs = await _createSession(user: opp, type: GameType.duel, word: word);
     final duel = {
       'id': _uuid.v4(),
+      'code': await _uniqueCode('duels'),
+      'hostId': user.id,
       'locale': user.locale,
       'league': user.currentLeague.name,
-      'wordId': word.id,
-      'status': 'ready',
+      'wordId': null,
+      'status': 'lobby',
       'createdAt': _now.toIso8601String(),
-      'players': [
-        _slot(user, mine['id'] as String),
-        _slot(opp, theirs['id'] as String),
-      ],
+      'players': [_slot(user, null)],
     };
+    await _store.put('duels', duel['id'] as String, duel);
+    return _duelView(duel, user.id);
+  }
+
+  @override
+  Future<MatchSnapshot> duelJoin(String code) async {
+    final user = await _requireUser();
+    final duel = await _duelByCode(code);
+    if (duel == null) {
+      throw AppFailure('Düello kodu bulunamadı.', code: 'DUEL_MISSING');
+    }
+    final status = duel['status'] as String? ?? '';
+    if (status == 'done') {
+      throw AppFailure('Bu düello kapandı.', code: 'DUEL_DONE');
+    }
+    if (status == 'playing') {
+      throw AppFailure('Düello başladı.', code: 'DUEL_STARTED');
+    }
+    if (_hasPlayer(duel, user.id)) return _duelView(duel, user.id);
+    final players = _playersOf(duel);
+    if (players.length >= 2) {
+      throw AppFailure('Bu düelloda yer yok.', code: 'DUEL_FULL');
+    }
+    await _leaveOtherDuels(user.id, keep: duel['id'] as String);
+    players.add(_slot(user, null));
+    duel['players'] = players;
     await _store.put('duels', duel['id'] as String, duel);
     return _duelView(duel, user.id);
   }
@@ -987,18 +981,12 @@ class LocalGameServer implements GameServer {
     final open = await _duelFor(user.id, openOnly: true);
     if (open != null) {
       _touch(open, user.id);
-      if (await _playersDone(_playersOf(open))) open['status'] = 'done';
+      await _sweepLobby(open);
+      if (open['status'] == 'playing' && await _playersDone(_playersOf(open))) {
+        open['status'] = 'done';
+      }
       await _store.put('duels', open['id'] as String, open);
       return _duelView(open, user.id);
-    }
-    final queued = await _store.get('duel_queue', user.id);
-    if (queued != null) {
-      final at = DateTime.parse(queued['createdAt'] as String);
-      if (_now.difference(at) >= _queueWait) {
-        await _store.delete('duel_queue', user.id);
-        throw AppFailure('Rakip bulunamadı.', code: 'NO_OPPONENT');
-      }
-      return _searching(user);
     }
     final done = await _duelFor(user.id, openOnly: false);
     if (done != null) return _duelView(done, user.id);
@@ -1008,10 +996,66 @@ class LocalGameServer implements GameServer {
   @override
   Future<MatchSnapshot> duelCancel() async {
     final user = await _requireUser();
-    await _store.delete('duel_queue', user.id);
     final open = await _duelFor(user.id, openOnly: true);
-    if (open != null) return _duelView(open, user.id);
+    if (open == null || open['status'] == 'playing') {
+      if (open == null) {
+        return MatchSnapshot(kind: 'duel', status: 'idle', rows: const []);
+      }
+      return _duelView(open, user.id);
+    }
+    if (open['hostId'] == user.id) {
+      open['status'] = 'done';
+      await _store.put('duels', open['id'] as String, open);
+      return _duelView(open, user.id);
+    }
+    open['players'] =
+        _playersOf(open).where((p) => p['userId'] != user.id).toList();
+    await _store.put('duels', open['id'] as String, open);
     return MatchSnapshot(kind: 'duel', status: 'idle', rows: const []);
+  }
+
+  @override
+  Future<MatchSnapshot> duelStart() async {
+    final user = await _requireUser();
+    final duel = await _duelFor(user.id, openOnly: true);
+    if (duel == null || duel['status'] != 'lobby') {
+      throw AppFailure('Düello kodu bulunamadı.', code: 'DUEL_MISSING');
+    }
+    if (duel['hostId'] != user.id) {
+      throw AppFailure('Sadece davet eden başlatabilir.', code: 'DUEL_HOST');
+    }
+    final players = _playersOf(duel);
+    if (players.length < 2) {
+      throw AppFailure('Arkadaşın henüz katılmadı.', code: 'DUEL_WAIT');
+    }
+    final league = LeagueTier.values.byName(duel['league'] as String);
+    final word = await _pickWord(
+      league,
+      language: duel['locale'] as String? ?? user.locale,
+    );
+    final startAt = _now.add(const Duration(seconds: 3));
+    final next = <Map<String, dynamic>>[];
+    for (final p in players) {
+      final map = await _store.get('users', p['userId'] as String);
+      if (map == null) continue;
+      final member = UserEntity.fromMap(map);
+      final session = await _createSession(
+        user: member,
+        type: GameType.duel,
+        word: word,
+      );
+      session['startedAt'] = startAt.toIso8601String();
+      await _store.put('game_sessions', session['id'] as String, session);
+      p['sessionId'] = session['id'];
+      p['lastSeen'] = _now.toIso8601String();
+      next.add(p);
+    }
+    duel['players'] = next;
+    duel['wordId'] = word.id;
+    duel['status'] = 'playing';
+    duel['startedAt'] = startAt.toIso8601String();
+    await _store.put('duels', duel['id'] as String, duel);
+    return _duelView(duel, user.id);
   }
 
   @override
@@ -1171,23 +1215,6 @@ class LocalGameServer implements GameServer {
     return _sessionToView(raw);
   }
 
-  MatchSnapshot _searching(UserEntity user) => MatchSnapshot(
-        kind: 'duel',
-        status: 'searching',
-        rows: [
-          MatchRow(
-            userId: user.id,
-            name: user.displayName,
-            finished: false,
-            solved: false,
-            guesses: 0,
-            millis: 0,
-            left: false,
-            rank: 0,
-          ),
-        ],
-      );
-
   Map<String, dynamic> _slot(UserEntity user, String? sessionId) => {
         'userId': user.id,
         'name': user.displayName,
@@ -1215,12 +1242,26 @@ class LocalGameServer implements GameServer {
     row['players'] = players;
   }
 
-  Future<void> _dropStaleQueue() async {
-    for (final row in await _store.values('duel_queue')) {
-      final at = DateTime.tryParse(row['createdAt'] as String? ?? '');
-      if (at == null || _now.difference(at) >= _queueWait) {
-        await _store.delete('duel_queue', row['userId'] as String);
+  Future<Map<String, dynamic>?> _duelByCode(String code) async {
+    final normalized = code.trim();
+    for (final row in await _store.values('duels')) {
+      if (row['code'] == normalized) return Map<String, dynamic>.from(row);
+    }
+    return null;
+  }
+
+  Future<void> _leaveOtherDuels(String userId, {required String keep}) async {
+    for (final row in await _store.values('duels')) {
+      if (row['id'] == keep || row['status'] != 'lobby') continue;
+      if (!_hasPlayer(row, userId)) continue;
+      final copy = Map<String, dynamic>.from(row);
+      if (copy['hostId'] == userId) {
+        copy['status'] = 'done';
+      } else {
+        copy['players'] =
+            _playersOf(copy).where((p) => p['userId'] != userId).toList();
       }
+      await _store.put('duels', copy['id'] as String, copy);
     }
   }
 
@@ -1302,8 +1343,10 @@ class LocalGameServer implements GameServer {
     }
   }
 
-  Future<String> _uniqueRoomCode() async {
-    final taken = (await _store.values('rooms'))
+  Future<String> _uniqueRoomCode() => _uniqueCode('rooms');
+
+  Future<String> _uniqueCode(String box) async {
+    final taken = (await _store.values(box))
         .map((r) => r['code'] as String?)
         .whereType<String>()
         .toSet();
@@ -1385,6 +1428,8 @@ class LocalGameServer implements GameServer {
       status: duel['status'] as String? ?? 'ready',
       rows: rankMatch(scored),
       id: duel['id'] as String?,
+      code: duel['code'] as String?,
+      hostId: duel['hostId'] as String?,
       opponentName: opponent,
       sessionId: sessionId,
     );

@@ -277,17 +277,26 @@ class _UntilStart extends StatefulWidget {
 }
 
 class _UntilStartState extends State<_UntilStart> {
+  static const _countdown = Duration(seconds: 15);
   Timer? _timer;
+
+  Duration get _left => widget.startedAt.difference(DateTime.now());
+
+  bool get _holding {
+    final left = _left;
+    return left > Duration.zero && left <= _countdown;
+  }
 
   @override
   void initState() {
     super.initState();
-    if (widget.startedAt.isAfter(DateTime.now())) {
+    if (_holding) {
       _timer = Timer.periodic(const Duration(milliseconds: 200), (_) {
         if (!mounted) return;
         setState(() {});
-        if (!widget.startedAt.isAfter(DateTime.now())) {
+        if (!_holding) {
           _timer?.cancel();
+          _timer = null;
         }
       });
     }
@@ -301,9 +310,8 @@ class _UntilStartState extends State<_UntilStart> {
 
   @override
   Widget build(BuildContext context) {
-    final left = widget.startedAt.difference(DateTime.now());
-    if (left > Duration.zero) {
-      final seconds = left.inMilliseconds <= 0 ? 0 : (left.inSeconds + 1);
+    if (_holding) {
+      final seconds = _left.inMilliseconds <= 0 ? 0 : (_left.inSeconds + 1);
       return widget.waiting(seconds.clamp(1, 9));
     }
     return widget.ready;
@@ -434,10 +442,13 @@ class _PlayClock extends StatefulWidget {
 
 class _PlayClockState extends State<_PlayClock> {
   Timer? _timer;
+  late DateTime _anchor;
 
   @override
   void initState() {
     super.initState();
+    final now = DateTime.now();
+    _anchor = widget.startedAt.isAfter(now) ? now : widget.startedAt;
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
@@ -451,9 +462,9 @@ class _PlayClockState extends State<_PlayClock> {
 
   @override
   Widget build(BuildContext context) {
-    final elapsed = DateTime.now().difference(widget.startedAt);
-    final total = elapsed.isNegative ? 0 : elapsed.inSeconds;
-    final minutes = total ~/ 60;
+    final elapsed = DateTime.now().difference(_anchor).inSeconds;
+    final total = elapsed < 0 ? 0 : elapsed;
+    final minutes = (total ~/ 60).toString().padLeft(2, '0');
     final seconds = (total % 60).toString().padLeft(2, '0');
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

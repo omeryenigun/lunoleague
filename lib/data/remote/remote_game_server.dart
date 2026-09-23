@@ -227,7 +227,12 @@ class RemoteGameServer implements GameServer {
       MatchSnapshot.fromMap(Map<String, dynamic>.from(data! as Map));
 
   @override
-  Future<MatchSnapshot> duelSeek() async => _snap(await _call('duelSeek', {}));
+  Future<MatchSnapshot> duelCreate() async =>
+      _snap(await _call('duelCreate', {}));
+
+  @override
+  Future<MatchSnapshot> duelJoin(String code) async =>
+      _snap(await _call('duelJoin', {'code': code}));
 
   @override
   Future<MatchSnapshot> duelPoll() async => _snap(await _call('duelPoll', {}));
@@ -235,6 +240,10 @@ class RemoteGameServer implements GameServer {
   @override
   Future<MatchSnapshot> duelCancel() async =>
       _snap(await _call('duelCancel', {}));
+
+  @override
+  Future<MatchSnapshot> duelStart() async =>
+      _snap(await _call('duelStart', {}));
 
   @override
   Future<MatchSnapshot> roomCreate() async =>

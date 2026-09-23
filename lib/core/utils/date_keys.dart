@@ -70,6 +70,14 @@ class DateKeys {
     return left.isNegative ? Duration.zero : left;
   }
 
+  /// The API writes the player's wall clock with a `Z` suffix.
+  /// Subtract [offset] so the stamp is the real instant the game started.
+  static DateTime playerInstant(DateTime stamp, {Duration? offset}) {
+    final zone = offset ?? DateTime.now().timeZoneOffset;
+    if (!stamp.isUtc || zone == Duration.zero) return stamp;
+    return stamp.subtract(zone);
+  }
+
   static String formatClock(Duration duration) {
     final total = duration.inSeconds;
     final hours = (total ~/ 3600).toString().padLeft(2, '0');

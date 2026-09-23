@@ -1,4 +1,5 @@
 import 'package:kelimelig/core/constants/enums.dart';
+import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/domain/entities/admin_models.dart';
 import 'package:kelimelig/domain/entities/game_models.dart';
 import 'package:kelimelig/domain/entities/user_entity.dart';
@@ -128,8 +129,8 @@ GameSessionView readSession(Object? raw) {
     hintUsed: map['hintUsed'] as bool? ?? false,
     revealedLetters: revealed,
     definitionHint: map['definitionHint'] as String?,
-    startedAt: DateTime.parse(map['startedAt'] as String),
-    expiresAt: DateTime.parse(map['expiresAt'] as String),
+    startedAt: DateKeys.playerInstant(DateTime.parse(map['startedAt'] as String)),
+    expiresAt: DateKeys.playerInstant(DateTime.parse(map['expiresAt'] as String)),
     outcome: map['outcome'] == null ? null : readOutcome(map['outcome']),
     answer: map['answer'] as String?,
     solved: map['solved'] as bool?,
