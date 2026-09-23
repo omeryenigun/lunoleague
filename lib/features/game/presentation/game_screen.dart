@@ -15,6 +15,7 @@ import 'package:kelimelig/core/widgets/midnight_countdown.dart';
 import 'package:kelimelig/features/game/cubit/game_cubit.dart';
 import 'package:kelimelig/features/game/presentation/widgets/guess_board.dart';
 import 'package:kelimelig/features/game/presentation/widgets/result_screen.dart';
+import 'package:kelimelig/features/match/presentation/match_result_screen.dart';
 import 'package:kelimelig/features/game/presentation/widgets/turkish_keyboard.dart';
 import 'package:kelimelig/features/word_book/presentation/word_card_screen.dart';
 import 'package:kelimelig/injection.dart';
@@ -70,6 +71,11 @@ class GameView extends StatelessWidget {
         final session = state.session;
         final outcome = session?.outcome;
         if (outcome != null && session != null) {
+          if (type == GameType.duel || type == GameType.room) {
+            return MatchResultScreen(
+              kind: type == GameType.room ? 'room' : 'duel',
+            );
+          }
           return ResultScreen(
             outcome: outcome,
             guesses: session.guesses,
@@ -92,9 +98,12 @@ class GameView extends StatelessWidget {
         }
 
         final l10n = sl<L10n>();
-        final title = type == GameType.daily
-            ? l10n.t('daily_mode')
-            : l10n.t('endless');
+        final title = switch (type) {
+          GameType.daily => l10n.t('daily_mode'),
+          GameType.endless => l10n.t('endless'),
+          GameType.duel => l10n.t('duel_title'),
+          GameType.room => l10n.t('room_title'),
+        };
         return Scaffold(
           backgroundColor: AppColors.cosmicBg,
           body: CosmicBackdrop(
@@ -127,7 +136,18 @@ class GameView extends StatelessWidget {
                                 ),
                               ),
                               if (!session.isFinished)
-                                _PlayClock(startedAt: session.startedAt),
+                                _UntilStart(
+                                  startedAt: session.startedAt,
+                                  waiting: (seconds) => Text(
+                                    '$seconds',
+                                    style: const TextStyle(
+                                      color: AppColors.cosmicTeal,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 22,
+                                    ),
+                                  ),
+                                  ready: _PlayClock(startedAt: session.startedAt),
+                                ),
                               const SizedBox(width: 8),
                               _AttemptPill(
                                 current: session.currentAttempt,
@@ -136,6 +156,12 @@ class GameView extends StatelessWidget {
                             ],
                           ),
                         ),
+                        if (session.isFinished)
+                          _FinishedSummary(
+                            won: session.solved == true,
+                            lost: session.solved == false,
+                            answer: session.answer,
+                          ),
                         if (session.definitionHint != null)
                           Padding(
                             padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
@@ -167,7 +193,24 @@ class GameView extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (!session.isFinished) ...[
+                        if (!session.isFinished)
+                          _UntilStart(
+                            startedAt: session.startedAt,
+                            waiting: (seconds) => Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                              child: Text(
+                                '${l10n.t('match_starts')}  $seconds',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Color(0xFFF8FAFC),
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                            ready: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
                           Padding(
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
                             child: Row(
@@ -205,13 +248,128 @@ class GameView extends StatelessWidget {
                                   context.read<GameCubit>().backspace(),
                             ),
                           ),
-                        ],
+                              ],
+                            ),
+                          ),
                       ],
                     ),
             ),
           ),
         );
       },
+    );
+  }
+}
+
+class _UntilStart extends StatefulWidget {
+  const _UntilStart({
+    required this.startedAt,
+    required this.waiting,
+    required this.ready,
+  });
+
+  final DateTime startedAt;
+  final Widget Function(int seconds) waiting;
+  final Widget ready;
+
+  @override
+  State<_UntilStart> createState() => _UntilStartState();
+}
+
+class _UntilStartState extends State<_UntilStart> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.startedAt.isAfter(DateTime.now())) {
+      _timer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+        if (!mounted) return;
+        setState(() {});
+        if (!widget.startedAt.isAfter(DateTime.now())) {
+          _timer?.cancel();
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final left = widget.startedAt.difference(DateTime.now());
+    if (left > Duration.zero) {
+      final seconds = left.inMilliseconds <= 0 ? 0 : (left.inSeconds + 1);
+      return widget.waiting(seconds.clamp(1, 9));
+    }
+    return widget.ready;
+  }
+}
+
+class _FinishedSummary extends StatelessWidget {
+  const _FinishedSummary({
+    required this.won,
+    required this.lost,
+    required this.answer,
+  });
+
+  final bool won;
+  final bool lost;
+  final String? answer;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = sl<L10n>();
+    final color = won ? AppColors.cosmicGreen : AppColors.cosmicRed;
+    final title = won
+        ? l10n.t('result_win_title')
+        : lost
+            ? l10n.t('result_lose_title')
+            : null;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      child: Column(
+        children: [
+          if (title != null)
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w900,
+                fontSize: 22,
+                letterSpacing: 0.6,
+              ),
+            ),
+          if (answer != null && answer!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              l10n.t('result_answer_label'),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFF94A3B8),
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              answer!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFFF8FAFC),
+                fontWeight: FontWeight.w900,
+                fontSize: 28,
+                letterSpacing: 3,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

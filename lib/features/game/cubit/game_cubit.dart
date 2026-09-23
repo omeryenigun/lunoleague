@@ -73,9 +73,11 @@ class GameCubit extends Cubit<GameState> {
   Future<void> start() async {
     emit(const GameState(loading: true));
     try {
-      final session = type == GameType.daily
-          ? await _server.startDaily()
-          : await _server.startEndless();
+      final session = switch (type) {
+        GameType.daily => await _server.startDaily(),
+        GameType.endless => await _server.startEndless(),
+        GameType.duel || GameType.room => await _server.openAssigned(type),
+      };
       final user = await _server.currentUser();
       final locale = user?.locale ?? await _server.activeLocale();
       emit(GameState(

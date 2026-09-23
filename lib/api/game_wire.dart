@@ -94,6 +94,8 @@ Map<String, dynamic> wireSession(GameSessionView view) => {
       'startedAt': view.startedAt.toIso8601String(),
       'expiresAt': view.expiresAt.toIso8601String(),
       'outcome': view.outcome == null ? null : wireOutcome(view.outcome!),
+      'answer': view.answer,
+      'solved': view.solved,
     };
 
 GameSessionView readSession(Object? raw) {
@@ -129,6 +131,8 @@ GameSessionView readSession(Object? raw) {
     startedAt: DateTime.parse(map['startedAt'] as String),
     expiresAt: DateTime.parse(map['expiresAt'] as String),
     outcome: map['outcome'] == null ? null : readOutcome(map['outcome']),
+    answer: map['answer'] as String?,
+    solved: map['solved'] as bool?,
   );
 }
 

@@ -1,4 +1,4 @@
-enum GameType { daily, endless }
+enum GameType { daily, endless, duel, room }
 
 enum RankPeriod { week, month, season, year }
 

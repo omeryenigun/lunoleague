@@ -18,6 +18,8 @@ class GameSessionView {
     required this.startedAt,
     required this.expiresAt,
     this.outcome,
+    this.answer,
+    this.solved,
   });
 
   final String sessionId;
@@ -34,6 +36,12 @@ class GameSessionView {
   final DateTime startedAt;
   final DateTime expiresAt;
   final GameOutcome? outcome;
+
+  /// The secret, sent only after the session is finished.
+  final String? answer;
+
+  /// True when the finished session was won. Null while the game is open.
+  final bool? solved;
 
   bool get isFinished =>
       status == GameStatus.won ||

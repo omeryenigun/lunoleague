@@ -110,6 +110,28 @@ Future<Object?> dispatchGame(
       return wireSession(await game.startDaily());
     case 'startEndless':
       return wireSession(await game.startEndless());
+    case 'duelSeek':
+      return (await game.duelSeek()).toMap();
+    case 'duelPoll':
+      return (await game.duelPoll()).toMap();
+    case 'duelCancel':
+      return (await game.duelCancel()).toMap();
+    case 'roomCreate':
+      return (await game.roomCreate()).toMap();
+    case 'roomJoin':
+      return (await game.roomJoin(args['code'] as String? ?? '')).toMap();
+    case 'roomPoll':
+      return (await game.roomPoll()).toMap();
+    case 'roomLeave':
+      return (await game.roomLeave()).toMap();
+    case 'roomStart':
+      return (await game.roomStart()).toMap();
+    case 'matchSnapshot':
+      return (await game.matchSnapshot(args['kind'] as String? ?? 'duel')).toMap();
+    case 'openAssigned':
+      return wireSession(
+        await game.openAssigned(GameType.values.byName(args['type'] as String)),
+      );
     case 'activeSession':
       return wireSession(await game.activeSession(GameType.values.byName(args['type'] as String)));
     case 'submitGuess':

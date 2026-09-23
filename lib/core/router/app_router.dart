@@ -13,6 +13,8 @@ import 'package:kelimelig/features/auth/presentation/register_screen.dart';
 import 'package:kelimelig/features/auth/presentation/onboarding_screen.dart';
 import 'package:kelimelig/features/auth/presentation/splash_screen.dart';
 import 'package:kelimelig/features/game/presentation/game_screen.dart';
+import 'package:kelimelig/features/match/presentation/duel_screen.dart';
+import 'package:kelimelig/features/match/presentation/room_screen.dart';
 import 'package:kelimelig/features/home/presentation/home_screen.dart';
 import 'package:kelimelig/features/league/presentation/league_screen.dart';
 import 'package:kelimelig/features/profile/presentation/achievements_screen.dart';
@@ -91,12 +93,18 @@ class _AppViewState extends State<_AppView> {
             GoRoute(path: '/settings', builder: (_, _) => const SettingsScreen()),
           ],
         ),
+        GoRoute(path: '/duel', builder: (_, _) => const DuelScreen()),
+        GoRoute(path: '/room', builder: (_, _) => const RoomScreen()),
         GoRoute(
           path: '/game/:mode',
           builder: (_, state) {
-            final mode = state.pathParameters['mode'] == 'endless'
-                ? GameType.endless
-                : GameType.daily;
+            final param = state.pathParameters['mode'];
+            final mode = switch (param) {
+              'endless' => GameType.endless,
+              'duel' => GameType.duel,
+              'room' => GameType.room,
+              _ => GameType.daily,
+            };
             return GameScreen(type: mode);
           },
         ),

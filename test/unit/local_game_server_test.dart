@@ -44,6 +44,8 @@ void main() {
     expect(review.isFinished, isTrue);
     expect(review.guesses.map((guess) => guess.guess), [detail.word]);
     expect(review.outcome, isNull);
+    expect(review.solved, isTrue);
+    expect(review.answer, detail.word);
     expect(await server.leagueStandings(), isEmpty);
     expect(server.claimDailyReward(), throwsA(isA<AppFailure>()));
   });

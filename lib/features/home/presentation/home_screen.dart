@@ -71,6 +71,10 @@ class _HomeView extends StatelessWidget {
                       const SizedBox(height: 14),
                       _PeriodBoardsCarousel(snap: snap),
                     ],
+                    const SizedBox(height: 14),
+                    const _ModeCard(duel: true),
+                    const SizedBox(height: 14),
+                    const _ModeCard(duel: false),
                   ],
                 ),
               );
@@ -291,6 +295,81 @@ class _DailyCta extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ModeCard extends StatelessWidget {
+  const _ModeCard({required this.duel});
+
+  final bool duel;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = sl<L10n>();
+    final colors = duel
+        ? const [AppColors.cosmicBlue, AppColors.cosmicTeal]
+        : const [AppColors.cosmicPurple, Color(0xFF6C3483)];
+    return CosmicGlassCard(
+      colors: [
+        colors[0],
+        colors[1],
+        colors[0].withValues(alpha: 0.7),
+      ],
+      onTap: () => context.push(duel ? '/duel' : '/room'),
+      child: Row(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: colors,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: colors[0].withValues(alpha: 0.5),
+                  blurRadius: 22,
+                ),
+              ],
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              duel ? Icons.bolt_rounded : Icons.meeting_room_rounded,
+              color: Colors.white,
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  l10n.t(duel ? 'duel_title' : 'room_title'),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 17,
+                    color: Color(0xFFF8FAFC),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  l10n.t(duel ? 'duel_sub' : 'room_sub'),
+                  style: const TextStyle(
+                    color: Color(0xFF94A3B8),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

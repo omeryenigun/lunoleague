@@ -8,6 +8,7 @@ import 'package:kelimelig/data/remote/api_session.dart';
 import 'package:kelimelig/domain/entities/admin_models.dart';
 import 'package:kelimelig/domain/entities/app_config.dart';
 import 'package:kelimelig/domain/entities/game_models.dart';
+import 'package:kelimelig/domain/entities/match_snapshot.dart';
 import 'package:kelimelig/domain/entities/shop_product.dart';
 import 'package:kelimelig/domain/entities/user_entity.dart';
 import 'package:kelimelig/domain/entities/word_entity.dart';
@@ -221,6 +222,46 @@ class RemoteGameServer implements GameServer {
   @override
   Future<GameSessionView> startEndless() async =>
       readSession(await _call('startEndless', {}));
+
+  MatchSnapshot _snap(Object? data) =>
+      MatchSnapshot.fromMap(Map<String, dynamic>.from(data! as Map));
+
+  @override
+  Future<MatchSnapshot> duelSeek() async => _snap(await _call('duelSeek', {}));
+
+  @override
+  Future<MatchSnapshot> duelPoll() async => _snap(await _call('duelPoll', {}));
+
+  @override
+  Future<MatchSnapshot> duelCancel() async =>
+      _snap(await _call('duelCancel', {}));
+
+  @override
+  Future<MatchSnapshot> roomCreate() async =>
+      _snap(await _call('roomCreate', {}));
+
+  @override
+  Future<MatchSnapshot> roomJoin(String code) async =>
+      _snap(await _call('roomJoin', {'code': code}));
+
+  @override
+  Future<MatchSnapshot> roomPoll() async => _snap(await _call('roomPoll', {}));
+
+  @override
+  Future<MatchSnapshot> roomLeave() async =>
+      _snap(await _call('roomLeave', {}));
+
+  @override
+  Future<MatchSnapshot> roomStart() async =>
+      _snap(await _call('roomStart', {}));
+
+  @override
+  Future<MatchSnapshot> matchSnapshot(String kind) async =>
+      _snap(await _call('matchSnapshot', {'kind': kind}));
+
+  @override
+  Future<GameSessionView> openAssigned(GameType type) async =>
+      readSession(await _call('openAssigned', {'type': type.name}));
 
   @override
   Future<GameSessionView> activeSession(GameType type) async =>

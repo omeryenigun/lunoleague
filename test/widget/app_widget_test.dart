@@ -94,6 +94,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.text('GÜNLÜK OYNA'), findsOneWidget);
+    expect(find.text('DÜELLO'), findsOneWidget);
+    expect(find.text('ÖZEL ODA'), findsOneWidget);
     expect(find.text('BRONZ LİG'), findsOneWidget);
     expect(find.text('Kayıt gerekir'), findsOneWidget);
     expect(find.text('Kayıtlı hesap gerekir'), findsNothing);

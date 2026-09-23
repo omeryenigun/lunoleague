@@ -15,6 +15,8 @@ import 'package:kelimelig/domain/entities/admin_models.dart';
 import 'package:kelimelig/domain/entities/cosmetics.dart';
 import 'package:kelimelig/domain/entities/app_config.dart';
 import 'package:kelimelig/domain/entities/game_models.dart';
+import 'package:kelimelig/domain/entities/match_snapshot.dart';
+import 'package:kelimelig/domain/game/match_rank.dart';
 import 'package:kelimelig/domain/entities/shop_product.dart';
 import 'package:kelimelig/domain/entities/user_entity.dart';
 import 'package:kelimelig/domain/entities/word_entity.dart';
@@ -734,6 +736,14 @@ class LocalGameServer implements GameServer {
     for (final e in hintMap.entries) {
       revealedLetters[int.parse(e.key)] = e.value as String;
     }
+    final status = GameStatus.values.byName(raw['status'] as String);
+    final finished = status == GameStatus.won ||
+        status == GameStatus.lost ||
+        status == GameStatus.completed;
+    final answer = finished && wordMap != null
+        ? WordEntity.fromMap(wordMap).displayWord
+        : null;
+    final solved = finished ? await _solved(raw) : null;
     return GameSessionView(
       sessionId: raw['id'] as String,
       gameType: GameType.values.byName(raw['gameType'] as String),
@@ -742,14 +752,29 @@ class LocalGameServer implements GameServer {
       currentAttempt: raw['currentAttempt'] as int,
       guesses: guesses,
       keyboard: keyboard,
-      status: GameStatus.values.byName(raw['status'] as String),
+      status: status,
       hintUsed: raw['hintUsed'] as bool? ?? false,
       revealedLetters: revealedLetters,
       definitionHint: raw['definitionHint'] as String?,
       startedAt: DateTime.parse(raw['startedAt'] as String),
       expiresAt: DateTime.parse(raw['expiresAt'] as String),
       outcome: outcome,
+      answer: answer,
+      solved: solved,
     );
+  }
+
+  Future<bool?> _solved(Map<String, dynamic> raw) async {
+    final stored = raw['won'];
+    if (stored is bool) return stored;
+    final sessionId = raw['id'] as String?;
+    if (sessionId == null) return null;
+    for (final row in await _store.values('game_results')) {
+      if (row['sessionId'] == sessionId && row['won'] is bool) {
+        return row['won'] as bool;
+      }
+    }
+    return null;
   }
 
   int _rank(LetterStatus s) => switch (s) {
@@ -901,6 +926,488 @@ class LocalGameServer implements GameServer {
     return _sessionToView(session);
   }
 
+  static const _queueWait = Duration(seconds: 45);
+  static const _presence = Duration(seconds: 20);
+  static const _roomCap = 10;
+
+  @override
+  Future<MatchSnapshot> duelSeek() async {
+    final user = await _requireUser();
+    await _dropStaleQueue();
+    final open = await _duelFor(user.id, openOnly: true);
+    if (open != null) return _duelView(open, user.id);
+
+    Map<String, dynamic>? opponent;
+    for (final row in await _store.values('duel_queue')) {
+      if (row['userId'] == user.id) continue;
+      if (row['locale'] != user.locale) continue;
+      if (row['league'] != user.currentLeague.name) continue;
+      opponent = row;
+      break;
+    }
+    if (opponent == null) {
+      await _store.put('duel_queue', user.id, {
+        'userId': user.id,
+        'name': user.displayName,
+        'locale': user.locale,
+        'league': user.currentLeague.name,
+        'createdAt': _now.toIso8601String(),
+      });
+      return _searching(user);
+    }
+
+    final oppId = opponent['userId'] as String;
+    await _store.delete('duel_queue', oppId);
+    await _store.delete('duel_queue', user.id);
+    final oppMap = await _store.get('users', oppId);
+    if (oppMap == null) return _searching(user);
+    final opp = UserEntity.fromMap(oppMap);
+    final word = await _pickWord(user.currentLeague, language: user.locale);
+    final mine = await _createSession(user: user, type: GameType.duel, word: word);
+    final theirs = await _createSession(user: opp, type: GameType.duel, word: word);
+    final duel = {
+      'id': _uuid.v4(),
+      'locale': user.locale,
+      'league': user.currentLeague.name,
+      'wordId': word.id,
+      'status': 'ready',
+      'createdAt': _now.toIso8601String(),
+      'players': [
+        _slot(user, mine['id'] as String),
+        _slot(opp, theirs['id'] as String),
+      ],
+    };
+    await _store.put('duels', duel['id'] as String, duel);
+    return _duelView(duel, user.id);
+  }
+
+  @override
+  Future<MatchSnapshot> duelPoll() async {
+    final user = await _requireUser();
+    final open = await _duelFor(user.id, openOnly: true);
+    if (open != null) {
+      _touch(open, user.id);
+      if (await _playersDone(_playersOf(open))) open['status'] = 'done';
+      await _store.put('duels', open['id'] as String, open);
+      return _duelView(open, user.id);
+    }
+    final queued = await _store.get('duel_queue', user.id);
+    if (queued != null) {
+      final at = DateTime.parse(queued['createdAt'] as String);
+      if (_now.difference(at) >= _queueWait) {
+        await _store.delete('duel_queue', user.id);
+        throw AppFailure('Rakip bulunamadı.', code: 'NO_OPPONENT');
+      }
+      return _searching(user);
+    }
+    final done = await _duelFor(user.id, openOnly: false);
+    if (done != null) return _duelView(done, user.id);
+    return MatchSnapshot(kind: 'duel', status: 'idle', rows: const []);
+  }
+
+  @override
+  Future<MatchSnapshot> duelCancel() async {
+    final user = await _requireUser();
+    await _store.delete('duel_queue', user.id);
+    final open = await _duelFor(user.id, openOnly: true);
+    if (open != null) return _duelView(open, user.id);
+    return MatchSnapshot(kind: 'duel', status: 'idle', rows: const []);
+  }
+
+  @override
+  Future<MatchSnapshot> roomCreate() async {
+    final user = await _requireUser();
+    final open = await _roomFor(user.id, openOnly: true);
+    if (open != null) return _roomView(open, user.id);
+    final room = {
+      'id': _uuid.v4(),
+      'code': await _uniqueRoomCode(),
+      'hostId': user.id,
+      'locale': user.locale,
+      'league': user.currentLeague.name,
+      'wordId': null,
+      'status': 'lobby',
+      'createdAt': _now.toIso8601String(),
+      'players': [_slot(user, null)],
+    };
+    await _store.put('rooms', room['id'] as String, room);
+    return _roomView(room, user.id);
+  }
+
+  @override
+  Future<MatchSnapshot> roomJoin(String code) async {
+    final user = await _requireUser();
+    final normalized = code.trim();
+    Map<String, dynamic>? room;
+    for (final row in await _store.values('rooms')) {
+      if (row['code'] == normalized) {
+        room = Map<String, dynamic>.from(row);
+        break;
+      }
+    }
+    if (room == null) throw AppFailure('Oda bulunamadı.', code: 'ROOM_MISSING');
+    final status = room['status'] as String? ?? '';
+    if (status == 'done') throw AppFailure('Bu oda kapandı.', code: 'ROOM_DONE');
+    if (status == 'playing') {
+      throw AppFailure('Oyun başladı.', code: 'ROOM_STARTED');
+    }
+    if (_hasPlayer(room, user.id)) return _roomView(room, user.id);
+    final players = _playersOf(room);
+    if (players.length >= _roomCap) {
+      throw AppFailure('Oda dolu.', code: 'ROOM_FULL');
+    }
+    await _leaveOtherLobbies(user.id, keep: room['id'] as String);
+    players.add(_slot(user, null));
+    room['players'] = players;
+    await _store.put('rooms', room['id'] as String, room);
+    return _roomView(room, user.id);
+  }
+
+  @override
+  Future<MatchSnapshot> roomPoll() async {
+    final user = await _requireUser();
+    final open = await _roomFor(user.id, openOnly: true);
+    if (open != null) {
+      _touch(open, user.id);
+      await _sweepLobby(open);
+      if (open['status'] == 'playing' && await _playersDone(_playersOf(open))) {
+        open['status'] = 'done';
+      }
+      await _store.put('rooms', open['id'] as String, open);
+      return _roomView(open, user.id);
+    }
+    final done = await _roomFor(user.id, openOnly: false);
+    if (done != null) return _roomView(done, user.id);
+    return MatchSnapshot(kind: 'room', status: 'idle', rows: const []);
+  }
+
+  @override
+  Future<MatchSnapshot> roomLeave() async {
+    final user = await _requireUser();
+    final open = await _roomFor(user.id, openOnly: true);
+    if (open == null || open['status'] == 'playing') {
+      if (open == null) {
+        return MatchSnapshot(kind: 'room', status: 'idle', rows: const []);
+      }
+      return _roomView(open, user.id);
+    }
+    if (open['hostId'] == user.id) {
+      open['status'] = 'done';
+      await _store.put('rooms', open['id'] as String, open);
+      return _roomView(open, user.id);
+    }
+    open['players'] =
+        _playersOf(open).where((p) => p['userId'] != user.id).toList();
+    await _store.put('rooms', open['id'] as String, open);
+    return MatchSnapshot(kind: 'room', status: 'idle', rows: const []);
+  }
+
+  @override
+  Future<MatchSnapshot> roomStart() async {
+    final user = await _requireUser();
+    final room = await _roomFor(user.id, openOnly: true);
+    if (room == null || room['status'] != 'lobby') {
+      throw AppFailure('Oda bulunamadı.', code: 'ROOM_MISSING');
+    }
+    if (room['hostId'] != user.id) {
+      throw AppFailure('Sadece ev sahibi başlatabilir.', code: 'ROOM_HOST');
+    }
+    final players = _playersOf(room);
+    if (players.isEmpty) {
+      throw AppFailure('Oda bulunamadı.', code: 'ROOM_MISSING');
+    }
+    final league = LeagueTier.values.byName(room['league'] as String);
+    final word = await _pickWord(
+      league,
+      language: room['locale'] as String? ?? user.locale,
+    );
+    final startAt = _now.add(const Duration(seconds: 3));
+    final next = <Map<String, dynamic>>[];
+    for (final p in players) {
+      final map = await _store.get('users', p['userId'] as String);
+      if (map == null) continue;
+      final member = UserEntity.fromMap(map);
+      final session = await _createSession(
+        user: member,
+        type: GameType.room,
+        word: word,
+      );
+      session['startedAt'] = startAt.toIso8601String();
+      await _store.put('game_sessions', session['id'] as String, session);
+      p['sessionId'] = session['id'];
+      p['lastSeen'] = _now.toIso8601String();
+      next.add(p);
+    }
+    room['players'] = next;
+    room['wordId'] = word.id;
+    room['status'] = 'playing';
+    room['startedAt'] = startAt.toIso8601String();
+    await _store.put('rooms', room['id'] as String, room);
+    return _roomView(room, user.id);
+  }
+
+  @override
+  Future<MatchSnapshot> matchSnapshot(String kind) {
+    if (kind == 'room') return roomPoll();
+    return duelPoll();
+  }
+
+  @override
+  Future<GameSessionView> openAssigned(GameType type) async {
+    final user = await _requireUser();
+    final row = type == GameType.room
+        ? await _roomFor(user.id, openOnly: false)
+        : await _duelFor(user.id, openOnly: false);
+    if (row == null) throw AppFailure('Eşleşme yok.', code: 'NO_MATCH');
+    String? sessionId;
+    for (final p in _playersOf(row)) {
+      if (p['userId'] == user.id) sessionId = p['sessionId'] as String?;
+    }
+    if (sessionId == null) {
+      throw AppFailure('Oyun henüz başlamadı.', code: 'NOT_STARTED');
+    }
+    final raw = await _store.get('game_sessions', sessionId);
+    if (raw == null) throw AppFailure('Eşleşme yok.', code: 'NO_MATCH');
+    return _sessionToView(raw);
+  }
+
+  MatchSnapshot _searching(UserEntity user) => MatchSnapshot(
+        kind: 'duel',
+        status: 'searching',
+        rows: [
+          MatchRow(
+            userId: user.id,
+            name: user.displayName,
+            finished: false,
+            solved: false,
+            guesses: 0,
+            millis: 0,
+            left: false,
+            rank: 0,
+          ),
+        ],
+      );
+
+  Map<String, dynamic> _slot(UserEntity user, String? sessionId) => {
+        'userId': user.id,
+        'name': user.displayName,
+        'sessionId': sessionId,
+        'lastSeen': _now.toIso8601String(),
+      };
+
+  List<Map<String, dynamic>> _playersOf(Map<String, dynamic> row) {
+    final raw = row['players'];
+    if (raw is! List) return [];
+    return [
+      for (final e in raw)
+        if (e is Map) Map<String, dynamic>.from(e),
+    ];
+  }
+
+  bool _hasPlayer(Map<String, dynamic> row, String userId) =>
+      _playersOf(row).any((p) => p['userId'] == userId);
+
+  void _touch(Map<String, dynamic> row, String userId) {
+    final players = _playersOf(row);
+    for (final p in players) {
+      if (p['userId'] == userId) p['lastSeen'] = _now.toIso8601String();
+    }
+    row['players'] = players;
+  }
+
+  Future<void> _dropStaleQueue() async {
+    for (final row in await _store.values('duel_queue')) {
+      final at = DateTime.tryParse(row['createdAt'] as String? ?? '');
+      if (at == null || _now.difference(at) >= _queueWait) {
+        await _store.delete('duel_queue', row['userId'] as String);
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>?> _duelFor(
+    String userId, {
+    required bool openOnly,
+  }) async {
+    Map<String, dynamic>? latest;
+    DateTime? latestAt;
+    for (final row in await _store.values('duels')) {
+      if (!_hasPlayer(row, userId)) continue;
+      final copy = Map<String, dynamic>.from(row);
+      if (copy['status'] != 'done') return copy;
+      if (openOnly) continue;
+      final at = DateTime.tryParse(copy['createdAt'] as String? ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0);
+      if (latestAt == null || at.isAfter(latestAt)) {
+        latest = copy;
+        latestAt = at;
+      }
+    }
+    return latest;
+  }
+
+  Future<Map<String, dynamic>?> _roomFor(
+    String userId, {
+    required bool openOnly,
+  }) async {
+    Map<String, dynamic>? latest;
+    DateTime? latestAt;
+    for (final row in await _store.values('rooms')) {
+      if (!_hasPlayer(row, userId)) continue;
+      final copy = Map<String, dynamic>.from(row);
+      final status = copy['status'] as String? ?? '';
+      if (status == 'lobby' || status == 'playing') return copy;
+      if (openOnly) continue;
+      final at = DateTime.tryParse(copy['createdAt'] as String? ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0);
+      if (latestAt == null || at.isAfter(latestAt)) {
+        latest = copy;
+        latestAt = at;
+      }
+    }
+    return latest;
+  }
+
+  Future<void> _sweepLobby(Map<String, dynamic> room) async {
+    if (room['status'] != 'lobby') return;
+    final hostId = room['hostId'] as String?;
+    final fresh = <Map<String, dynamic>>[];
+    for (final p in _playersOf(room)) {
+      final seen = DateTime.tryParse(p['lastSeen'] as String? ?? '');
+      final stale = seen == null || _now.difference(seen) >= _presence;
+      if (p['userId'] == hostId) {
+        if (stale) {
+          room['status'] = 'done';
+          return;
+        }
+        fresh.add(p);
+        continue;
+      }
+      if (!stale) fresh.add(p);
+    }
+    room['players'] = fresh;
+  }
+
+  Future<void> _leaveOtherLobbies(String userId, {required String keep}) async {
+    for (final row in await _store.values('rooms')) {
+      if (row['id'] == keep || row['status'] != 'lobby') continue;
+      if (!_hasPlayer(row, userId)) continue;
+      final copy = Map<String, dynamic>.from(row);
+      if (copy['hostId'] == userId) {
+        copy['status'] = 'done';
+      } else {
+        copy['players'] =
+            _playersOf(copy).where((p) => p['userId'] != userId).toList();
+      }
+      await _store.put('rooms', copy['id'] as String, copy);
+    }
+  }
+
+  Future<String> _uniqueRoomCode() async {
+    final taken = (await _store.values('rooms'))
+        .map((r) => r['code'] as String?)
+        .whereType<String>()
+        .toSet();
+    for (var i = 0; i < 40; i++) {
+      final code = '${100000 + _random.nextInt(900000)}';
+      if (!taken.contains(code)) return code;
+    }
+    throw AppFailure('Oda kodu üretilemedi.', code: 'ROOM_CODE');
+  }
+
+  Future<bool> _playersDone(List<Map<String, dynamic>> players) async {
+    if (players.isEmpty) return false;
+    for (final p in players) {
+      if (!await _sessionFinished(p['sessionId'] as String?)) return false;
+    }
+    return true;
+  }
+
+  Future<bool> _sessionFinished(String? id) async {
+    if (id == null) return false;
+    final raw = await _store.get('game_sessions', id);
+    if (raw == null) return false;
+    final status = raw['status'] as String?;
+    if (status == GameStatus.completed.name ||
+        status == GameStatus.won.name ||
+        status == GameStatus.lost.name ||
+        status == GameStatus.expired.name) {
+      return true;
+    }
+    final exp = DateTime.tryParse(raw['expiresAt'] as String? ?? '');
+    return exp != null && !exp.isAfter(_now);
+  }
+
+  Future<MatchRow> _score(Map<String, dynamic> player) async {
+    final id = player['sessionId'] as String?;
+    final raw = id == null ? null : await _store.get('game_sessions', id);
+    var finished = false;
+    var solved = false;
+    var guesses = 0;
+    var millis = 0;
+    if (raw != null) {
+      finished = await _sessionFinished(id);
+      solved = raw['won'] == true;
+      guesses = raw['currentAttempt'] as int? ?? 0;
+      if (finished) {
+        final start = DateTime.parse(raw['startedAt'] as String);
+        final endRaw = raw['finishedAt'] as String?;
+        final end = endRaw == null ? _now : DateTime.parse(endRaw);
+        final span = end.difference(start).inMilliseconds;
+        millis = span < 0 ? 0 : span;
+      }
+    }
+    return MatchRow(
+      userId: player['userId'] as String? ?? '',
+      name: player['name'] as String? ?? '',
+      finished: finished,
+      solved: solved,
+      guesses: guesses,
+      millis: millis,
+      left: false,
+      rank: 0,
+    );
+  }
+
+  Future<MatchSnapshot> _duelView(Map<String, dynamic> duel, String userId) async {
+    final scored = <MatchRow>[];
+    String? opponent;
+    String? sessionId;
+    for (final p in _playersOf(duel)) {
+      scored.add(await _score(p));
+      if (p['userId'] == userId) {
+        sessionId = p['sessionId'] as String?;
+      } else {
+        opponent = p['name'] as String?;
+      }
+    }
+    return MatchSnapshot(
+      kind: 'duel',
+      status: duel['status'] as String? ?? 'ready',
+      rows: rankMatch(scored),
+      id: duel['id'] as String?,
+      opponentName: opponent,
+      sessionId: sessionId,
+    );
+  }
+
+  Future<MatchSnapshot> _roomView(Map<String, dynamic> room, String userId) async {
+    final scored = <MatchRow>[];
+    String? sessionId;
+    for (final p in _playersOf(room)) {
+      scored.add(await _score(p));
+      if (p['userId'] == userId) sessionId = p['sessionId'] as String?;
+    }
+    return MatchSnapshot(
+      kind: 'room',
+      status: room['status'] as String? ?? 'lobby',
+      rows: rankMatch(scored),
+      id: room['id'] as String?,
+      code: room['code'] as String?,
+      hostId: room['hostId'] as String?,
+      sessionId: sessionId,
+    );
+  }
+
   @override
   Future<GameSessionView> activeSession(GameType type) async {
     final user = await _requireUser();
@@ -925,6 +1432,10 @@ class LocalGameServer implements GameServer {
       raw['status'] = GameStatus.expired.name;
       await _store.put('game_sessions', sessionId, raw);
       throw AppFailure(UserMessages.sessionExpired, code: 'EXPIRED');
+    }
+    final started = DateTime.parse(raw['startedAt'] as String);
+    if (started.isAfter(_now)) {
+      throw AppFailure('Oyun henüz başlamadı.', code: 'NOT_STARTED');
     }
 
     final wordMap = await _store.get('words', raw['wordId'] as String);
@@ -1027,7 +1538,7 @@ class LocalGameServer implements GameServer {
         );
         await _store.putMeta(_dailyLockKey(user), today);
       }
-    } else {
+    } else if (type == GameType.endless) {
       if (won) {
         xp = _progression.endlessXp(config);
         coins = _progression.endlessCoins(config);
@@ -1057,6 +1568,14 @@ class LocalGameServer implements GameServer {
         }
     }
 
+    if (type == GameType.duel && user.canJoinLeague) {
+      leaguePts = _progression.leaguePoints(
+        guesses: guesses,
+        won: won,
+        hintUsed: hintUsed,
+      );
+    }
+
     final newXp = next.xp + xp;
     final newLevel = _progression.levelForXp(newXp, config.levelXpThresholds);
     next = next.copyWith(
@@ -1076,7 +1595,7 @@ class LocalGameServer implements GameServer {
     await _creditWallet(next.id, coins, won ? 'GAME_WIN' : 'GAME_LOSE', raw['id'] as String);
     await _saveUser(next);
 
-    if (type == GameType.daily && leaguePts != 0) {
+    if ((type == GameType.daily || type == GameType.duel) && leaguePts != 0) {
       await _addLeaguePoints(next, leaguePts);
     }
 
@@ -1108,6 +1627,8 @@ class LocalGameServer implements GameServer {
     });
 
     raw['status'] = GameStatus.completed.name;
+    raw['won'] = won;
+    raw['finishedAt'] = _now.toIso8601String();
     await _store.put('game_sessions', raw['id'] as String, raw);
 
     final standings = next.canJoinLeague ? await leagueStandings() : <LeaderboardEntry>[];
