@@ -14,6 +14,8 @@ class GoogleProfile {
 class GoogleAuth {
   static const serverClientId = String.fromEnvironment(
     'GOOGLE_SERVER_CLIENT_ID',
+    defaultValue:
+        '1092422602324-549nsqkbd6tucttgpk39nan9clkh1neg.apps.googleusercontent.com',
   );
 
   var _ready = false;

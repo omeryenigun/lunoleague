@@ -1,7 +1,9 @@
 import 'dart:io';
 
+import 'package:kelimelig/api/admob_ssv.dart';
 import 'package:kelimelig/api/admin_http.dart';
 import 'package:kelimelig/api/game_http.dart';
+import 'package:kelimelig/api/privacy_page.dart';
 import 'package:kelimelig/core/constants/game_version.dart';
 import 'package:kelimelig/data/local/local_game_server.dart';
 import 'package:kelimelig/data/local/scoped_store.dart';
@@ -37,7 +39,10 @@ Future<void> main() async {
     ..get('/v1/games/${GameIds.lunoLeague}/bootstrap', (_) async {
       return jsonResponse(await liveBootstrap(scoped));
     })
-    ..post('/v1/game', (request) => handleGame(request, db, scoped));
+    ..post('/v1/game', (request) => handleGame(request, db, scoped))
+    ..get('/v1/admob/reward', (request) => handleAdmobReward(request, rules))
+    ..get('/privacy', privacyPolicyPage)
+    ..get('/privacy/', privacyPolicyPage);
   mountAdminApi(router, db);
   _mountAdminWeb(router);
 

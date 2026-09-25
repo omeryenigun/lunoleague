@@ -16,6 +16,7 @@ import 'package:kelimelig/features/game/cubit/game_cubit.dart';
 import 'package:kelimelig/features/game/presentation/widgets/guess_board.dart';
 import 'package:kelimelig/features/game/presentation/widgets/result_screen.dart';
 import 'package:kelimelig/features/match/presentation/match_result_screen.dart';
+import 'package:kelimelig/features/match/presentation/rival_notice_host.dart';
 import 'package:kelimelig/features/game/presentation/widgets/turkish_keyboard.dart';
 import 'package:kelimelig/features/word_book/presentation/word_card_screen.dart';
 import 'package:kelimelig/injection.dart';
@@ -70,12 +71,14 @@ class GameView extends StatelessWidget {
       builder: (context, state) {
         final session = state.session;
         final outcome = session?.outcome;
+        if (session != null &&
+            (type == GameType.duel || type == GameType.room) &&
+            (outcome != null || session.isFinished)) {
+          return MatchResultScreen(
+            kind: type == GameType.room ? 'room' : 'duel',
+          );
+        }
         if (outcome != null && session != null) {
-          if (type == GameType.duel || type == GameType.room) {
-            return MatchResultScreen(
-              kind: type == GameType.room ? 'room' : 'duel',
-            );
-          }
           return ResultScreen(
             outcome: outcome,
             guesses: session.guesses,
@@ -121,6 +124,10 @@ class GameView extends StatelessWidget {
                         )
                   : Column(
                       children: [
+                        if (type == GameType.duel || type == GameType.room)
+                          RivalNoticeHost(
+                            kind: type == GameType.room ? 'room' : 'duel',
+                          ),
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                           child: Row(

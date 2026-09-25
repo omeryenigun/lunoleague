@@ -1,7 +1,7 @@
 name: kelimelig
 description: Luno League - Türkçe kelime tahmin oyunu
 publish_to: "none"
-version: 1.0.0+1
+version: 1.0.2+3
 
 environment:
   sdk: ^3.13.2
@@ -29,6 +29,9 @@ dependencies:
   image_picker: ^1.1.2
   audioplayers: ^6.5.0
   google_sign_in: ^7.2.0
+  google_mobile_ads: ^9.1.0
+  pointycastle: ^3.9.1
+  asn1lib: ^1.6.2
   in_app_purchase: ^3.3.1
   crypto: ^3.0.6
   postgres: ^3.5.6

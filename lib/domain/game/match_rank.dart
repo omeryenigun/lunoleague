@@ -15,6 +15,8 @@ List<MatchRow> rankMatch(List<MatchRow> rows) {
         millis: ordered[i].millis,
         left: ordered[i].left,
         rank: ordered[i].finished ? i + 1 : 0,
+        greens: ordered[i].greens,
+        yellows: ordered[i].yellows,
       ),
   ];
 }

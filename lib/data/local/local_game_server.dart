@@ -249,7 +249,7 @@ class LocalGameServer implements GameServer {
       id: id,
       displayName: displayName ??
           (anonymous
-              ? (locale == 'en' ? 'Guest' : 'Misafir')
+              ? await _uniqueGuestName(locale)
               : (locale == 'en' ? 'Player' : 'Oyuncu')),
       email: email,
       authProvider: provider,
@@ -273,7 +273,23 @@ class LocalGameServer implements GameServer {
     await _saveUser(user);
     await _store.put('wallets', id, {'balance': 0, 'updatedAt': now.toIso8601String()});
     await _store.putMeta(_currentUserKey, id);
-    return user;
+    return _grantStarterCoins(user, registered: !anonymous);
+  }
+
+  static const _guestStartCoins = 175;
+  static const _registerCoins = 350;
+
+  Future<UserEntity> _grantStarterCoins(
+    UserEntity user, {
+    required bool registered,
+  }) async {
+    final kind = registered ? 'REGISTER_BONUS' : 'GUEST_START';
+    final amount = registered ? _registerCoins : _guestStartCoins;
+    if (await _store.getMeta('${kind}_${user.id}') == '1') return user;
+    await _store.putMeta('${kind}_${user.id}', '1');
+    final next = await _saveUser(user.copyWith(coin: user.coin + amount));
+    await _creditWallet(user.id, amount, kind, user.id);
+    return next;
   }
 
   @override
@@ -283,6 +299,14 @@ class LocalGameServer implements GameServer {
   Future<UserEntity> signInAnonymously() async {
     final existing = await _userOrNull();
     if (existing != null) {
+      if (existing.isAnonymous && _plainGuestName(existing.displayName)) {
+        return _saveUser(
+          existing.copyWith(
+            displayName: await _uniqueGuestName(existing.locale),
+            lastLoginAt: _now,
+          ),
+        );
+      }
       return _saveUser(existing.copyWith(lastLoginAt: _now));
     }
     return _newUser(provider: AuthProvider.anonymous, anonymous: true);
@@ -370,15 +394,18 @@ class LocalGameServer implements GameServer {
     await _ensureNicknameFree(name, exceptUserId: keepId);
     late final UserEntity user;
     if (existing != null && existing.isAnonymous) {
-      user = await _saveUser(
-        existing.copyWith(
-          authProvider: AuthProvider.email,
-          isAnonymous: false,
-          email: normalized,
-          displayName: name,
-          avatar: avatar ?? existing.avatar,
-          lastLoginAt: _now,
+      user = await _grantStarterCoins(
+        await _saveUser(
+          existing.copyWith(
+            authProvider: AuthProvider.email,
+            isAnonymous: false,
+            email: normalized,
+            displayName: name,
+            avatar: avatar ?? existing.avatar,
+            lastLoginAt: _now,
+          ),
         ),
+        registered: true,
       );
     } else {
       user = await _newUser(
@@ -446,17 +473,17 @@ class LocalGameServer implements GameServer {
   }) async {
     final existing = await _userOrNull();
     if (existing != null && existing.isAnonymous) {
-      return _saveUser(
-        existing.copyWith(
-          authProvider: provider,
-          isAnonymous: false,
-          email: email ?? existing.email,
-          displayName: (existing.displayName == 'Misafir' ||
-                  existing.displayName == 'Guest')
-              ? name
-              : existing.displayName,
-          lastLoginAt: _now,
+      return _grantStarterCoins(
+        await _saveUser(
+          existing.copyWith(
+            authProvider: provider,
+            isAnonymous: false,
+            email: email ?? existing.email,
+            displayName: _guestLabel(existing.displayName) ? name : existing.displayName,
+            lastLoginAt: _now,
+          ),
         ),
+        registered: true,
       );
     }
     if (existing != null) {
@@ -495,7 +522,7 @@ class LocalGameServer implements GameServer {
       final existing = (map['displayName'] as String? ?? '').trim();
       if (existing.isEmpty) continue;
       final anon = map['isAnonymous'] as bool? ?? false;
-      if (anon && (existing == 'Misafir' || existing == 'Guest')) continue;
+      if (anon && _plainGuestName(existing)) continue;
       if (_nickKey(existing) == key) {
         throw AppFailure(UserMessages.nicknameTaken, code: 'NICK_TAKEN');
       }
@@ -927,6 +954,7 @@ class LocalGameServer implements GameServer {
   }
 
   static const _presence = Duration(seconds: 20);
+  static const _away = Duration(minutes: 5);
   static const _roomCap = 10;
 
   @override
@@ -982,6 +1010,7 @@ class LocalGameServer implements GameServer {
     if (open != null) {
       _touch(open, user.id);
       await _sweepLobby(open);
+      await _expireAbsent(open);
       if (open['status'] == 'playing' && await _playersDone(_playersOf(open))) {
         open['status'] = 'done';
       }
@@ -1114,6 +1143,7 @@ class LocalGameServer implements GameServer {
     if (open != null) {
       _touch(open, user.id);
       await _sweepLobby(open);
+      await _expireAbsent(open);
       if (open['status'] == 'playing' && await _playersDone(_playersOf(open))) {
         open['status'] = 'done';
       }
@@ -1357,6 +1387,49 @@ class LocalGameServer implements GameServer {
     throw AppFailure('Oda kodu üretilemedi.', code: 'ROOM_CODE');
   }
 
+  bool _plainGuestName(String name) {
+    final trimmed = name.trim();
+    return trimmed == 'Misafir' || trimmed == 'Guest';
+  }
+
+  bool _guestLabel(String name) {
+    final trimmed = name.trim();
+    return _plainGuestName(trimmed) ||
+        RegExp(r'^(Misafir|Guest)\d+$').hasMatch(trimmed);
+  }
+
+  Future<String> _uniqueGuestName(String locale) async {
+    final prefix = locale == 'en' ? 'Guest' : 'Misafir';
+    final taken = <String>{};
+    for (final map in await _store.values('users')) {
+      final name = (map['displayName'] as String? ?? '').trim().toLowerCase();
+      if (name.isNotEmpty) taken.add(name);
+    }
+    for (var i = 0; i < 40; i++) {
+      final candidate = '$prefix${1000 + _random.nextInt(9000)}';
+      if (!taken.contains(candidate.toLowerCase())) return candidate;
+    }
+    return '$prefix${100000 + _random.nextInt(900000)}';
+  }
+
+  /// A player who left the match is finished as a timeout after five minutes.
+  Future<void> _expireAbsent(Map<String, dynamic> match) async {
+    if (match['status'] != 'playing') return;
+    for (final p in _playersOf(match)) {
+      final seen = DateTime.tryParse(p['lastSeen'] as String? ?? '');
+      if (seen != null && _now.difference(seen) < _away) continue;
+      final id = p['sessionId'] as String?;
+      if (id == null || await _sessionFinished(id)) continue;
+      final raw = await _store.get('game_sessions', id);
+      if (raw == null) continue;
+      raw['status'] = GameStatus.lost.name;
+      raw['won'] = false;
+      raw['timedOut'] = true;
+      raw['finishedAt'] = _now.toIso8601String();
+      await _store.put('game_sessions', id, raw);
+    }
+  }
+
   Future<bool> _playersDone(List<Map<String, dynamic>> players) async {
     if (players.isEmpty) return false;
     for (final p in players) {
@@ -1387,10 +1460,20 @@ class LocalGameServer implements GameServer {
     var solved = false;
     var guesses = 0;
     var millis = 0;
+    var greens = 0;
+    var yellows = 0;
     if (raw != null) {
       finished = await _sessionFinished(id);
       solved = raw['won'] == true;
       guesses = raw['currentAttempt'] as int? ?? 0;
+      final played = raw['guesses'] as List? ?? const [];
+      if (played.isNotEmpty && played.last is Map) {
+        final statuses = (played.last as Map)['statuses'] as List? ?? const [];
+        for (final status in statuses) {
+          if (status == 'correct') greens++;
+          if (status == 'present') yellows++;
+        }
+      }
       if (finished) {
         final start = DateTime.parse(raw['startedAt'] as String);
         final endRaw = raw['finishedAt'] as String?;
@@ -1406,8 +1489,10 @@ class LocalGameServer implements GameServer {
       solved: solved,
       guesses: guesses,
       millis: millis,
-      left: false,
+      left: raw?['timedOut'] == true,
       rank: 0,
+      greens: greens,
+      yellows: yellows,
     );
   }
 
@@ -1826,6 +1911,24 @@ class LocalGameServer implements GameServer {
     await _saveUser(user.copyWith(coin: user.coin + config.adCoinReward));
     await _creditWallet(user.id, config.adCoinReward, 'AD_REWARD', _uuid.v4());
     return config.adCoinReward;
+  }
+
+  /// Grants the configured ad reward once for an AdMob transaction.
+  Future<bool> grantRewardedAdProof({
+    required String userId,
+    required String transactionId,
+  }) async {
+    if (userId.isEmpty || transactionId.isEmpty) return false;
+    final seen = 'admob_$transactionId';
+    if (await _store.getMeta(seen) == '1') return true;
+    final map = await _store.get('users', userId);
+    if (map == null) return false;
+    await _store.putMeta(seen, '1');
+    final user = UserEntity.fromMap(map);
+    final config = await _config();
+    await _saveUser(user.copyWith(coin: user.coin + config.adCoinReward));
+    await _creditWallet(user.id, config.adCoinReward, 'AD_REWARD', transactionId);
+    return true;
   }
 
   @override
@@ -2465,6 +2568,105 @@ class LocalGameServer implements GameServer {
     user = await _applyMissedStreak(user);
     user = await _maybeRolloverLeague(user);
     return user;
+  }
+
+  @override
+  Future<List<ResultPlace>> resultBoard({
+    required GameType type,
+    required String wordId,
+  }) async {
+    final user = await _requireUser();
+    if (type == GameType.endless) return _endlessBoard(user);
+    return _dailyBoard(user, wordId);
+  }
+
+  Future<List<ResultPlace>> _dailyBoard(UserEntity user, String wordId) async {
+    if (wordId.isEmpty) return const [];
+    final today = DateKeys.dayKey(_now);
+    final best = <String, Map<dynamic, dynamic>>{};
+    for (final raw in await _store.values('game_results')) {
+      if (raw['gameType'] != GameType.daily.name) continue;
+      if (raw['wordId'] != wordId) continue;
+      if ((raw['language'] as String? ?? 'tr') != user.locale) continue;
+      final created = DateTime.tryParse(raw['createdAt'] as String? ?? '');
+      if (created == null || DateKeys.dayKey(created) != today) continue;
+      final id = raw['userId'] as String? ?? '';
+      if (id.isEmpty) continue;
+      final prev = best[id];
+      if (prev == null || _betterDaily(raw, prev)) best[id] = raw;
+    }
+    final ranked = best.entries.toList()
+      ..sort((a, b) => _dailyOrder(a.value, b.value));
+    final places = <ResultPlace>[];
+    for (var i = 0; i < ranked.length; i++) {
+      final row = ranked[i].value;
+      final won = row['won'] == true;
+      places.add(ResultPlace(
+        rank: i + 1,
+        displayName: await _boardName(ranked[i].key),
+        score: won ? '${row['guesses'] ?? ''}' : '—',
+        isCurrentUser: ranked[i].key == user.id,
+      ));
+    }
+    return _capBoard(places);
+  }
+
+  bool _betterDaily(Map<dynamic, dynamic> next, Map<dynamic, dynamic> prev) =>
+      _dailyOrder(next, prev) < 0;
+
+  int _dailyOrder(Map<dynamic, dynamic> a, Map<dynamic, dynamic> b) {
+    final aw = a['won'] == true;
+    final bw = b['won'] == true;
+    if (aw != bw) return aw ? -1 : 1;
+    final guesses = (a['guesses'] as int? ?? 99).compareTo(b['guesses'] as int? ?? 99);
+    if (aw && guesses != 0) return guesses;
+    final time = (a['timeSpent'] as int? ?? 1 << 30).compareTo(
+      b['timeSpent'] as int? ?? 1 << 30,
+    );
+    if (time != 0) return time;
+    return 0;
+  }
+
+  Future<List<ResultPlace>> _endlessBoard(UserEntity user) async {
+    final scored = <({String id, String name, int best})>[];
+    for (final raw in await _store.values('users')) {
+      final other = UserEntity.fromMap(raw);
+      final best = other.locale == user.locale
+          ? other.endlessBest
+          : other.progressByLocale[user.locale]?.endlessBest ?? 0;
+      if (best <= 0 && other.id != user.id) continue;
+      scored.add((id: other.id, name: other.displayName, best: best));
+    }
+    scored.sort((a, b) {
+      final byBest = b.best.compareTo(a.best);
+      if (byBest != 0) return byBest;
+      return a.name.compareTo(b.name);
+    });
+    final places = <ResultPlace>[
+      for (var i = 0; i < scored.length; i++)
+        ResultPlace(
+          rank: i + 1,
+          displayName: scored[i].name.isEmpty ? 'Oyuncu' : scored[i].name,
+          score: '${scored[i].best}',
+          isCurrentUser: scored[i].id == user.id,
+        ),
+    ];
+    return _capBoard(places);
+  }
+
+  List<ResultPlace> _capBoard(List<ResultPlace> places) {
+    final top = places.where((e) => e.rank <= 20).toList();
+    final mine = places.where((e) => e.isCurrentUser);
+    if (mine.isEmpty) return top;
+    final me = mine.first;
+    if (me.rank <= 20) return top;
+    return [...top, me];
+  }
+
+  Future<String> _boardName(String userId) async {
+    final raw = await _store.get('users', userId);
+    final name = raw?['displayName'] as String? ?? '';
+    return name.isEmpty ? 'Oyuncu' : name;
   }
 
   @override

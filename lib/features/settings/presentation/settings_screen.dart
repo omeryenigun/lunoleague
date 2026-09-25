@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:kelimelig/core/constants/enums.dart';
 import 'package:kelimelig/core/l10n/game_locale.dart';
 import 'package:kelimelig/core/constants/user_messages.dart';
+import 'package:kelimelig/core/errors/failures.dart';
 import 'package:kelimelig/core/l10n/l10n.dart';
 import 'package:kelimelig/core/services/ad_service.dart';
 import 'package:kelimelig/core/services/audio_manager.dart';
@@ -192,7 +193,9 @@ class SettingsScreen extends StatelessWidget {
                           trailing: '+$reward 🪙',
                           color: AppColors.cosmicGold,
                           onTap: () async {
-                            final ok = await sl<AdService>().showRewarded();
+                            final auth = context.read<AuthCubit>();
+                            final user = auth.state.user;
+                            final ok = await sl<AdService>().showRewarded(user?.id ?? '');
                             if (!ok) {
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -203,8 +206,29 @@ class SettingsScreen extends StatelessWidget {
                               }
                               return;
                             }
-                            final coins =
-                                await sl<GameServer>().watchRewardedAd();
+                            final before = user?.coin ?? 0;
+                            var coins = 0;
+                            try {
+                              coins = await sl<GameServer>().watchRewardedAd();
+                            } on AppFailure {
+                              for (var i = 0; i < 8; i++) {
+                                await Future<void>.delayed(const Duration(seconds: 1));
+                                if (!context.mounted) return;
+                                await auth.refreshUser();
+                                final now = auth.state.user?.coin ?? before;
+                                if (now > before) {
+                                  coins = now - before;
+                                  break;
+                                }
+                              }
+                            }
+                            if (!context.mounted) return;
+                            if (coins == 0) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text(UserMessages.adUnavailable)),
+                              );
+                              return;
+                            }
                             if (context.mounted) {
                               await context.read<AuthCubit>().refreshUser();
                               if (context.mounted) {

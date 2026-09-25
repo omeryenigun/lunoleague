@@ -8,6 +8,8 @@ class MatchRow {
     required this.millis,
     required this.left,
     required this.rank,
+    this.greens = 0,
+    this.yellows = 0,
   });
 
   final String userId;
@@ -18,6 +20,8 @@ class MatchRow {
   final int millis;
   final bool left;
   final int rank;
+  final int greens;
+  final int yellows;
 
   Map<String, dynamic> toMap() => {
         'userId': userId,
@@ -28,6 +32,8 @@ class MatchRow {
         'millis': millis,
         'left': left,
         'rank': rank,
+        'greens': greens,
+        'yellows': yellows,
       };
 
   factory MatchRow.fromMap(Map<String, dynamic> map) => MatchRow(
@@ -39,6 +45,8 @@ class MatchRow {
         millis: map['millis'] as int? ?? 0,
         left: map['left'] as bool? ?? false,
         rank: map['rank'] as int? ?? 0,
+        greens: map['greens'] as int? ?? 0,
+        yellows: map['yellows'] as int? ?? 0,
       );
 }
 

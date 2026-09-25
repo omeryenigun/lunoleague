@@ -354,6 +354,22 @@ class RemoteGameServer implements GameServer {
   Future<UserEntity> profile() async => _user(await _call('profile', {}));
 
   @override
+  Future<List<ResultPlace>> resultBoard({
+    required GameType type,
+    required String wordId,
+  }) async {
+    final data = await _call('resultBoard', {
+      'type': type.name,
+      'wordId': wordId,
+    });
+    final list = data is List ? data : const [];
+    return [
+      for (final item in list)
+        if (item is Map) ResultPlace.fromMap(Map<dynamic, dynamic>.from(item)),
+    ];
+  }
+
+  @override
   Future<AppConfig> getConfig() async =>
       AppConfig.fromMap(_userMap(await _call('getConfig', {})));
 

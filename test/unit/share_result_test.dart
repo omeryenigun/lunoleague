@@ -36,6 +36,36 @@ void main() {
     ),
   ];
 
+  ResultPlace place(int rank, {bool mine = false}) => ResultPlace(
+        rank: rank,
+        displayName: mine ? 'Ben' : 'Oyuncu $rank',
+        score: '$rank',
+        isCurrentUser: mine,
+      );
+
+  test('result board shows top 10, then the player through 20, else a rank line', () {
+    final inside = resultBoardLines([
+      for (var rank = 1; rank <= 12; rank++) place(rank, mine: rank == 12),
+    ]);
+    expect(inside.rows.map((row) => row.rank), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12]);
+    expect(inside.rankOnly, isNull);
+    expect(inside.rows.last.isCurrentUser, isTrue);
+
+    final outside = resultBoardLines([
+      for (var rank = 1; rank <= 10; rank++) place(rank),
+      place(47, mine: true),
+    ]);
+    expect(outside.rows, hasLength(10));
+    expect(outside.rows.any((row) => row.isCurrentUser), isFalse);
+    expect(outside.rankOnly, 47);
+
+    final top = resultBoardLines([
+      for (var rank = 1; rank <= 10; rank++) place(rank, mine: rank == 3),
+    ]);
+    expect(top.rows, hasLength(10));
+    expect(top.rankOnly, isNull);
+  });
+
   test('share text includes the win, score, and rewards', () {
     final text = buildShareText(
       l10n: L10n(),

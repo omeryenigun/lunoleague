@@ -81,6 +81,10 @@ abstract class GameServer {
   Future<UserEntity> equipCosmetic({String? theme, String? frame});
   Future<List<AchievementView>> achievements();
   Future<UserEntity> profile();
+  Future<List<ResultPlace>> resultBoard({
+    required GameType type,
+    required String wordId,
+  });
 
   Future<List<WordEntity>> adminListWords();
   Future<WordEntity> adminUpsertWord(WordEntity word);

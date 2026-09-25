@@ -2,7 +2,7 @@
 
 Play, oyunu mağazada herkese açmadan test ettirmen için resmi kanallar verir. Testçi Play Store’dan (test sürümü olarak) indirir; güncellemeler aynı linkten gelir. Telefonda **davet edilen Google hesabı** Play Store’da açık olmalıdır.
 
-Paket adı (`com.kelimelig.kelimelig`) ilk AAB yüklemesinde kilitlenir; değiştirilemez.
+Paket adı (`com.lunoleague.game`) ilk AAB yüklemesinde kilitlenir; değiştirilemez.
 
 ## Hangi kanal
 
@@ -59,7 +59,7 @@ flutter build apk --release
 ## Play Console sırası (Internal)
 
 1. [Play Console](https://play.google.com/console) geliştirici hesabı (kimlik + ~25 USD).
-2. Uygulama oluştur. Paket: `com.kelimelig.kelimelig`.
+2. Uygulama oluştur. Paket: `com.lunoleague.game`.
 3. **Test → Internal testing → Create new release** → `app-release.aab` yükle. Play App Signing’i aç (önerilen).
 4. Testers e-posta listesine kendi Gmail’ini (ve arkadaşları) ekle.
 5. Opt-in linkini paylaş. Testçi “Become a tester” der, sonra Store’dan yükler.

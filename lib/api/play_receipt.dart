@@ -13,7 +13,7 @@ Future<bool> confirmPlayPurchase(String productId, String purchaseToken) async {
   if (raw == null || raw.trim().isEmpty || token.isEmpty) return false;
   final package = Platform.environment['GOOGLE_PLAY_PACKAGE_NAME'];
   final packageName = (package == null || package.trim().isEmpty)
-      ? 'com.kelimelig.kelimelig'
+      ? 'com.lunoleague.game'
       : package.trim();
   try {
     final credentials = ServiceAccountCredentials.fromJson(jsonDecode(raw));

@@ -9,6 +9,7 @@ import 'package:kelimelig/core/l10n/l10n.dart';
 import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
 import 'package:kelimelig/core/theme/shimmer_title.dart';
+import 'package:kelimelig/domain/entities/game_models.dart';
 import 'package:kelimelig/domain/entities/user_entity.dart';
 import 'package:kelimelig/domain/game/game_server.dart';
 import 'package:kelimelig/features/auth/cubit/auth_cubit.dart';
@@ -580,6 +581,15 @@ class _MenuRow extends StatelessWidget {
   }
 }
 
+Future<({UserEntity user, HomeSnapshot home, CompetitionSnapshot competition})>
+    _loadStats() async {
+  final server = sl<GameServer>();
+  final user = await server.profile();
+  final home = await server.homeSnapshot();
+  final competition = await server.competitionSnapshot();
+  return (user: user, home: home, competition: competition);
+}
+
 class StatisticsScreen extends StatelessWidget {
   const StatisticsScreen({super.key});
 
@@ -633,7 +643,7 @@ class StatisticsScreen extends StatelessWidget {
               ),
               Expanded(
                 child: FutureBuilder(
-                  future: sl<GameServer>().profile(),
+                  future: _loadStats(),
                   builder: (context, snap) {
                     if (!snap.hasData) {
                       return const Center(
@@ -642,12 +652,15 @@ class StatisticsScreen extends StatelessWidget {
                         ),
                       );
                     }
-                    final u = snap.data!;
+                    final bundle = snap.data!;
+                    final u = bundle.user;
                     final lost = u.gamesPlayed - u.gamesWon;
                     final fastest = u.fastestSolveSeconds;
                     return ListView(
                       padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
                       children: [
+                        _StatsCompare(bundle: bundle),
+                        const SizedBox(height: 16),
                         _StatsCard(
                           rows: [
                             _RichStat(
@@ -797,6 +810,281 @@ class StatisticsScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _StatsCompare extends StatefulWidget {
+  const _StatsCompare({required this.bundle});
+
+  final ({UserEntity user, HomeSnapshot home, CompetitionSnapshot competition})
+      bundle;
+
+  @override
+  State<_StatsCompare> createState() => _StatsCompareState();
+}
+
+class _StatsCompareState extends State<_StatsCompare> {
+  var _today = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = sl<L10n>();
+    final user = widget.bundle.user;
+    final board = widget.bundle.competition.week;
+    final mine = board.where((e) => e.isCurrentUser).firstOrNull;
+    final others = board.where((e) => !e.isCurrentUser);
+    final average = others.isEmpty
+        ? 0
+        : others.map((e) => e.points).reduce((a, b) => a + b) / others.length;
+    final playedToday = widget.bundle.home.dailyStatus == DailyStatus.completed;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: BoxDecoration(
+        color: const Color(0xCC0F172A),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0x3346E8A0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _StatsTab(
+                label: l10n.t('stats_all'),
+                selected: !_today,
+                onTap: () => setState(() => _today = false),
+              ),
+              const SizedBox(width: 8),
+              _StatsTab(
+                label: l10n.t('stats_today'),
+                selected: _today,
+                onTap: () => setState(() => _today = true),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(child: Text(l10n.t('stats_you'), style: _head)),
+              Expanded(child: Text(l10n.t('stats_field'), style: _head)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _CompareTile(
+                  value: _today
+                      ? (playedToday ? l10n.t('stats_daily_done') : '—')
+                      : '${mine?.points ?? widget.bundle.home.leaguePoints}',
+                  label: _today ? l10n.t('stats_daily') : l10n.t('stats_points'),
+                  emphasize: true,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _CompareTile(
+                  value: _today
+                      ? '—'
+                      : (others.isEmpty ? '—' : average.round().toString()),
+                  label: _today
+                      ? l10n.t('stats_avg_points')
+                      : l10n.t('stats_avg_points'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _CompareTile(
+                  value: _today
+                      ? '${user.streak}'
+                      : user.averageGuesses.toStringAsFixed(1),
+                  label: _today ? l10n.t('stats_streak') : l10n.t('stats_avg_guess'),
+                  emphasize: true,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _CompareTile(
+                  value: _today ? '${user.longestStreak}' : '—',
+                  label: _today
+                      ? l10n.t('stats_best_streak')
+                      : l10n.t('stats_avg_guess'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (mine == null || board.length < 2)
+            Text(
+              l10n.t('stats_no_rank'),
+              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+            )
+          else
+            _RankBars(
+              board: board,
+              caption: l10n
+                  .t('stats_rank')
+                  .replaceAll('{count}', '${board.length}')
+                  .replaceAll('{rank}', '${mine.rank}'),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+const _head = TextStyle(
+  color: Color(0xFF94A3B8),
+  fontWeight: FontWeight.w700,
+  fontSize: 13,
+);
+
+class _StatsTab extends StatelessWidget {
+  const _StatsTab({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0x3346E8A0) : const Color(0x221E293B),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? AppColors.cosmicGreen : const Color(0x2294A3B8),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? AppColors.cosmicGreen : const Color(0xFFCBD5E1),
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CompareTile extends StatelessWidget {
+  const _CompareTile({
+    required this.value,
+    required this.label,
+    this.emphasize = false,
+  });
+
+  final String value;
+  final String label;
+  final bool emphasize;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = emphasize ? AppColors.cosmicGreen : const Color(0xFFF8FAFC);
+    return Container(
+      height: 108,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF121A2B),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0x1A94A3B8)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 28,
+              fontWeight: FontWeight.w900,
+              height: 1,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            label,
+            style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RankBars extends StatelessWidget {
+  const _RankBars({required this.board, required this.caption});
+
+  final List<LeaderboardEntry> board;
+  final String caption;
+
+  @override
+  Widget build(BuildContext context) {
+    final ranked = [...board]..sort((a, b) => a.rank.compareTo(b.rank));
+    final shown = ranked.length <= 7
+        ? ranked
+        : _window(ranked);
+    final maxPoints = shown.map((e) => e.points).fold<int>(1, math.max);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          height: 92,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              for (final entry in shown)
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 3),
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Container(
+                        height: 18 + 70 * (entry.points / maxPoints),
+                        decoration: BoxDecoration(
+                          color: entry.isCurrentUser
+                              ? AppColors.cosmicGreen
+                              : const Color(0xFF1E3A34),
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          caption,
+          style: const TextStyle(
+            color: Color(0xFFCBD5E1),
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<LeaderboardEntry> _window(List<LeaderboardEntry> ranked) {
+    final index = ranked.indexWhere((e) => e.isCurrentUser);
+    final start = (index - 3).clamp(0, ranked.length - 7);
+    return ranked.sublist(start, start + 7);
   }
 }
 

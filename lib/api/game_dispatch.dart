@@ -184,6 +184,13 @@ Future<Object?> dispatchGame(
       return (await game.achievements()).map(wireAchievement).toList();
     case 'profile':
       return (await game.profile()).toMap();
+    case 'resultBoard':
+      return (await game.resultBoard(
+        type: GameType.values.byName(args['type'] as String? ?? 'daily'),
+        wordId: args['wordId'] as String? ?? '',
+      ))
+          .map((row) => row.toMap())
+          .toList();
     case 'getConfig':
       return (await game.getConfig()).toMap();
     case 'adminListShopProducts':

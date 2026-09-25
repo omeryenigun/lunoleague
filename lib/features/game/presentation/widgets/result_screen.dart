@@ -8,6 +8,7 @@ import 'package:kelimelig/core/l10n/l10n.dart';
 import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
 import 'package:kelimelig/domain/entities/game_models.dart';
+import 'package:kelimelig/domain/game/game_server.dart';
 import 'package:kelimelig/domain/game/word_matching_engine.dart';
 import 'package:kelimelig/injection.dart';
 import 'package:share_plus/share_plus.dart';
@@ -129,9 +130,21 @@ class _ResultScreenState extends State<ResultScreen>
   final _rng = Random(42);
   var _endAdClaimed = false;
   var _endAdBusy = false;
+  List<ResultPlace> _board = const [];
 
   GameOutcome get outcome => widget.outcome;
   bool get won => outcome.won;
+
+  Future<void> _loadBoard() async {
+    try {
+      final rows = await sl<GameServer>().resultBoard(
+        type: widget.isDaily ? GameType.daily : GameType.endless,
+        wordId: outcome.wordId,
+      );
+      if (!mounted) return;
+      setState(() => _board = rows);
+    } catch (_) {}
+  }
 
   Future<void> _offerEndAd() async {
     final offer = widget.onEndAd;
@@ -145,6 +158,7 @@ class _ResultScreenState extends State<ResultScreen>
   @override
   void initState() {
     super.initState();
+    _loadBoard();
     _enter = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 720),
@@ -550,6 +564,11 @@ class _ResultScreenState extends State<ResultScreen>
                                   ],
                                 ],
                               ),
+                              _ResultBoard(
+                                lines: resultBoardLines(_board),
+                                youLabel: l10n.t('result_board_you'),
+                                title: l10n.t('result_board'),
+                              ),
                             ],
                           ),
                         ),
@@ -561,6 +580,112 @@ class _ResultScreenState extends State<ResultScreen>
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ResultBoard extends StatelessWidget {
+  const _ResultBoard({
+    required this.lines,
+    required this.title,
+    required this.youLabel,
+  });
+
+  final ResultBoardLines lines;
+  final String title;
+  final String youLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    if (lines.rows.isEmpty && lines.rankOnly == null) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 18),
+      child: Column(
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: Color(0xFF94A3B8),
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 8),
+          for (final row in lines.rows) _BoardRow(place: row),
+          if (lines.rankOnly != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                youLabel.replaceAll('{n}', '${lines.rankOnly}'),
+                style: const TextStyle(
+                  color: AppColors.cosmicGold,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BoardRow extends StatelessWidget {
+  const _BoardRow({required this.place});
+
+  final ResultPlace place;
+
+  @override
+  Widget build(BuildContext context) {
+    final mine = place.isCurrentUser;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: mine ? const Color(0x33F1C40F) : const Color(0x140B1220),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: mine ? AppColors.cosmicGold : const Color(0x22FFFFFF),
+        ),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 28,
+            child: Text(
+              '${place.rank}',
+              style: TextStyle(
+                color: mine ? AppColors.cosmicGold : const Color(0xFFCBD5E1),
+                fontWeight: FontWeight.w800,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              place.displayName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: mine ? const Color(0xFFFFF7D6) : const Color(0xFFE2E8F0),
+                fontWeight: mine ? FontWeight.w800 : FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          Text(
+            place.score,
+            style: const TextStyle(
+              color: Color(0xFF94A3B8),
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+            ),
+          ),
+        ],
       ),
     );
   }

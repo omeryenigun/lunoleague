@@ -201,6 +201,59 @@ class LeaderboardEntry {
   final bool isCurrentUser;
 }
 
+class ResultPlace {
+  const ResultPlace({
+    required this.rank,
+    required this.displayName,
+    required this.score,
+    required this.isCurrentUser,
+  });
+
+  final int rank;
+  final String displayName;
+  final String score;
+  final bool isCurrentUser;
+
+  Map<String, dynamic> toMap() => {
+        'rank': rank,
+        'displayName': displayName,
+        'score': score,
+        'isCurrentUser': isCurrentUser,
+      };
+
+  factory ResultPlace.fromMap(Map<dynamic, dynamic> map) {
+    return ResultPlace(
+      rank: map['rank'] as int? ?? 0,
+      displayName: map['displayName'] as String? ?? '',
+      score: map['score'] as String? ?? '',
+      isCurrentUser: map['isCurrentUser'] as bool? ?? false,
+    );
+  }
+}
+
+class ResultBoardLines {
+  const ResultBoardLines({required this.rows, this.rankOnly});
+
+  final List<ResultPlace> rows;
+  final int? rankOnly;
+}
+
+/// Top 10. Ranks 11–20 add the player as the 11th row. Beyond that, the
+/// 11th row is only their rank number.
+ResultBoardLines resultBoardLines(List<ResultPlace> all) {
+  final top = all.where((e) => e.rank >= 1 && e.rank <= 10).toList()
+    ..sort((a, b) => a.rank.compareTo(b.rank));
+  final mine = all.where((e) => e.isCurrentUser);
+  final me = mine.isEmpty ? null : mine.first;
+  if (me == null || me.rank <= 10) {
+    return ResultBoardLines(rows: top);
+  }
+  if (me.rank <= 20) {
+    return ResultBoardLines(rows: [...top, me]);
+  }
+  return ResultBoardLines(rows: top, rankOnly: me.rank);
+}
+
 class SavedWord {
   const SavedWord({
     required this.id,

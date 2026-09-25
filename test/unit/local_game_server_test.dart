@@ -6,6 +6,7 @@ import 'package:kelimelig/core/errors/failures.dart';
 import 'package:kelimelig/core/utils/turkish_text.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
 import 'package:kelimelig/data/local/local_game_server.dart';
+import 'package:kelimelig/data/remote/session_kv.dart';
 import 'package:kelimelig/data/local/seed_words.dart';
 import 'package:kelimelig/data/local/seed_words_en.dart';
 import 'package:kelimelig/data/local/word_csv.dart';
@@ -70,6 +71,45 @@ void main() {
     expect(again.guesses, hasLength(1));
     final now = DateTime.now();
     expect(again.expiresAt, DateTime(now.year, now.month, now.day + 1));
+  });
+
+  test('daily result board ranks today and keeps the player past 10', () async {
+    final root = MemoryKeyValueStore();
+    final host = LocalGameServer(SessionKv(root));
+    final guest = LocalGameServer(SessionKv(root));
+    await host.initialize();
+    await host.signInWithGoogle(googleId: 'host', displayName: 'Ayse');
+    await guest.signInWithGoogle(googleId: 'guest', displayName: 'Berk');
+    final words = (await host.adminListWords())
+        .where((w) => w.length == 5 && w.playable && w.language == 'tr')
+        .toList();
+    final today = DateTime.now();
+    final key =
+        '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+    await host.adminSetDaily(
+      dateKey: key,
+      league: LeagueTier.bronze,
+      wordId: words.first.id,
+    );
+    var fast = await host.startDaily();
+    var slow = await guest.startDaily();
+    fast = await host.submitGuess(fast.sessionId, words.first.word);
+    final wrong = words
+        .map((w) => w.word)
+        .firstWhere((w) => !TurkishText.equals(w, words.first.word));
+    slow = await guest.submitGuess(slow.sessionId, wrong);
+    slow = await guest.submitGuess(slow.sessionId, words.first.word);
+
+    final board = await guest.resultBoard(
+      type: GameType.daily,
+      wordId: fast.outcome!.wordId,
+    );
+    expect(board.map((row) => row.displayName), ['Ayse', 'Berk']);
+    expect(board.first.score, '1');
+    expect(board.last.isCurrentUser, isTrue);
+    expect(board.last.rank, 2);
+    expect(board.last.score, '2');
+    expect(resultBoardLines(board).rankOnly, isNull);
   });
 
   test('registered user daily once per day', () async {
@@ -195,10 +235,10 @@ void main() {
 
   test('admin coin adjust and ban reason', () async {
     final user = await server.signInWithGoogle(googleId: 'Ali', displayName: 'Ali');
-    expect(user.coin, 0);
+    expect(user.coin, 350);
     final credited = await server.adminAdjustCoins(user.id, 40);
-    expect(credited.coin, 40);
-    final clamped = await server.adminAdjustCoins(user.id, -100);
+    expect(credited.coin, 390);
+    final clamped = await server.adminAdjustCoins(user.id, -1000);
     expect(clamped.coin, 0);
     await server.adminBanUser(user.id, true, reason: 'abuse');
     final banned = await server.adminUserDetail(user.id);
@@ -853,5 +893,22 @@ zurna,tr,İkinci,Tekrar.,zurna,müzik,,,
       isTrue,
     );
     expect(assigned, 29);
+  });
+
+  test('a guest starts with 175 coins and registration adds 350 once', () async {
+    final guest = await server.signInAnonymously();
+    expect(guest.coin, 175);
+    expect((await server.signInAnonymously()).coin, 175);
+
+    final member = await server.registerWithEmail(
+      email: 'ada@luno.test',
+      password: 'secret1',
+      displayName: 'Ada',
+    );
+    expect(member.coin, 525);
+    expect(
+      (await server.signInWithEmail(email: 'ada@luno.test', password: 'secret1')).coin,
+      525,
+    );
   });
 }

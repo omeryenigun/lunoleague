@@ -1,4 +1,4 @@
-package com.kelimelig.kelimelig
+package com.lunoleague.game
 
 import io.flutter.embedding.android.FlutterActivity
 

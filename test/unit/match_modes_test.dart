@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kelimelig/core/constants/enums.dart';
 import 'package:kelimelig/core/errors/failures.dart';
@@ -7,6 +9,7 @@ import 'package:kelimelig/data/local/local_game_server.dart';
 import 'package:kelimelig/data/remote/session_kv.dart';
 import 'package:kelimelig/domain/entities/match_snapshot.dart';
 import 'package:kelimelig/domain/game/match_rank.dart';
+import 'package:kelimelig/features/match/rival_notice.dart';
 
 Future<void> inviteDuel(LocalGameServer host, LocalGameServer guest) async {
   final created = await host.duelCreate();
@@ -47,6 +50,84 @@ void main() {
 
     expect(ranked.map((r) => r.name).toList(), ['few', 'fast', 'slow', 'miss', 'open']);
     expect(ranked.map((r) => r.rank).toList(), [1, 2, 3, 4, 0]);
+  });
+
+  test('rank copy keeps the last guess colors', () {
+    final ranked = rankMatch([
+      const MatchRow(
+        userId: 'a',
+        name: 'Ada',
+        finished: false,
+        solved: false,
+        guesses: 1,
+        millis: 0,
+        left: false,
+        rank: 0,
+        greens: 2,
+        yellows: 1,
+      ),
+    ]);
+    expect(ranked.single.greens, 2);
+    expect(ranked.single.yellows, 1);
+  });
+
+  MatchRow seat(String id, {int guesses = 0, int greens = 0, int yellows = 0, bool finished = false, bool solved = false}) {
+    return MatchRow(
+      userId: id,
+      name: id,
+      finished: finished,
+      solved: solved,
+      guesses: guesses,
+      millis: 0,
+      left: false,
+      rank: 0,
+      greens: greens,
+      yellows: yellows,
+    );
+  }
+
+  test('rival notices skip yourself and the opening snapshot', () {
+    final me = seat('me', guesses: 1, greens: 3);
+    final rival = seat('Ada', guesses: 1, greens: 2, yellows: 1);
+    expect(
+      rivalNotices(previous: null, next: [me, rival], me: 'me'),
+      isEmpty,
+    );
+    expect(
+      rivalNotices(previous: [me, rival], next: [seat('me', guesses: 2, greens: 5), rival], me: 'me'),
+      isEmpty,
+    );
+  });
+
+  test('a new rival guess reports colors, and a finish stays word-free', () {
+    final before = [
+      seat('me'),
+      seat('Ada'),
+    ];
+    final moved = rivalNotices(
+      previous: before,
+      next: [
+        seat('me'),
+        seat('Ada', guesses: 1, greens: 2, yellows: 1),
+      ],
+      me: 'me',
+    );
+    expect(moved, hasLength(1));
+    expect(moved.single.kind, RivalNoticeKind.colors);
+    expect(moved.single.greens, 2);
+    expect(moved.single.yellows, 1);
+
+    final done = rivalNotices(
+      previous: [seat('me'), seat('Ada', guesses: 1, greens: 2, yellows: 1)],
+      next: [
+        seat('me'),
+        seat('Ada', guesses: 2, greens: 5, yellows: 0, finished: true, solved: true),
+      ],
+      me: 'me',
+    );
+    expect(done.map((n) => n.kind), [RivalNoticeKind.colors, RivalNoticeKind.finished]);
+    expect(done.last.solved, isTrue);
+    expect(done.last.name, 'Ada');
   });
 
   test('guests pair, share a word, and a miss ranks below a solve', () async {
@@ -102,7 +183,13 @@ void main() {
         .map((w) => w.word)
         .firstWhere((w) => !TurkishText.equals(w, secret));
 
-    await a.submitGuess(sessionA.sessionId, wrong);
+    final played = await a.submitGuess(sessionA.sessionId, wrong);
+    final afterOne = await b.matchSnapshot('duel');
+    final adaRow = afterOne.rows.firstWhere((row) => row.name == 'Ada');
+    final last = played.guesses.last.statuses;
+    expect(adaRow.guesses, 1);
+    expect(adaRow.greens, last.where((s) => s == LetterStatus.correct).length);
+    expect(adaRow.yellows, last.where((s) => s == LetterStatus.present).length);
     await a.submitGuess(sessionA.sessionId, secret);
     now = now.add(const Duration(seconds: 5));
     await b.submitGuess(sessionB.sessionId, secret);
@@ -281,4 +368,58 @@ void main() {
       throwsA(isA<AppFailure>().having((e) => e.code, 'code', 'ROOM_DONE')),
     );
   });
+
+  test('guests get a unique numbered name', () async {
+    final root = MemoryKeyValueStore();
+    final a = LocalGameServer(SessionKv(root), random: _FixedRandom(42));
+    final b = LocalGameServer(SessionKv(root), random: _FixedRandom(99));
+    await a.initialize();
+    final first = await a.signInAnonymously();
+    final second = await b.signInAnonymously();
+    expect(first.displayName, matches(RegExp(r'^Misafir\d{4}$')));
+    expect(second.displayName, matches(RegExp(r'^Misafir\d{4}$')));
+    expect(first.displayName, isNot(second.displayName));
+  });
+
+  test('a player who leaves is timed out after five minutes', () async {
+    var now = DateTime(2026, 9, 23, 18);
+    final root = MemoryKeyValueStore();
+    final a = LocalGameServer(SessionKv(root), clock: () => now);
+    final b = LocalGameServer(SessionKv(root), clock: () => now);
+    await a.initialize();
+    await a.signInAnonymously();
+    await b.signInAnonymously();
+    await inviteDuel(a, b);
+    final me = (await a.currentUser())!.id;
+
+    now = now.add(const Duration(minutes: 4));
+    final early = await a.duelPoll();
+    expect(early.rows.firstWhere((r) => r.userId != me).finished, isFalse);
+
+    now = now.add(const Duration(minutes: 1));
+    final late = await a.duelPoll();
+    final other = late.rows.firstWhere((r) => r.userId != me);
+    expect(other.finished, isTrue);
+    expect(other.left, isTrue);
+    expect(other.solved, isFalse);
+    expect(late.status, 'playing');
+  });
+}
+
+class _FixedRandom implements Random {
+  _FixedRandom(this._value);
+
+  final int _value;
+
+  @override
+  int nextInt(int max) => _value % max;
+
+  @override
+  bool nextBool() => false;
+
+  @override
+  double nextDouble() => 0;
+
+  @override
+  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

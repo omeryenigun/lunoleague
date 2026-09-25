@@ -8,6 +8,7 @@ import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
 import 'package:kelimelig/core/theme/cosmic_glass.dart';
 import 'package:kelimelig/domain/entities/match_snapshot.dart';
 import 'package:kelimelig/domain/game/game_server.dart';
+import 'package:kelimelig/features/match/presentation/rival_notice_host.dart';
 import 'package:kelimelig/injection.dart';
 
 class MatchResultScreen extends StatefulWidget {
@@ -79,6 +80,7 @@ class _MatchResultScreenState extends State<MatchResultScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
             children: [
+              RivalNoticeHost(kind: widget.kind),
               Text(
                 title,
                 style: TextStyle(
@@ -148,9 +150,11 @@ class _RowTile extends StatelessWidget {
             : AppColors.cosmicRed;
     final state = !row.finished
         ? l10n.t('match_playing')
-        : row.solved
-            ? l10n.t('match_solved')
-            : l10n.t('match_failed');
+        : row.left
+            ? l10n.t('match_timeout')
+            : row.solved
+                ? l10n.t('match_solved')
+                : l10n.t('match_failed');
     final seconds = (row.millis / 1000).toStringAsFixed(1);
     return DecoratedBox(
       decoration: BoxDecoration(
