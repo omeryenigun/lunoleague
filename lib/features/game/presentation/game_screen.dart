@@ -4,14 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:kelimelig/core/constants/enums.dart';
+import 'package:kelimelig/core/constants/user_messages.dart';
 import 'package:kelimelig/core/l10n/l10n.dart';
 import 'package:kelimelig/core/services/audio_manager.dart';
+import 'package:kelimelig/core/services/rewarded_ad_flow.dart';
 import 'package:kelimelig/core/services/haptic_manager.dart';
 import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
 import 'package:kelimelig/core/theme/cosmic_glass.dart';
 import 'package:kelimelig/core/theme/shimmer_title.dart';
 import 'package:kelimelig/core/widgets/midnight_countdown.dart';
+import 'package:kelimelig/domain/entities/game_models.dart';
+import 'package:kelimelig/domain/game/game_server.dart';
+import 'package:kelimelig/features/auth/cubit/auth_cubit.dart';
 import 'package:kelimelig/features/game/cubit/game_cubit.dart';
 import 'package:kelimelig/features/game/presentation/widgets/guess_board.dart';
 import 'package:kelimelig/features/game/presentation/widgets/result_screen.dart';
@@ -194,13 +199,16 @@ class GameView extends StatelessWidget {
                                 guesses: session.guesses,
                                 currentInput: state.input,
                                 revealed: session.revealedLetters,
+                                currentAttempt: session.currentAttempt,
                                 animateLast: state.flipping ||
                                     session.guesses.isNotEmpty,
                               ),
                             ),
                           ),
                         ),
-                        if (!session.isFinished)
+                        if (session.isFinished)
+                          _FinishedActions(session: session)
+                        else
                           _UntilStart(
                             startedAt: session.startedAt,
                             waiting: (seconds) => Padding(
@@ -224,17 +232,15 @@ class GameView extends StatelessWidget {
                               children: [
                                 _HintChip(
                                   label: l10n.t('hint_letter').replaceAll('💡 ', ''),
-                                  onTap: () => context
-                                      .read<GameCubit>()
-                                      .hint(HintLevel.letter),
+                                  onTap: () => _confirmLetterHint(context, l10n),
                                 ),
                                 const SizedBox(width: 10),
                                 _HintChip(
                                   label: l10n.t('hint_meaning').replaceAll('💡 ', ''),
-                                  onTap: () => context
-                                      .read<GameCubit>()
-                                      .hint(HintLevel.meaning),
+                                  onTap: () => _confirmMeaningHint(context, l10n),
                                 ),
+                                const SizedBox(width: 10),
+                                const _WatchAdChip(),
                                 const Spacer(),
                                 _CoinDisplay(coins: state.coins),
                               ],
@@ -322,6 +328,63 @@ class _UntilStartState extends State<_UntilStart> {
       return widget.waiting(seconds.clamp(1, 9));
     }
     return widget.ready;
+  }
+}
+
+class _FinishedActions extends StatelessWidget {
+  const _FinishedActions({required this.session});
+
+  final GameSessionView session;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = sl<L10n>();
+    final won = session.solved == true;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () => context.push('/statistics'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFF0FDF4),
+                minimumSize: const Size.fromHeight(46),
+                side: BorderSide(
+                  color: AppColors.cosmicBlue.withValues(alpha: 0.55),
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              child: Text(l10n.t('game_stats')),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: FilledButton(
+              onPressed: () => shareFinishedBoard(
+                l10n: l10n,
+                won: won,
+                word: session.answer ?? '',
+                guesses: session.guesses,
+                used: session.currentAttempt,
+                maxAttempts: session.maxAttempts,
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.cosmicGreen,
+                foregroundColor: const Color(0xFF0A0E1A),
+                minimumSize: const Size.fromHeight(46),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              child: Text(l10n.t('result_share')),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -531,11 +594,156 @@ class _AttemptPill extends StatelessWidget {
   }
 }
 
+class _WatchAdChip extends StatefulWidget {
+  const _WatchAdChip();
+
+  @override
+  State<_WatchAdChip> createState() => _WatchAdChipState();
+}
+
+class _WatchAdChipState extends State<_WatchAdChip> {
+  var _busy = false;
+
+  Future<void> _watch() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final cubit = context.read<GameCubit>();
+    final auth = context.read<AuthCubit>();
+    final before = cubit.state.coins;
+    final added = await collectRewardedAdCoins(
+      server: sl<GameServer>(),
+      userId: auth.state.user?.id ?? '',
+      balanceBefore: before,
+    );
+    if (!mounted) return;
+    final now = (await sl<GameServer>().currentUser())?.coin ?? before;
+    cubit.setCoins(now);
+    await auth.refreshUser();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(added == 0 ? UserMessages.adUnavailable : '+$added coin'),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _HintChip(
+      icon: '▶',
+      label: sl<L10n>().t('game_ad'),
+      onTap: _busy ? null : _watch,
+    );
+  }
+}
+
+Future<void> _confirmLetterHint(BuildContext context, L10n l10n) async {
+  final session = context.read<GameCubit>().state.session;
+  if (session == null || session.isFinished) return;
+  final server = sl<GameServer>();
+  final config = await server.getConfig();
+  final user = await server.currentUser();
+  if (user == null || !context.mounted) return;
+  final free = user.freeHint1 > 0;
+  final cost = config.hint1Cost;
+  if (!free && user.coin < cost) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text(UserMessages.insufficientCoins)),
+    );
+    return;
+  }
+  final moves = session.letterHintsOnRow >= 1;
+  final message = free
+      ? l10n.t(moves ? 'hint_letter_free' : 'hint_letter_stay_free')
+      : l10n
+          .t(moves ? 'hint_letter_confirm' : 'hint_letter_stay')
+          .replaceAll('{n}', '$cost');
+  final ok = await _askHint(
+    context,
+    message: message,
+    cancel: l10n.t('hint_cancel'),
+    confirm: l10n.t('hint_confirm'),
+  );
+  if (ok && context.mounted) {
+    await context.read<GameCubit>().hint(HintLevel.letter);
+  }
+}
+
+Future<void> _confirmMeaningHint(BuildContext context, L10n l10n) async {
+  final session = context.read<GameCubit>().state.session;
+  if (session == null || session.isFinished) return;
+  final server = sl<GameServer>();
+  final config = await server.getConfig();
+  final user = await server.currentUser();
+  if (user == null || !context.mounted) return;
+  final free = user.freeHint2 > 0;
+  final cost = config.hint2Cost;
+  if (!free && user.coin < cost) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text(UserMessages.insufficientCoins)),
+    );
+    return;
+  }
+  final message = free
+      ? l10n.t('hint_meaning_free')
+      : l10n.t('hint_meaning_confirm').replaceAll('{n}', '$cost');
+  final ok = await _askHint(
+    context,
+    message: message,
+    cancel: l10n.t('hint_dismiss'),
+    confirm: l10n.t('hint_accept'),
+  );
+  if (ok && context.mounted) {
+    await context.read<GameCubit>().hint(HintLevel.meaning);
+  }
+}
+
+Future<bool> _askHint(
+  BuildContext context, {
+  required String message,
+  required String cancel,
+  required String confirm,
+}) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: AppColors.surface,
+      content: Text(
+        message,
+        style: const TextStyle(
+          color: AppColors.textPrimary,
+          fontSize: 16,
+          height: 1.4,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: Text(cancel),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: AppColors.cosmicGreen),
+          onPressed: () => Navigator.pop(ctx, true),
+          child: Text(confirm),
+        ),
+      ],
+    ),
+  );
+  return ok == true;
+}
+
 class _HintChip extends StatelessWidget {
-  const _HintChip({required this.label, required this.onTap});
+  const _HintChip({
+    required this.label,
+    required this.onTap,
+    this.icon = '💡',
+  });
+
+  final String icon;
 
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -545,7 +753,7 @@ class _HintChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('💡', style: TextStyle(fontSize: 14)),
+          Text(icon, style: const TextStyle(fontSize: 14)),
           const SizedBox(width: 6),
           Text(
             label,

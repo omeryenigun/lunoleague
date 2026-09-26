@@ -40,7 +40,7 @@ class _LanguageScreenState extends State<LanguageScreen>
       final l10n = sl<L10n>();
       if (l10n.chosen) return;
       final code = View.of(context).platformDispatcher.locale.languageCode;
-      l10n.preview(code == 'en' ? 'en' : 'tr');
+      l10n.preview(GameLocale.known(code) ? code : 'tr');
     });
   }
 
@@ -95,9 +95,12 @@ class _LanguageScreenState extends State<LanguageScreen>
                               icon: const Icon(Icons.chevron_left, size: 28),
                             ),
                           ),
-                        const Spacer(),
-                        const GameLogo(size: 120),
-                        const SizedBox(height: 12),
+                        Expanded(
+                          child: ListView(
+                            children: [
+                        const SizedBox(height: 4),
+                        const GameLogo(size: 72),
+                        const SizedBox(height: 8),
                         const ShimmerTitle(fontSize: 32),
                         const SizedBox(height: 10),
                         Container(
@@ -121,7 +124,7 @@ class _LanguageScreenState extends State<LanguageScreen>
                             ],
                           ),
                         ),
-                        const SizedBox(height: 28),
+                        const SizedBox(height: 16),
                         const _SpinningGlobe(),
                         const SizedBox(height: 10),
                         _Heading(text: l10n.t('choose_language')),
@@ -135,16 +138,31 @@ class _LanguageScreenState extends State<LanguageScreen>
                             height: 1.45,
                           ),
                         ),
-                        const SizedBox(height: 28),
-                        for (final locale in GameLocale.all) ...[
-                          _LangCard(
-                            locale: locale,
-                            selected: selected == locale.id,
-                            onTap: () => sl<L10n>().preview(locale.id),
+                        const SizedBox(height: 18),
+                        GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: GameLocale.all.length,
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            mainAxisSpacing: 10,
+                            crossAxisSpacing: 10,
+                            mainAxisExtent: 58,
                           ),
-                          const SizedBox(height: 12),
-                        ],
-                        const Spacer(),
+                          itemBuilder: (context, index) {
+                            final locale = GameLocale.all[index];
+                            return _LangCard(
+                              locale: locale,
+                              selected: selected == locale.id,
+                              onTap: () => sl<L10n>().preview(locale.id),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                            ],
+                          ),
+                        ),
                         CosmicContinueButton(
                           label: l10n.t('continue'),
                           showArrow: false,
@@ -215,9 +233,17 @@ class _SpinningGlobeState extends State<_SpinningGlobe>
 
   @override
   Widget build(BuildContext context) {
-    return RotationTransition(
-      turns: _spin,
-      child: const Text('🌐', style: TextStyle(fontSize: 28)),
+    return Center(
+      child: RotationTransition(
+        turns: _spin,
+        child: const SizedBox(
+          width: 32,
+          height: 32,
+          child: Center(
+            child: Text('🌐', style: TextStyle(fontSize: 26)),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -253,7 +279,7 @@ class _LangCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(18),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 280),
-            padding: const EdgeInsets.fromLTRB(16, 16, 14, 16),
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
@@ -270,11 +296,11 @@ class _LangCard extends StatelessWidget {
             child: Row(
               children: [
                 Container(
-                  width: 54,
-                  height: 54,
+                  width: 36,
+                  height: 36,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(10),
                     gradient: LinearGradient(colors: badge),
                     boxShadow: [
                       BoxShadow(
@@ -288,32 +314,21 @@ class _LangCard extends StatelessWidget {
                     style: const TextStyle(
                       color: AppColors.cosmicBg,
                       fontWeight: FontWeight.w900,
-                      fontSize: 16,
+                      fontSize: 12,
                       letterSpacing: 0.6,
                     ),
                   ),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        locale.nativeName,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 17,
-                        ),
-                      ),
-                      Text(
-                        locale.englishName,
-                        style: const TextStyle(
-                          color: Color(0xFF94A3B8),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    locale.nativeName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                    ),
                   ),
                 ),
                 AnimatedScale(
@@ -324,8 +339,8 @@ class _LangCard extends StatelessWidget {
                     opacity: selected ? 1 : 0,
                     duration: const Duration(milliseconds: 220),
                     child: Container(
-                      width: 28,
-                      height: 28,
+                      width: 22,
+                      height: 22,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: LinearGradient(colors: badge),
@@ -336,7 +351,7 @@ class _LangCard extends StatelessWidget {
                           ),
                         ],
                       ),
-                      child: const Icon(Icons.check, size: 16, color: AppColors.cosmicBg),
+                      child: const Icon(Icons.check, size: 14, color: AppColors.cosmicBg),
                     ),
                   ),
                 ),

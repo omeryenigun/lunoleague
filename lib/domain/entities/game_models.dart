@@ -14,6 +14,7 @@ class GameSessionView {
     required this.status,
     required this.hintUsed,
     required this.revealedLetters,
+    this.letterHintsOnRow = 0,
     required this.definitionHint,
     required this.startedAt,
     required this.expiresAt,
@@ -32,6 +33,9 @@ class GameSessionView {
   final GameStatus status;
   final bool hintUsed;
   final Map<int, String> revealedLetters;
+
+  /// Letter hints bought on the current row. One stays; the next skips the row.
+  final int letterHintsOnRow;
   final String? definitionHint;
   final DateTime startedAt;
   final DateTime expiresAt;

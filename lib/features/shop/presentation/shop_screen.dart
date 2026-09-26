@@ -205,47 +205,13 @@ class _ShopScreenState extends State<ShopScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Row(
-                                      children: [
-                                        Flexible(
-                                          child: Text(
-                                            _title(l10n, p),
-                                            style: const TextStyle(
-                                              color: Color(0xFFF1F5F9),
-                                              fontWeight: FontWeight.w800,
-                                              fontSize: 16,
-                                            ),
-                                          ),
-                                        ),
-                                        if (badge.isNotEmpty) ...[
-                                          const SizedBox(width: 8),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical: 2,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: p.popular
-                                                  ? AppColors.cosmicGreen
-                                                      .withValues(alpha: 0.2)
-                                                  : AppColors.cosmicGold
-                                                      .withValues(alpha: 0.18),
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                            ),
-                                            child: Text(
-                                              badge,
-                                              style: TextStyle(
-                                                color: p.popular
-                                                    ? AppColors.cosmicGreen
-                                                    : AppColors.cosmicGold,
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w800,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ],
+                                    Text(
+                                      _title(l10n, p),
+                                      style: const TextStyle(
+                                        color: Color(0xFFF1F5F9),
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 16,
+                                      ),
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
@@ -259,6 +225,33 @@ class _ShopScreenState extends State<ShopScreen> {
                                   ],
                                 ),
                               ),
+                              if (badge.isNotEmpty) ...[
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: p.popular
+                                        ? AppColors.cosmicGreen
+                                            .withValues(alpha: 0.2)
+                                        : AppColors.cosmicGold
+                                            .withValues(alpha: 0.18),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    badge,
+                                    style: TextStyle(
+                                      color: p.popular
+                                          ? AppColors.cosmicGreen
+                                          : AppColors.cosmicGold,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                              ],
                               FilledButton(
                                 onPressed: busy || !canBuy ? null : () => _buy(p),
                                 style: FilledButton.styleFrom(

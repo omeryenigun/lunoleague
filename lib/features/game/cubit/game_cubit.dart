@@ -136,16 +136,21 @@ class GameCubit extends Cubit<GameState> {
     }
   }
 
+  void setCoins(int coins) => emit(state.copyWith(coins: coins));
+
   Future<void> hint(HintLevel level) async {
     final s = state.session;
     if (s == null || s.isFinished) return;
     try {
       final next = await _server.requestHint(s.sessionId, level);
       final user = await _server.currentUser();
+      final rowChanged = level == HintLevel.letter &&
+          next.currentAttempt != s.currentAttempt;
       emit(state.copyWith(
         session: next,
         clearError: true,
         coins: user?.coin,
+        input: rowChanged ? const [] : null,
       ));
     } catch (e) {
       emit(state.copyWith(error: _msg(e)));

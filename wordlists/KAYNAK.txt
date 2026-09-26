@@ -1,0 +1,18 @@
+Bu dört dosya, altyazılardan çıkarılmış açık sıklık listesinden süzüldü.
+
+Kaynak: Hermit Dave, FrequencyWords, 2018 OpenSubtitles listeleri
+https://github.com/hermitdave/FrequencyWords
+İçerik lisansı: CC BY-SA 4.0
+https://creativecommons.org/licenses/by-sa/4.0/
+
+Küfür ayıklaması: LDNOOBW listesi (CC BY 4.0) ve ek tam eşleşmeler
+https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words
+
+Ne değişti: yalnızca 5, 6 ve 7 harfli kelimeler kaldı. Sıra, kaynak listedeki sıklığa göredir (en sık kullanılan üstte). Her satır bir kelimedir.
+
+de.txt  Almanca. Ä, Ö, Ü ve ẞ durur.
+es.txt  İspanyolca. Aksanlar düz harfe iner, Ñ kalır.
+fr.txt  Fransızca. Aksanlar düz harfe iner (école -> ECOLE).
+it.txt  İtalyanca. Aksanlar düz harfe iner (città -> CITTA).
+
+Altyazı sözcükleri olduğu için arada kişi adı da kalabilir.

@@ -29,18 +29,19 @@ void main() {
 
   test('a confirmed purchase grants the catalog once', () async {
     const billing = _FixedBilling();
+    final before = (await server.currentUser())!.coin;
     final bought = await checkoutShopProduct(
       billing: billing,
       server: server,
       productId: 'coins_100',
     );
-    expect(bought.coin, 100);
+    expect(bought.coin, before + 100);
     final again = await checkoutShopProduct(
       billing: billing,
       server: server,
       productId: 'coins_100',
     );
-    expect(again.coin, 100);
+    expect(again.coin, before + 100);
   });
 }
 

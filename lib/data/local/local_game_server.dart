@@ -9,8 +9,24 @@ import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/core/utils/password_hash.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
 import 'package:kelimelig/data/local/seed_words.dart';
+import 'package:kelimelig/data/local/en_common_words.dart';
+import 'package:kelimelig/data/local/en_extra_words.dart';
+import 'package:kelimelig/data/local/en_batch_words.dart';
+import 'package:kelimelig/data/local/en_next_words.dart';
+import 'package:kelimelig/data/local/en_plus_words.dart';
+import 'package:kelimelig/data/local/de_frequency_words.dart';
+import 'package:kelimelig/data/local/es_frequency_words.dart';
+import 'package:kelimelig/data/local/fr_frequency_words.dart';
+import 'package:kelimelig/data/local/it_frequency_words.dart';
+import 'package:kelimelig/data/local/de_glosses.dart';
+import 'package:kelimelig/data/local/en_flow_words.dart';
+import 'package:kelimelig/data/local/en_wave_words.dart';
+import 'package:kelimelig/data/local/en_more_words.dart';
+import 'package:kelimelig/data/local/en_starter_words.dart';
+import 'package:kelimelig/data/local/tr_profanity.dart';
 import 'package:kelimelig/data/local/word_csv.dart';
 import 'package:kelimelig/data/local/seed_words_en.dart';
+import 'package:kelimelig/data/local/seed_words_extra.dart';
 import 'package:kelimelig/domain/entities/admin_models.dart';
 import 'package:kelimelig/domain/entities/cosmetics.dart';
 import 'package:kelimelig/domain/entities/app_config.dart';
@@ -60,7 +76,35 @@ class LocalGameServer implements GameServer {
   static const _currentUserKey = 'currentUserId';
   static const _seededKey = 'seeded';
   static const _localeSeedKey = 'seeded_locales';
+  static const _moreLocaleKey = 'more_locales_v1';
+  static const _latinLocaleKey = 'more_locales_v2';
   static const _deviceLocaleKey = 'device_locale';
+  static const _profanityKey = 'tr_profanity_draft_v1';
+  static const _enStarterKey = 'en_starter_words_v1';
+  static const _enCommonKey = 'en_common_words_v1';
+  static const _enMoreKey = 'en_more_words_v1';
+  static const _enExtraKey = 'en_extra_words_v1';
+  static const _enNextKey = 'en_next_words_v1';
+  static const _enBatchKey = 'en_batch_words_v1';
+  static const _enPlusKey = 'en_plus_words_v1';
+  static const _enWaveKey = 'en_wave_words_v1';
+  static const _enFlowKey = 'en_flow_words_v1';
+  static const _enDropNoiseKey = 'en_drop_noise_v1';
+  static const _deFrequencyKey = 'de_frequency_words_v1';
+  static const _deGlossKey = 'de_definitions_v1';
+  static const _deDropUndefinedKey = 'de_drop_undefined_v1';
+  static const _esFrequencyKey = 'es_frequency_words_v1';
+  static const _frFrequencyKey = 'fr_frequency_words_v1';
+  static const _itFrequencyKey = 'it_frequency_words_v1';
+  static const _adCoin15Key = 'ad_coin_reward_15_v1';
+  static const _noiseEnglishWords = {
+    'thehun',
+    'ampland',
+    'gratuit',
+    'andale',
+    'msgid',
+    'msgstr',
+  };
 
   Future<void> initialize() async {
     final seeded = await _store.getMeta(_seededKey);
@@ -75,7 +119,239 @@ class LocalGameServer implements GameServer {
       await _store.putMeta(_seededKey, '1');
     }
     await _ensureLocaleContent();
+    await _ensureMoreLocales();
+    await _ensureLatinLocales();
     await _ensureShopCatalog();
+    await _draftTurkishProfanity();
+  }
+
+  /// Marks exact Turkish profanity as draft. Word text and definitions stay.
+  Future<void> _draftTurkishProfanity() async {
+    if (await _store.getMeta(_profanityKey) == '1') return;
+    final now = _clock();
+    for (final raw in await _store.values('words')) {
+      final word = WordEntity.fromMap(raw);
+      if (word.language != 'tr') continue;
+      if (!isTurkishProfanity(word.word)) continue;
+      if (!word.isActive && word.status == WordStatus.draft) continue;
+      await _store.put(
+        'words',
+        word.id,
+        word
+            .copyWith(
+              status: WordStatus.draft,
+              isActive: false,
+              updatedAt: now,
+            )
+            .toMap(),
+      );
+    }
+    await _store.putMeta(_profanityKey, '1');
+  }
+
+  /// Adds the bundled English sample once. Later imports of the same words are skipped.
+  Future<WordImportResult> importStarterEnglishWords() async {
+    if (await _store.getMeta(_enStarterKey) == '1') {
+      return const WordImportResult(imported: 0, skipped: 0, invalid: 0);
+    }
+    final result = await adminImportWords(enStarterWordsCsv);
+    await _store.putMeta(_enStarterKey, '1');
+    return result;
+  }
+
+  /// Adds the common English list once. Words already stored are left as they are.
+  Future<WordImportResult> importCommonEnglishWords() async {
+    if (await _store.getMeta(_enCommonKey) == '1') {
+      return const WordImportResult(imported: 0, skipped: 0, invalid: 0);
+    }
+    final result = await adminImportWords(enCommonWordsCsv);
+    await _store.putMeta(_enCommonKey, '1');
+    return result;
+  }
+
+  /// Adds the next English list once. Words already stored are left as they are.
+  Future<WordImportResult> importMoreEnglishWords() async {
+    if (await _store.getMeta(_enMoreKey) == '1') {
+      return const WordImportResult(imported: 0, skipped: 0, invalid: 0);
+    }
+    final result = await adminImportWords(enMoreWordsCsv);
+    await _store.putMeta(_enMoreKey, '1');
+    return result;
+  }
+
+  /// Adds the latest English list once. Words already stored are left as they are.
+  Future<WordImportResult> importExtraEnglishWords() async {
+    if (await _store.getMeta(_enExtraKey) == '1') {
+      return const WordImportResult(imported: 0, skipped: 0, invalid: 0);
+    }
+    final result = await adminImportWords(enExtraWordsCsv);
+    await _store.putMeta(_enExtraKey, '1');
+    return result;
+  }
+
+  /// Adds another English list once. Words already stored are left as they are.
+  Future<WordImportResult> importNextEnglishWords() async {
+    if (await _store.getMeta(_enNextKey) == '1') {
+      return const WordImportResult(imported: 0, skipped: 0, invalid: 0);
+    }
+    final result = await adminImportWords(enNextWordsCsv);
+    await _store.putMeta(_enNextKey, '1');
+    return result;
+  }
+
+  /// Adds the latest English list once. Words already stored are left as they are.
+  Future<WordImportResult> importBatchEnglishWords() async {
+    if (await _store.getMeta(_enBatchKey) == '1') {
+      return const WordImportResult(imported: 0, skipped: 0, invalid: 0);
+    }
+    final result = await adminImportWords(enBatchWordsCsv);
+    await _store.putMeta(_enBatchKey, '1');
+    return result;
+  }
+
+  /// Adds another English list once. Words already stored are left as they are.
+  Future<WordImportResult> importPlusEnglishWords() async {
+    if (await _store.getMeta(_enPlusKey) == '1') {
+      return const WordImportResult(imported: 0, skipped: 0, invalid: 0);
+    }
+    final result = await adminImportWords(enPlusWordsCsv);
+    await _store.putMeta(_enPlusKey, '1');
+    return result;
+  }
+
+  /// Adds another English list once. Words already stored are left as they are.
+  Future<WordImportResult> importWaveEnglishWords() async {
+    if (await _store.getMeta(_enWaveKey) == '1') {
+      return const WordImportResult(imported: 0, skipped: 0, invalid: 0);
+    }
+    final result = await adminImportWords(enWaveWordsCsv);
+    await _store.putMeta(_enWaveKey, '1');
+    return result;
+  }
+
+  /// Adds another English list once. Words already stored are left as they are.
+  Future<WordImportResult> importFlowEnglishWords() async {
+    if (await _store.getMeta(_enFlowKey) == '1') {
+      return const WordImportResult(imported: 0, skipped: 0, invalid: 0);
+    }
+    final result = await adminImportWords(enFlowWordsCsv);
+    await _store.putMeta(_enFlowKey, '1');
+    return result;
+  }
+
+  /// Adds the German frequency list once. Ä, Ö, Ü and ẞ stay as written.
+  Future<WordImportResult> importGermanFrequencyWords() async {
+    if (await _store.getMeta(_deFrequencyKey) == '1') {
+      return const WordImportResult(imported: 0, skipped: 0, invalid: 0);
+    }
+    final result = await adminImportWords(deFrequencyWordsCsv);
+    await _store.putMeta(_deFrequencyKey, '1');
+    return result;
+  }
+
+  /// Replaces the placeholder German gloss once. Words already given a real
+  /// definition are left as they are.
+  Future<({int updated, int missing})> fillGermanDefinitions() async {
+    if (await _store.getMeta(_deGlossKey) == '1') {
+      return (updated: 0, missing: 0);
+    }
+    var updated = 0;
+    var missing = 0;
+    for (final raw in await _store.values('words')) {
+      final word = WordEntity.fromMap(raw);
+      if (word.language != 'de' || word.definition != 'Deutsches Wort.') {
+        continue;
+      }
+      final gloss = deGlosses[GameLocale.de.writtenUpper(word.word)];
+      if (gloss == null) {
+        missing++;
+        continue;
+      }
+      await _store.put(
+        'words',
+        word.id,
+        word.copyWith(definition: gloss, updatedAt: _clock()).toMap(),
+      );
+      updated++;
+    }
+    await _store.putMeta(_deGlossKey, '1');
+    return (updated: updated, missing: missing);
+  }
+
+  /// Drops German rows that still have the placeholder gloss.
+  Future<int> dropUndefinedGermanWords() async {
+    if (await _store.getMeta(_deDropUndefinedKey) == '1') return 0;
+    var removed = 0;
+    for (final raw in await _store.values('words')) {
+      final word = WordEntity.fromMap(raw);
+      if (word.language == 'de' && word.definition == 'Deutsches Wort.') {
+        await _store.delete('words', word.id);
+        removed++;
+      }
+    }
+    await _store.putMeta(_deDropUndefinedKey, '1');
+    return removed;
+  }
+
+  /// Adds Spanish words that have a real gloss. Ñ stays. Vowel accents fold.
+  Future<WordImportResult> importSpanishFrequencyWords() async {
+    if (await _store.getMeta(_esFrequencyKey) == '1') {
+      return const WordImportResult(imported: 0, skipped: 0, invalid: 0);
+    }
+    final result = await adminImportWords(esFrequencyWordsCsv);
+    await _store.putMeta(_esFrequencyKey, '1');
+    return result;
+  }
+
+  /// Adds French words that have a real gloss. Accents fold, so école is ECOLE.
+  Future<WordImportResult> importFrenchFrequencyWords() async {
+    if (await _store.getMeta(_frFrequencyKey) == '1') {
+      return const WordImportResult(imported: 0, skipped: 0, invalid: 0);
+    }
+    final result = await adminImportWords(frFrequencyWordsCsv);
+    await _store.putMeta(_frFrequencyKey, '1');
+    return result;
+  }
+
+  /// Adds Italian words that have a real gloss. Accents fold, so città is CITTA.
+  Future<WordImportResult> importItalianFrequencyWords() async {
+    if (await _store.getMeta(_itFrequencyKey) == '1') {
+      return const WordImportResult(imported: 0, skipped: 0, invalid: 0);
+    }
+    final result = await adminImportWords(itFrequencyWordsCsv);
+    await _store.putMeta(_itFrequencyKey, '1');
+    return result;
+  }
+
+  /// Sets the rewarded-ad coin grant to 15 once. Other config fields stay.
+  Future<int> raiseAdCoinReward() async {
+    if (await _store.getMeta(_adCoin15Key) == '1') return 0;
+    final config = await _config();
+    if (config.adCoinReward != 15) {
+      await _store.put(
+        'app_config',
+        'default',
+        config.copyWith(adCoinReward: 15).toMap(),
+      );
+    }
+    await _store.putMeta(_adCoin15Key, '1');
+    return 15;
+  }
+
+  /// Removes a few non-English tokens from the English dictionary once.
+  Future<int> dropNoiseEnglishWords() async {
+    if (await _store.getMeta(_enDropNoiseKey) == '1') return 0;
+    var removed = 0;
+    for (final raw in await _store.values('words')) {
+      final word = WordEntity.fromMap(raw);
+      if (word.language == 'en' &&
+          _noiseEnglishWords.contains(word.word.toLowerCase())) {
+        await _store.delete('words', word.id);
+        removed++;
+      }
+    }
+    await _store.putMeta(_enDropNoiseKey, '1');
+    return removed;
   }
 
   Future<void> _seedShopCatalog() async {
@@ -137,6 +413,42 @@ class LocalGameServer implements GameServer {
     await _store.putMeta(_localeSeedKey, '2');
   }
 
+  Future<void> _ensureMoreLocales() async {
+    if (await _store.getMeta(_moreLocaleKey) == '1') return;
+    final now = _clock();
+    for (final word in buildExtraLocaleWords(now: now)) {
+      if (await _store.get('words', word.id) == null) {
+        await _store.put('words', word.id, word.toMap());
+      }
+    }
+    await _putNpcs('de', _deNpcNames);
+    await _putNpcs('es', _esNpcNames);
+    await _putNpcs('fr', _frNpcNames);
+    await _putNpcs('it', _itNpcNames);
+    await _store.putMeta(_moreLocaleKey, '1');
+  }
+
+  Future<void> _ensureLatinLocales() async {
+    if (await _store.getMeta(_latinLocaleKey) == '1') return;
+    final now = _clock();
+    for (final word in buildExtraLocaleWords(now: now)) {
+      if (word.language != 'ru' &&
+          word.language != 'nl' &&
+          word.language != 'pt' &&
+          word.language != 'pl') {
+        continue;
+      }
+      if (await _store.get('words', word.id) == null) {
+        await _store.put('words', word.id, word.toMap());
+      }
+    }
+    await _putNpcs('ru', _ruNpcNames);
+    await _putNpcs('nl', _nlNpcNames);
+    await _putNpcs('pt', _ptNpcNames);
+    await _putNpcs('pl', _plNpcNames);
+    await _store.putMeta(_latinLocaleKey, '1');
+  }
+
   static const _trNpcNames = [
     'Ahmet K.', 'Zeynep Y.', 'Mehmet T.', 'Ali R.', 'Elif S.',
     'Can B.', 'Deniz A.', 'Ece N.', 'Burak M.', 'Selin D.',
@@ -161,6 +473,54 @@ class LocalGameServer implements GameServer {
     'Remy P.', 'Shay L.', 'Noah C.', 'Owen G.', 'Liam H.',
     'Mason U.', 'Ethan O.', 'Lucas F.', 'Mia I.', 'Ava V.',
     'Zoe J.', 'Leo Q.', 'Nora W.', 'Eli X.',
+  ];
+
+  static const _deNpcNames = [
+    'Anna K.', 'Lukas Y.', 'Mia T.', 'Jonas R.', 'Lea S.',
+    'Felix B.', 'Emma A.', 'Paul N.', 'Lina M.', 'Noah D.',
+    'Sofia P.', 'Ben L.',
+  ];
+
+  static const _esNpcNames = [
+    'Lucia K.', 'Mateo Y.', 'Sofia T.', 'Hugo R.', 'Martina S.',
+    'Diego B.', 'Elena A.', 'Pablo N.', 'Carmen M.', 'Leo D.',
+    'Nora P.', 'Iker L.',
+  ];
+
+  static const _frNpcNames = [
+    'Camille K.', 'Louis Y.', 'Chloe T.', 'Hugo R.', 'Lea S.',
+    'Adam B.', 'Manon A.', 'Nathan N.', 'Ines M.', 'Jules D.',
+    'Lina P.', 'Ethan L.',
+  ];
+
+  static const _itNpcNames = [
+    'Giulia K.', 'Luca Y.', 'Sofia T.', 'Marco R.', 'Chiara S.',
+    'Andrea B.', 'Elena A.', 'Matteo N.', 'Greta M.', 'Leo D.',
+    'Nora P.', 'Pietro L.',
+  ];
+
+  static const _ruNpcNames = [
+    'Анна К.', 'Иван Т.', 'Мария С.', 'Павел Р.', 'Ольга Н.',
+    'Сергей Б.', 'Елена А.', 'Никита М.', 'Дарья Д.', 'Лев П.',
+    'София Л.', 'Артём Г.',
+  ];
+
+  static const _nlNpcNames = [
+    'Daan K.', 'Emma Y.', 'Sem T.', 'Luuk R.', 'Sophie S.',
+    'Bram B.', 'Noor A.', 'Finn N.', 'Tess M.', 'Lars D.',
+    'Fleur P.', 'Milan L.',
+  ];
+
+  static const _ptNpcNames = [
+    'Ana K.', 'Pedro Y.', 'Maria T.', 'Lucas R.', 'Beatriz S.',
+    'Miguel B.', 'Sofia A.', 'Tiago N.', 'Ines M.', 'Lara D.',
+    'Rui P.', 'Matilde L.',
+  ];
+
+  static const _plNpcNames = [
+    'Anna K.', 'Piotr Y.', 'Kasia T.', 'Marek R.', 'Zofia S.',
+    'Jan B.', 'Ola A.', 'Tomek N.', 'Basia M.', 'Adam D.',
+    'Ewa P.', 'Leon L.',
   ];
 
   Future<void> _seedNpcs() async {
@@ -250,7 +610,7 @@ class LocalGameServer implements GameServer {
       displayName: displayName ??
           (anonymous
               ? await _uniqueGuestName(locale)
-              : (locale == 'en' ? 'Player' : 'Oyuncu')),
+              : GameLocale.resolve(locale).playerName),
       email: email,
       authProvider: provider,
       isAnonymous: anonymous,
@@ -782,6 +1142,7 @@ class LocalGameServer implements GameServer {
       status: status,
       hintUsed: raw['hintUsed'] as bool? ?? false,
       revealedLetters: revealedLetters,
+      letterHintsOnRow: raw['letterHintsOnRow'] as int? ?? 0,
       definitionHint: raw['definitionHint'] as String?,
       startedAt: DateTime.parse(raw['startedAt'] as String),
       expiresAt: DateTime.parse(raw['expiresAt'] as String),
@@ -1389,17 +1750,30 @@ class LocalGameServer implements GameServer {
 
   bool _plainGuestName(String name) {
     final trimmed = name.trim();
-    return trimmed == 'Misafir' || trimmed == 'Guest';
+    return const {
+      'Misafir',
+      'Guest',
+      'Gast',
+      'Invitado',
+      'Invite',
+      'Ospite',
+      'Гость',
+      'Convidado',
+      'Gość',
+    }.contains(trimmed);
   }
 
   bool _guestLabel(String name) {
     final trimmed = name.trim();
     return _plainGuestName(trimmed) ||
-        RegExp(r'^(Misafir|Guest)\d+$').hasMatch(trimmed);
+        RegExp(
+          r'^(Misafir|Guest|Gast|Invitado|Invite|Ospite|Гость|Convidado|Gość)\d+$',
+        )
+            .hasMatch(trimmed);
   }
 
   Future<String> _uniqueGuestName(String locale) async {
-    final prefix = locale == 'en' ? 'Guest' : 'Misafir';
+    final prefix = GameLocale.resolve(locale).guestPrefix;
     final taken = <String>{};
     for (final map in await _store.values('users')) {
       final name = (map['displayName'] as String? ?? '').trim().toLowerCase();
@@ -1597,6 +1971,7 @@ class LocalGameServer implements GameServer {
     });
     raw['guesses'] = guesses;
     raw['currentAttempt'] = (raw['currentAttempt'] as int) + 1;
+    raw['letterHintsOnRow'] = 0;
 
     final won = evaluated.isWin;
     final lost = !won && (raw['currentAttempt'] as int) >= (raw['maxAttempts'] as int);
@@ -1835,6 +2210,7 @@ class LocalGameServer implements GameServer {
     final secret = WordEntity.fromMap(wordMap!);
     final letters = GameLocale.resolve(secret.language).letters(secret.word);
 
+    var lostOnHint = false;
     if (level == HintLevel.letter) {
       final revealed = Map<String, dynamic>.from(raw['revealedLetters'] as Map? ?? {});
       final open = <int>[];
@@ -1846,6 +2222,16 @@ class LocalGameServer implements GameServer {
       revealed['$idx'] = letters[idx];
       raw['revealedLetters'] = revealed;
       raw['hint1'] = true;
+      final already = raw['letterHintsOnRow'] as int? ?? 0;
+      if (already >= 1) {
+        final attempt = (raw['currentAttempt'] as int? ?? 0) + 1;
+        raw['currentAttempt'] = attempt;
+        if (attempt >= (raw['maxAttempts'] as int)) {
+          raw['status'] = GameStatus.lost.name;
+          lostOnHint = true;
+        }
+      }
+      raw['letterHintsOnRow'] = 1;
     } else {
       raw['definitionHint'] = secret.definition;
     }
@@ -1861,6 +2247,10 @@ class LocalGameServer implements GameServer {
     } else {
       user = await _saveUser(user.copyWith(coin: user.coin - cost));
       await _creditWallet(user.id, -cost, 'HINT_PURCHASE', sessionId);
+    }
+    if (lostOnHint) {
+      final outcome = await _finalize(user, raw, secret, false);
+      return _sessionToView(raw, outcome: outcome);
     }
     return _sessionToView(raw);
   }
@@ -1921,13 +2311,13 @@ class LocalGameServer implements GameServer {
     if (userId.isEmpty || transactionId.isEmpty) return false;
     final seen = 'admob_$transactionId';
     if (await _store.getMeta(seen) == '1') return true;
+    final config = await _config();
     final map = await _store.get('users', userId);
     if (map == null) return false;
-    await _store.putMeta(seen, '1');
     final user = UserEntity.fromMap(map);
-    final config = await _config();
     await _saveUser(user.copyWith(coin: user.coin + config.adCoinReward));
     await _creditWallet(user.id, config.adCoinReward, 'AD_REWARD', transactionId);
+    await _store.putMeta(seen, '1');
     return true;
   }
 
@@ -2773,7 +3163,7 @@ class LocalGameServer implements GameServer {
     final language = cells[1].trim().toLowerCase();
     final definition = cells[2].trim();
     if (word.isEmpty || definition.isEmpty) return null;
-    if (language != 'tr' && language != 'en') return null;
+    if (!GameLocale.known(language)) return null;
     final locale = GameLocale.resolve(language);
     if (!locale.isAllowedWord(word)) return null;
     final length = locale.letterCount(word);

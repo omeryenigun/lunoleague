@@ -18,7 +18,7 @@ class _WordBookScreenState extends State<WordBookScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Kelime defteri'),
+        title: const Text('Kelime Defteri'),
       ),
       body: FutureBuilder(
         future: _future,

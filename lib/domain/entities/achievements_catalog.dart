@@ -20,8 +20,8 @@ class AchDef {
   final String icon;
   final int coins;
 
-  String name(String locale) => locale == 'en' ? nameEn : nameTr;
-  String desc(String locale) => locale == 'en' ? descEn : descTr;
+  String name(String locale) => locale == 'tr' ? nameTr : nameEn;
+  String desc(String locale) => locale == 'tr' ? descTr : descEn;
 }
 
 /// Single source of truth for achievement list + rewards.
@@ -123,7 +123,7 @@ class AchievementsCatalog {
       id: 'endless_starter',
       nameTr: 'Seri Başladı',
       nameEn: 'Run Starter',
-      descTr: 'Endless’te 3’lü seri yap',
+      descTr: 'Maraton’da 3’lü seri yap',
       descEn: 'Reach an endless run of 3',
       icon: '🎢',
       coins: 30,
@@ -186,7 +186,7 @@ class AchievementsCatalog {
       id: 'endless_ten',
       nameTr: 'Onlu Seri',
       nameEn: 'Ten Run',
-      descTr: 'Endless’te 10’lu seri yap',
+      descTr: 'Maraton’da 10’lu seri yap',
       descEn: 'Reach an endless run of 10',
       icon: '🌀',
       coins: 60,
@@ -259,7 +259,7 @@ class AchievementsCatalog {
       id: 'endless_25',
       nameTr: 'Usta Seri',
       nameEn: 'Master Run',
-      descTr: 'Endless’te 25’li seri yap',
+      descTr: 'Maraton’da 25’li seri yap',
       descEn: 'Reach an endless run of 25',
       icon: '🏆',
       coins: 150,

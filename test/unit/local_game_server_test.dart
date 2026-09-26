@@ -4,6 +4,14 @@ import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/domain/entities/cosmetics.dart';
 import 'package:kelimelig/core/errors/failures.dart';
 import 'package:kelimelig/core/utils/turkish_text.dart';
+import 'package:kelimelig/data/local/en_common_words.dart';
+import 'package:kelimelig/data/local/en_extra_words.dart';
+import 'package:kelimelig/data/local/en_batch_words.dart';
+import 'package:kelimelig/data/local/en_next_words.dart';
+import 'package:kelimelig/data/local/en_plus_words.dart';
+import 'package:kelimelig/data/local/en_flow_words.dart';
+import 'package:kelimelig/data/local/en_wave_words.dart';
+import 'package:kelimelig/data/local/en_more_words.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
 import 'package:kelimelig/data/local/local_game_server.dart';
 import 'package:kelimelig/data/remote/session_kv.dart';
@@ -11,6 +19,7 @@ import 'package:kelimelig/data/local/seed_words.dart';
 import 'package:kelimelig/data/local/seed_words_en.dart';
 import 'package:kelimelig/data/local/word_csv.dart';
 import 'package:kelimelig/domain/entities/game_models.dart';
+import 'package:kelimelig/domain/entities/word_entity.dart';
 import 'package:kelimelig/domain/entities/shop_product.dart';
 
 void main() {
@@ -19,6 +28,307 @@ void main() {
   setUp(() async {
     server = LocalGameServer(MemoryKeyValueStore());
     await server.initialize();
+  });
+
+  test('exact turkish profanity is drafted and lookalikes stay', () async {
+    final store = MemoryKeyValueStore();
+    final now = DateTime.utc(2026, 1, 1);
+    Future<void> put(String id, String word) {
+      return store.put(
+        'words',
+        id,
+        WordEntity(
+          id: id,
+          word: word,
+          language: 'tr',
+          length: word.length,
+          difficulty: 2,
+          frequency: 3,
+          category: 'genel',
+          definition: 'deneme',
+          exampleSentence: '',
+          englishTranslation: '',
+          status: WordStatus.active,
+          isActive: true,
+          usedCount: 4,
+          createdAt: now,
+          updatedAt: now,
+        ).toMap(),
+      );
+    }
+
+    await put('swear', 'sikmek');
+    await put('coin', 'sikke');
+    await put('uncle', 'amca');
+    final checker = LocalGameServer(store, clock: () => now);
+    await checker.initialize();
+    final words = await checker.adminListWords();
+    final swear = words.firstWhere((w) => w.id == 'swear');
+    final coin = words.firstWhere((w) => w.id == 'coin');
+    final uncle = words.firstWhere((w) => w.id == 'uncle');
+    expect(swear.word, 'sikmek');
+    expect(swear.definition, 'deneme');
+    expect(swear.usedCount, 4);
+    expect(swear.isActive, isFalse);
+    expect(swear.status, WordStatus.draft);
+    expect(coin.isActive, isTrue);
+    expect(coin.status, WordStatus.active);
+    expect(uncle.isActive, isTrue);
+  });
+
+  test('starter english words import once and stay active', () async {
+    final store = MemoryKeyValueStore();
+    final importer = LocalGameServer(store);
+    final first = await importer.importStarterEnglishWords();
+    expect(first.imported, 15);
+    expect(first.skipped, 0);
+    expect(first.invalid, 0);
+    final words = await importer.adminListWords();
+    expect(words, hasLength(15));
+    expect(words.every((w) => w.language == 'en' && w.playable), isTrue);
+    expect(words.map((w) => w.word.toLowerCase()), containsAll(const [
+      'about',
+      'search',
+      'other',
+      'which',
+      'their',
+      'there',
+      'contact',
+      'online',
+      'first',
+      'would',
+      'these',
+      'click',
+      'service',
+      'price',
+      'people',
+    ]));
+    final second = await importer.importStarterEnglishWords();
+    expect(second.imported, 0);
+    expect((await importer.adminListWords()), hasLength(15));
+  });
+
+  test('common english words import once and stay active', () async {
+    final store = MemoryKeyValueStore();
+    final importer = LocalGameServer(store);
+    final first = await importer.importCommonEnglishWords();
+    expect(first.invalid, 0);
+    expect(first.skipped, 0);
+    expect(first.imported, enCommonWordRows.length);
+    final words = await importer.adminListWords();
+    expect(words, hasLength(enCommonWordRows.length));
+    expect(
+      words.every(
+        (w) =>
+            w.language == 'en' &&
+            w.playable &&
+            w.definition.isNotEmpty &&
+            (w.length == 5 || w.length == 6 || w.length == 7),
+      ),
+      isTrue,
+    );
+    expect(words.map((w) => w.word), containsAll(['state', 'email', 'videos']));
+    final second = await importer.importCommonEnglishWords();
+    expect(second.imported, 0);
+    expect((await importer.adminListWords()), hasLength(enCommonWordRows.length));
+  });
+
+  test('more english words import once and stay active', () async {
+    final store = MemoryKeyValueStore();
+    final importer = LocalGameServer(store);
+    final first = await importer.importMoreEnglishWords();
+    expect(first.invalid, 0);
+    expect(first.skipped, 0);
+    expect(first.imported, enMoreWordRows.length);
+    final words = await importer.adminListWords();
+    expect(words, hasLength(enMoreWordRows.length));
+    expect(
+      words.every(
+        (w) =>
+            w.language == 'en' &&
+            w.playable &&
+            w.definition.isNotEmpty &&
+            (w.length == 5 || w.length == 6 || w.length == 7),
+      ),
+      isTrue,
+    );
+    expect(words.map((w) => w.word), containsAll(['percent', 'false', 'diego']));
+    final second = await importer.importMoreEnglishWords();
+    expect(second.imported, 0);
+    expect((await importer.adminListWords()), hasLength(enMoreWordRows.length));
+  });
+
+  test('extra english words import once and stay active', () async {
+    final store = MemoryKeyValueStore();
+    final importer = LocalGameServer(store);
+    final first = await importer.importExtraEnglishWords();
+    expect(first.invalid, 0);
+    expect(first.skipped, 0);
+    expect(first.imported, enExtraWordRows.length);
+    final words = await importer.adminListWords();
+    expect(words, hasLength(enExtraWordRows.length));
+    expect(
+      words.every(
+        (w) =>
+            w.language == 'en' &&
+            w.playable &&
+            w.definition.isNotEmpty &&
+            (w.length == 5 || w.length == 6 || w.length == 7),
+      ),
+      isTrue,
+    );
+    expect(words.map((w) => w.word), containsAll(['truck', 'ocean', 'viewing']));
+    final second = await importer.importExtraEnglishWords();
+    expect(second.imported, 0);
+    expect((await importer.adminListWords()), hasLength(enExtraWordRows.length));
+  });
+
+  test('next english words import once and stay active', () async {
+    final store = MemoryKeyValueStore();
+    final importer = LocalGameServer(store);
+    final first = await importer.importNextEnglishWords();
+    expect(first.invalid, 0);
+    expect(first.skipped, 0);
+    expect(first.imported, enNextWordRows.length);
+    final words = await importer.adminListWords();
+    expect(words, hasLength(enNextWordRows.length));
+    expect(
+      words.every(
+        (w) =>
+            w.language == 'en' &&
+            w.playable &&
+            w.definition.isNotEmpty &&
+            (w.length == 5 || w.length == 6 || w.length == 7),
+      ),
+      isTrue,
+    );
+    expect(words.map((w) => w.word), containsAll(['christ', 'baties', 'stereo']));
+    final second = await importer.importNextEnglishWords();
+    expect(second.imported, 0);
+    expect((await importer.adminListWords()), hasLength(enNextWordRows.length));
+  });
+
+  test('batch english words import once and stay active', () async {
+    final store = MemoryKeyValueStore();
+    final importer = LocalGameServer(store);
+    final first = await importer.importBatchEnglishWords();
+    expect(first.invalid, 0);
+    expect(first.skipped, 0);
+    expect(first.imported, enBatchWordRows.length);
+    final words = await importer.adminListWords();
+    expect(words, hasLength(enBatchWordRows.length));
+    expect(
+      words.every(
+        (w) =>
+            w.language == 'en' &&
+            w.playable &&
+            w.definition.isNotEmpty &&
+            (w.length == 5 || w.length == 6 || w.length == 7),
+      ),
+      isTrue,
+    );
+    expect(words.map((w) => w.word), containsAll(['taste', 'jacket', 'falling']));
+    final second = await importer.importBatchEnglishWords();
+    expect(second.imported, 0);
+    expect((await importer.adminListWords()), hasLength(enBatchWordRows.length));
+  });
+
+  test('plus english words import once and stay active', () async {
+    final store = MemoryKeyValueStore();
+    final importer = LocalGameServer(store);
+    final first = await importer.importPlusEnglishWords();
+    expect(first.invalid, 0);
+    expect(first.skipped, 0);
+    expect(first.imported, enPlusWordRows.length);
+    final words = await importer.adminListWords();
+    expect(words, hasLength(enPlusWordRows.length));
+    expect(
+      words.every(
+        (w) =>
+            w.language == 'en' &&
+            w.playable &&
+            w.definition.isNotEmpty &&
+            (w.length == 5 || w.length == 6 || w.length == 7),
+      ),
+      isTrue,
+    );
+    expect(words.map((w) => w.word), containsAll(['basics', 'titten', 'ecology']));
+    final second = await importer.importPlusEnglishWords();
+    expect(second.imported, 0);
+    expect((await importer.adminListWords()), hasLength(enPlusWordRows.length));
+  });
+
+  test('wave english words import once and stay active', () async {
+    final store = MemoryKeyValueStore();
+    final importer = LocalGameServer(store);
+    final first = await importer.importWaveEnglishWords();
+    expect(first.invalid, 0);
+    expect(first.skipped, 0);
+    expect(first.imported, enWaveWordRows.length);
+    final words = await importer.adminListWords();
+    expect(words, hasLength(enWaveWordRows.length));
+    expect(
+      words.every(
+        (w) =>
+            w.language == 'en' &&
+            w.playable &&
+            w.definition.isNotEmpty &&
+            (w.length == 5 || w.length == 6 || w.length == 7),
+      ),
+      isTrue,
+    );
+    expect(words.map((w) => w.word), containsAll(['oliver', 'rabbit', 'magnet']));
+    final second = await importer.importWaveEnglishWords();
+    expect(second.imported, 0);
+    expect((await importer.adminListWords()), hasLength(enWaveWordRows.length));
+  });
+
+  test('flow english words import once and stay active', () async {
+    final store = MemoryKeyValueStore();
+    final importer = LocalGameServer(store);
+    final first = await importer.importFlowEnglishWords();
+    expect(first.invalid, 0);
+    expect(first.skipped, 0);
+    expect(first.imported, enFlowWordRows.length);
+    final words = await importer.adminListWords();
+    expect(words, hasLength(enFlowWordRows.length));
+    expect(
+      words.every(
+        (w) =>
+            w.language == 'en' &&
+            w.playable &&
+            w.definition.isNotEmpty &&
+            (w.length == 5 || w.length == 6 || w.length == 7),
+      ),
+      isTrue,
+    );
+    expect(words.map((w) => w.word), containsAll(['porsche', 'tions', 'poison']));
+    final second = await importer.importFlowEnglishWords();
+    expect(second.imported, 0);
+    expect((await importer.adminListWords()), hasLength(enFlowWordRows.length));
+  });
+
+  test('noise english words are deleted once', () async {
+    final store = MemoryKeyValueStore();
+    final importer = LocalGameServer(store);
+    const csv = '''
+word,language,definition,example,english,category,difficulty,frequency,status
+thehun,en,Noise.,,,abstract,3,1,active
+ampland,en,Noise.,,,abstract,3,1,active
+gratuit,en,Noise.,,,abstract,3,1,active
+andale,en,Noise.,,,abstract,3,1,active
+msgid,en,Noise.,,,abstract,3,1,active
+msgstr,en,Noise.,,,abstract,3,1,active
+magnet,en,A piece of metal that attracts iron.,,,object,1,5,active
+''';
+    final imported = await importer.adminImportWords(csv);
+    expect(imported.imported, 7);
+    final removed = await importer.dropNoiseEnglishWords();
+    expect(removed, 6);
+    final words = await importer.adminListWords();
+    expect(words.map((w) => w.word), ['magnet']);
+    expect(await importer.dropNoiseEnglishWords(), 0);
+    expect((await importer.adminListWords()).map((w) => w.word), ['magnet']);
   });
 
   test('seed words are 5, 6 or 7 letters', () {
@@ -118,7 +428,9 @@ void main() {
     final session = await server.startDaily();
     expect(session.wordLength, 5);
     final words = await server.adminListWords();
-    final secret = words.firstWhere((w) => w.length == 5 && w.playable);
+    final secret = words.firstWhere(
+      (w) => w.length == 5 && w.playable && w.language == 'tr',
+    );
     // Force known daily word
     await server.adminSetDaily(
       dateKey: DateTime.now().toIso8601String().substring(0, 10),
@@ -173,6 +485,13 @@ void main() {
     var session = await server.startDaily();
     session = await server.requestHint(session.sessionId, HintLevel.letter);
     expect(session.hintUsed, isTrue);
+    expect(session.currentAttempt, 0);
+    expect(session.letterHintsOnRow, 1);
+    expect(session.revealedLetters, hasLength(1));
+    session = await server.requestHint(session.sessionId, HintLevel.letter);
+    expect(session.currentAttempt, 1);
+    expect(session.letterHintsOnRow, 1);
+    expect(session.revealedLetters, hasLength(2));
     session = await server.submitGuess(session.sessionId, words[1].word);
     expect(session.outcome!.xpEarned, lessThan(130));
   });
@@ -298,7 +617,7 @@ void main() {
     final before = await server.currentUser();
     await server.restoreEndlessRunAfterAd();
     final after = await server.currentUser();
-    expect(after!.coin, before!.coin + 5);
+    expect(after!.coin, before!.coin + 15);
 
     final recovered = await winEndless();
     expect(recovered.outcome!.endlessRun, 2);

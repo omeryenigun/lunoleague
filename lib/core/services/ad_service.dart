@@ -24,22 +24,26 @@ class AdService {
     await ad.setServerSideOptions(
       ServerSideVerificationOptions(userId: userId),
     );
-    final earned = Completer<bool>();
+    // Android 15 draws full-screen ads under the navigation bar, which
+    // covers the close button. Immersive mode hides that bar for the ad.
+    await ad.setImmersiveMode(true);
+    var rewarded = false;
+    final closed = Completer<bool>();
     ad.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
         ad.dispose();
-        if (!earned.isCompleted) earned.complete(false);
+        if (!closed.isCompleted) closed.complete(rewarded);
       },
       onAdFailedToShowFullScreenContent: (ad, _) {
         ad.dispose();
-        if (!earned.isCompleted) earned.complete(false);
+        if (!closed.isCompleted) closed.complete(false);
       },
     );
     await ad.show(
       onUserEarnedReward: (_, _) {
-        if (!earned.isCompleted) earned.complete(true);
+        rewarded = true;
       },
     );
-    return earned.future;
+    return closed.future;
   }
 }

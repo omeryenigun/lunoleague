@@ -37,7 +37,7 @@ class WordEntity {
   final DateTime createdAt;
   final DateTime updatedAt;
 
-  String get displayWord => GameLocale.resolve(language).toUpper(word);
+  String get displayWord => GameLocale.resolve(language).writtenUpper(word);
 
   bool get playable => isActive && status == WordStatus.active;
 

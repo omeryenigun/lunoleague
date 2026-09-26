@@ -180,7 +180,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             onPressed: () async {
                               final auth = context.read<AuthCubit>();
                               await auth.google();
-                              if (!mounted) return;
+                              if (!context.mounted) return;
                               final error = auth.state.error;
                               if (error != null) {
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -300,29 +300,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           showDivider: true,
                         ),
                         _MenuRow(
-                          label: '📖 Kelime defteri',
+                          label: '📖 Kelime Defteri',
                           onTap: () => context.push('/word-book'),
-                          showDivider: true,
+                          showDivider: u.isAnonymous,
                         ),
                         if (u.isAnonymous)
                           _MenuRow(
                             label: '🔐 ${l10n.t('login_or_register')}',
                             onTap: _openLogin,
                             showDivider: false,
-                          )
-                        else
-                          _MenuRow(
-                            label: '🚪 ${l10n.t('sign_out')}',
-                            onTap: () async {
-                              await context.read<AuthCubit>().signOut();
-                              if (context.mounted) context.go('/login');
-                            },
-                            color: AppColors.cosmicRed,
-                            showDivider: false,
                           ),
                       ],
                     ),
                   ),
+                  if (!u.isAnonymous) ...[
+                    const SizedBox(height: 22),
+                    OutlinedButton(
+                      onPressed: () async {
+                        await context.read<AuthCubit>().signOut();
+                        if (context.mounted) context.go('/login');
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.cosmicRed,
+                        minimumSize: const Size.fromHeight(48),
+                        side: BorderSide(
+                          color: AppColors.cosmicRed.withValues(alpha: 0.45),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: Text(l10n.t('sign_out')),
+                    ),
+                  ],
                 ],
               );
             },
@@ -536,13 +546,11 @@ class _MenuRow extends StatelessWidget {
     required this.label,
     required this.onTap,
     required this.showDivider,
-    this.color = const Color(0xFFF1F5F9),
   });
 
   final String label;
   final VoidCallback onTap;
   final bool showDivider;
-  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -558,8 +566,8 @@ class _MenuRow extends StatelessWidget {
                 Expanded(
                   child: Text(
                     label,
-                    style: TextStyle(
-                      color: color,
+                    style: const TextStyle(
+                      color: Color(0xFFF1F5F9),
                       fontWeight: FontWeight.w700,
                       fontSize: 15,
                     ),
@@ -567,7 +575,7 @@ class _MenuRow extends StatelessWidget {
                 ),
                 Icon(
                   Icons.chevron_right,
-                  color: color.withValues(alpha: 0.55),
+                  color: const Color(0xFFF1F5F9).withValues(alpha: 0.55),
                   size: 22,
                 ),
               ],
@@ -763,7 +771,7 @@ class StatisticsScreen extends StatelessWidget {
                             ),
                             _RichStat(
                               icon: '♾️',
-                              label: 'En uzun Endless',
+                              label: 'En uzun Maraton',
                               value: '${u.endlessBest}',
                               valueColor: const Color(0xFF9B59B6),
                               iconColors: const [
@@ -823,19 +831,27 @@ class _StatsCompare extends StatefulWidget {
   State<_StatsCompare> createState() => _StatsCompareState();
 }
 
+enum _StatsSpan { all, today, month, year }
+
 class _StatsCompareState extends State<_StatsCompare> {
-  var _today = false;
+  var _span = _StatsSpan.all;
 
   @override
   Widget build(BuildContext context) {
     final l10n = sl<L10n>();
     final user = widget.bundle.user;
-    final board = widget.bundle.competition.week;
+    final competition = widget.bundle.competition;
+    final board = switch (_span) {
+      _StatsSpan.month => competition.month,
+      _StatsSpan.year => competition.year,
+      _ => competition.week,
+    };
     final mine = board.where((e) => e.isCurrentUser).firstOrNull;
     final others = board.where((e) => !e.isCurrentUser);
     final average = others.isEmpty
         ? 0
         : others.map((e) => e.points).reduce((a, b) => a + b) / others.length;
+    final today = _span == _StatsSpan.today;
     final playedToday = widget.bundle.home.dailyStatus == DailyStatus.completed;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
@@ -847,20 +863,35 @@ class _StatsCompareState extends State<_StatsCompare> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              _StatsTab(
-                label: l10n.t('stats_all'),
-                selected: !_today,
-                onTap: () => setState(() => _today = false),
-              ),
-              const SizedBox(width: 8),
-              _StatsTab(
-                label: l10n.t('stats_today'),
-                selected: _today,
-                onTap: () => setState(() => _today = true),
-              ),
-            ],
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _StatsTab(
+                  label: l10n.t('stats_all'),
+                  selected: _span == _StatsSpan.all,
+                  onTap: () => setState(() => _span = _StatsSpan.all),
+                ),
+                const SizedBox(width: 8),
+                _StatsTab(
+                  label: l10n.t('stats_today'),
+                  selected: _span == _StatsSpan.today,
+                  onTap: () => setState(() => _span = _StatsSpan.today),
+                ),
+                const SizedBox(width: 8),
+                _StatsTab(
+                  label: l10n.t('stats_month'),
+                  selected: _span == _StatsSpan.month,
+                  onTap: () => setState(() => _span = _StatsSpan.month),
+                ),
+                const SizedBox(width: 8),
+                _StatsTab(
+                  label: l10n.t('stats_year'),
+                  selected: _span == _StatsSpan.year,
+                  onTap: () => setState(() => _span = _StatsSpan.year),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 16),
           Row(
@@ -874,22 +905,20 @@ class _StatsCompareState extends State<_StatsCompare> {
             children: [
               Expanded(
                 child: _CompareTile(
-                  value: _today
+                  value: today
                       ? (playedToday ? l10n.t('stats_daily_done') : '—')
-                      : '${mine?.points ?? widget.bundle.home.leaguePoints}',
-                  label: _today ? l10n.t('stats_daily') : l10n.t('stats_points'),
+                      : '${mine?.points ?? (_span == _StatsSpan.all ? widget.bundle.home.leaguePoints : 0)}',
+                  label: today ? l10n.t('stats_daily') : l10n.t('stats_points'),
                   emphasize: true,
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: _CompareTile(
-                  value: _today
+                  value: today
                       ? '—'
                       : (others.isEmpty ? '—' : average.round().toString()),
-                  label: _today
-                      ? l10n.t('stats_avg_points')
-                      : l10n.t('stats_avg_points'),
+                  label: l10n.t('stats_avg_points'),
                 ),
               ),
             ],
@@ -899,18 +928,18 @@ class _StatsCompareState extends State<_StatsCompare> {
             children: [
               Expanded(
                 child: _CompareTile(
-                  value: _today
+                  value: today
                       ? '${user.streak}'
                       : user.averageGuesses.toStringAsFixed(1),
-                  label: _today ? l10n.t('stats_streak') : l10n.t('stats_avg_guess'),
+                  label: today ? l10n.t('stats_streak') : l10n.t('stats_avg_guess'),
                   emphasize: true,
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: _CompareTile(
-                  value: _today ? '${user.longestStreak}' : '—',
-                  label: _today
+                  value: today ? '${user.longestStreak}' : '—',
+                  label: today
                       ? l10n.t('stats_best_streak')
                       : l10n.t('stats_avg_guess'),
                 ),
@@ -918,7 +947,9 @@ class _StatsCompareState extends State<_StatsCompare> {
             ],
           ),
           const SizedBox(height: 16),
-          if (mine == null || board.length < 2)
+          if (today)
+            const SizedBox.shrink()
+          else if (mine == null || board.length < 2)
             Text(
               l10n.t('stats_no_rank'),
               style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),

@@ -4,9 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:kelimelig/core/constants/enums.dart';
 import 'package:kelimelig/core/l10n/game_locale.dart';
 import 'package:kelimelig/core/constants/user_messages.dart';
-import 'package:kelimelig/core/errors/failures.dart';
 import 'package:kelimelig/core/l10n/l10n.dart';
-import 'package:kelimelig/core/services/ad_service.dart';
+import 'package:kelimelig/core/services/rewarded_ad_flow.dart';
 import 'package:kelimelig/core/services/audio_manager.dart';
 import 'package:kelimelig/core/services/haptic_manager.dart';
 import 'package:kelimelig/core/services/motion_manager.dart';
@@ -50,6 +49,8 @@ class SettingsScreen extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 18),
+              const _SettingsAdPanel(),
+              const SizedBox(height: 14),
               _SettingsSection(
                 label: l10n.t('settings_lang_section'),
                 child: InkWell(
@@ -183,65 +184,6 @@ class SettingsScreen extends StatelessWidget {
                 label: l10n.t('settings_extra'),
                 child: Column(
                   children: [
-                    FutureBuilder(
-                      future: sl<GameServer>().getConfig(),
-                      builder: (context, snap) {
-                        final reward = snap.data?.adCoinReward ?? 5;
-                        return _ActionRow(
-                          icon: '🎬',
-                          label: l10n.t('watch_ad'),
-                          trailing: '+$reward 🪙',
-                          color: AppColors.cosmicGold,
-                          onTap: () async {
-                            final auth = context.read<AuthCubit>();
-                            final user = auth.state.user;
-                            final ok = await sl<AdService>().showRewarded(user?.id ?? '');
-                            if (!ok) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(UserMessages.adUnavailable),
-                                  ),
-                                );
-                              }
-                              return;
-                            }
-                            final before = user?.coin ?? 0;
-                            var coins = 0;
-                            try {
-                              coins = await sl<GameServer>().watchRewardedAd();
-                            } on AppFailure {
-                              for (var i = 0; i < 8; i++) {
-                                await Future<void>.delayed(const Duration(seconds: 1));
-                                if (!context.mounted) return;
-                                await auth.refreshUser();
-                                final now = auth.state.user?.coin ?? before;
-                                if (now > before) {
-                                  coins = now - before;
-                                  break;
-                                }
-                              }
-                            }
-                            if (!context.mounted) return;
-                            if (coins == 0) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text(UserMessages.adUnavailable)),
-                              );
-                              return;
-                            }
-                            if (context.mounted) {
-                              await context.read<AuthCubit>().refreshUser();
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('+$coins coin')),
-                                );
-                              }
-                            }
-                          },
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 4),
                     _ActionRow(
                       icon: '🛒',
                       label: l10n.t('shop'),
@@ -249,22 +191,157 @@ class SettingsScreen extends StatelessWidget {
                       color: AppColors.cosmicGreen,
                       onTap: () => context.go('/shop'),
                     ),
-                    const SizedBox(height: 4),
-                    _ActionRow(
-                      icon: '🚪',
-                      label: l10n.t('sign_out'),
-                      trailing: '›',
-                      color: AppColors.cosmicRed,
-                      onTap: () async {
-                        await context.read<AuthCubit>().signOut();
-                        if (context.mounted) context.go('/login');
-                      },
-                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 22),
               const Center(child: GameVersionLabel()),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsAdPanel extends StatefulWidget {
+  const _SettingsAdPanel();
+
+  @override
+  State<_SettingsAdPanel> createState() => _SettingsAdPanelState();
+}
+
+class _SettingsAdPanelState extends State<_SettingsAdPanel> {
+  var _busy = false;
+  int? _reward;
+
+  @override
+  void initState() {
+    super.initState();
+    sl<GameServer>().getConfig().then((config) {
+      if (mounted) setState(() => _reward = config.adCoinReward);
+    });
+  }
+
+  Future<void> _watch() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final auth = context.read<AuthCubit>();
+    final before = auth.state.user?.coin ?? 0;
+    final coins = await collectRewardedAdCoins(
+      server: sl<GameServer>(),
+      userId: auth.state.user?.id ?? '',
+      balanceBefore: before,
+    );
+    if (!mounted) return;
+    await auth.refreshUser();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          coins == 0 ? UserMessages.adUnavailable : '+$coins coin',
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = sl<L10n>();
+    final reward = _reward ?? 15;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _busy ? null : _watch,
+        borderRadius: BorderRadius.circular(20),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: const LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [Color(0x332A2208), Color(0xFF12160F)],
+            ),
+            border: Border.all(color: const Color(0x99C6A15A)),
+          ),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2A2414),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.videocam_rounded,
+                  color: Color(0xFFFFC107),
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      l10n.t('watch_ad'),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      l10n.t('settings_ad_sub'),
+                      style: const TextStyle(
+                        color: Color(0xFF9CA3AF),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1408),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFFFC107)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  child: _busy
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Color(0xFFFFC107),
+                          ),
+                        )
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '+$reward',
+                              style: const TextStyle(
+                                color: Color(0xFFFFC107),
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            const Text('🪙', style: TextStyle(fontSize: 14)),
+                          ],
+                        ),
+                ),
+              ),
             ],
           ),
         ),

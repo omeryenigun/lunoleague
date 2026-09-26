@@ -32,14 +32,26 @@ $g.FillPath($glowBrush, $glow)
 $logo = [System.Drawing.Image]::FromFile((Join-Path (Split-Path -Parent $PSScriptRoot) 'assets\images\logo.png'))
 $g.DrawImage($logo, 56, 70, 360, 360)
 
-$titleFont = New-Object System.Drawing.Font 'Segoe UI', 52, ([System.Drawing.FontStyle]::Bold)
-$subFont = New-Object System.Drawing.Font 'Segoe UI', 20, ([System.Drawing.FontStyle]::Regular)
+$titleFont = New-Object System.Drawing.Font 'Segoe UI', 48, ([System.Drawing.FontStyle]::Bold)
+$langFont = New-Object System.Drawing.Font 'Segoe UI', 15, ([System.Drawing.FontStyle]::Regular)
 $tileFont = New-Object System.Drawing.Font 'Segoe UI', 22, ([System.Drawing.FontStyle]::Bold)
 $white = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 245, 248, 252))
 $muted = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 186, 214, 224))
-$g.DrawString('Luno League', $titleFont, $white, 450, 145)
-$subtitle = 'T' + [char]0x00FC + 'rk' + [char]0x00E7 + 'e ve ' + [char]0x0130 + 'ngilizce kelime oyunu'
-$g.DrawString($subtitle, $subFont, $muted, 456, 230)
+$g.DrawString('Luno League', $titleFont, $white, 440, 118)
+
+function Join-Lang([string[]]$names) {
+  $dot = '  ' + [char]0x00B7 + '  '
+  return ($names -join $dot)
+}
+$turkish = 'T' + [char]0x00FC + 'rk' + [char]0x00E7 + 'e'
+$spanish = 'Espa' + [char]0x00F1 + 'ol'
+$french = 'Fran' + [char]0x00E7 + 'ais'
+$portuguese = 'Portugu' + [char]0x00EA + 's'
+$russian = [string]::new([char[]]@(0x0420, 0x0443, 0x0441, 0x0441, 0x043A, 0x0438, 0x0439))
+$row1 = Join-Lang @($turkish, 'English', 'Deutsch', $spanish, $french)
+$row2 = Join-Lang @('Italiano', $russian, 'Nederlands', $portuguese, 'Polski')
+$g.DrawString($row1, $langFont, $muted, 446, 198)
+$g.DrawString($row2, $langFont, $muted, 446, 228)
 
 $tiles = @(
   @{ L = 'L'; C = [System.Drawing.Color]::FromArgb(255, 46, 204, 113) },
@@ -47,9 +59,9 @@ $tiles = @(
   @{ L = 'N'; C = [System.Drawing.Color]::FromArgb(255, 55, 62, 92) },
   @{ L = 'O'; C = [System.Drawing.Color]::FromArgb(255, 46, 204, 113) }
 )
-$x = 456
+$x = 446
 foreach ($tile in $tiles) {
-  $tileRect = New-Object System.Drawing.Rectangle $x, 300, 64, 64
+  $tileRect = New-Object System.Drawing.Rectangle $x, 292, 64, 64
   $path = New-Object System.Drawing.Drawing2D.GraphicsPath
   $radius = 12
   $path.AddArc($tileRect.X, $tileRect.Y, $radius, $radius, 180, 90)
@@ -60,7 +72,7 @@ foreach ($tile in $tiles) {
   $fill = New-Object System.Drawing.SolidBrush $tile.C
   $g.FillPath($fill, $path)
   $size = $g.MeasureString($tile.L, $tileFont)
-  $g.DrawString($tile.L, $tileFont, $white, ($x + (64 - $size.Width) / 2), (300 + (64 - $size.Height) / 2))
+  $g.DrawString($tile.L, $tileFont, $white, ($x + (64 - $size.Width) / 2), (292 + (64 - $size.Height) / 2))
   $fill.Dispose()
   $path.Dispose()
   $x += 76

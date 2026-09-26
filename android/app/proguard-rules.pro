@@ -1,0 +1,3 @@
+-keep class * extends androidx.room.RoomDatabase { *; }
+-keep class androidx.work.impl.WorkDatabase_Impl { *; }
+-keep class * extends androidx.work.impl.WorkDatabase { *; }

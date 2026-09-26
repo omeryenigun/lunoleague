@@ -3,8 +3,9 @@ import 'package:kelimelig/core/constants/game_version.dart';
 
 void main() {
   test('version starts at V.0.0.0 and patch is the only automatic step', () {
-    final start = GameVersion.parse(gameVersionCode);
+    final start = GameVersion.parse('0.0.0');
     expect(start.label, 'V.0.0.0');
+    expect(GameVersion.parse(gameVersionCode).label, 'V.$gameVersionCode');
 
     final patch = start.bumpPatch();
     expect(patch.label, 'V.0.0.1');

@@ -486,22 +486,20 @@ class _AdminShellState extends State<AdminShell> {
             if (game.localeFilter)
               Padding(
                 padding: const EdgeInsets.only(right: 12),
-                child: SegmentedButton<String>(
-                  segments: [
+                child: DropdownButton<String>(
+                  value: _locale,
+                  underline: const SizedBox.shrink(),
+                  items: [
                     for (final loc in GameLocale.all)
-                      ButtonSegment(
+                      DropdownMenuItem(
                         value: loc.id,
-                        label: Text(loc.id.toUpperCase()),
+                        child: Text('${loc.id.toUpperCase()}  ${loc.nativeName}'),
                       ),
                   ],
-                  selected: {_locale},
-                  onSelectionChanged: (next) {
-                    setState(() => _locale = next.first);
+                  onChanged: (next) {
+                    if (next == null) return;
+                    setState(() => _locale = next);
                   },
-                  style: const ButtonStyle(
-                    visualDensity: VisualDensity.compact,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
                 ),
               ),
           ],

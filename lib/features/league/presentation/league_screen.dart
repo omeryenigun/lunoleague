@@ -205,9 +205,11 @@ class _GuestLeagueOption extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = AppColors.forLeague(tier);
-    final detail = locale == 'en'
-        ? '${tier.wordLength} letters · ${tier.maxAttempts} tries'
-        : '${tier.wordLength} harf · ${tier.maxAttempts} deneme';
+    final l10n = sl<L10n>();
+    final detail = l10n
+        .t('letters_tries')
+        .replaceAll('{n}', '${tier.wordLength}')
+        .replaceAll('{m}', '${tier.maxAttempts}');
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -229,7 +231,7 @@ class _GuestLeagueOption extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '${tier.labelFor(locale)} ${locale == 'en' ? 'League' : 'Lig'}',
+                      '${tier.labelFor(locale)} ${l10n.t('league')}',
                       style: TextStyle(
                         color: accent,
                         fontWeight: FontWeight.w800,

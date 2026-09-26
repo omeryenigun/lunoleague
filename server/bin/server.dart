@@ -144,7 +144,7 @@ const _defaultConfig = {
   'dailyLoseCoins': 5,
   'hint1Cost': 10,
   'hint2Cost': 15,
-  'adCoinReward': 5,
+  'adCoinReward': 15,
   'streakBonusXp': {'5': 100, '7': 250, '14': 500, '30': 1500},
   'dailyRewardCycle': [
     {'day': 1, 'coins': 10, 'hintLevel1': 0, 'hintLevel2': 0, 'shield': 0},

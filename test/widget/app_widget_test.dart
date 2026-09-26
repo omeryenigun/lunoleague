@@ -17,6 +17,7 @@ import 'package:kelimelig/features/auth/presentation/login_screen.dart';
 import 'package:kelimelig/features/game/presentation/game_screen.dart';
 import 'package:kelimelig/features/game/presentation/widgets/result_screen.dart';
 import 'package:kelimelig/features/game/presentation/widgets/turkish_keyboard.dart';
+import 'package:kelimelig/core/widgets/game_logo.dart';
 import 'package:kelimelig/features/home/presentation/home_screen.dart';
 import 'package:kelimelig/features/profile/presentation/profile_screen.dart';
 import 'package:kelimelig/injection.dart';
@@ -81,9 +82,9 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
-    expect(find.text('Luno League'), findsOneWidget);
+    expect(find.byType(GameLogo), findsOneWidget);
     expect(find.text('GÜNLÜK OYNA'), findsOneWidget);
-    expect(find.text('ENDLESS'), findsOneWidget);
+    expect(find.text('MARATON'), findsOneWidget);
     expect(find.text('Kayıtlı hesap gerekir'), findsNothing);
   });
 
@@ -252,9 +253,9 @@ void main() {
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
-    expect(find.text('Google ile giriş'), findsOneWidget);
-    expect(find.text('Kayıt ol'), findsOneWidget);
-    expect(find.text('E-posta ile giriş'), findsOneWidget);
+    expect(find.text('Google ile Giriş'), findsOneWidget);
+    expect(find.text('Kayıt Ol'), findsOneWidget);
+    expect(find.text('Giriş Yap'), findsWidgets);
     expect(find.text('Test olarak gir'), findsNothing);
     expect(find.text('Apple ile giriş'), findsNothing);
     expect(find.textContaining('e-posta gerekir'), findsOneWidget);
@@ -275,7 +276,7 @@ void main() {
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
-    expect(find.text('Apple ile giriş'), findsOneWidget);
+    expect(find.text('Apple ile Giriş'), findsOneWidget);
     expect(find.textContaining('Apple veya e-posta'), findsOneWidget);
   });
 }

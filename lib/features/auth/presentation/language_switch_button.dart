@@ -22,6 +22,7 @@ Future<void> showLanguageSwitchDialog(
       return StatefulBuilder(
         builder: (context, setState) {
           return AlertDialog(
+            scrollable: true,
             backgroundColor: AppColors.surface,
             title: Text(l10n.t('lang_switch_title')),
             content: Column(
@@ -36,18 +37,25 @@ Future<void> showLanguageSwitchDialog(
                   ),
                 ),
                 const SizedBox(height: 16),
-                for (final locale in GameLocale.all)
-                  RadioListTile<String>(
-                    value: locale.id,
-                    groupValue: selected,
-                    activeColor: AppColors.cosmicGreen,
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(locale.nativeName),
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setState(() => selected = value);
-                    },
+                RadioGroup<String>(
+                  groupValue: selected,
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => selected = value);
+                  },
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final locale in GameLocale.all)
+                        RadioListTile<String>(
+                          value: locale.id,
+                          activeColor: AppColors.cosmicGreen,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(locale.nativeName),
+                        ),
+                    ],
                   ),
+                ),
               ],
             ),
             actions: [

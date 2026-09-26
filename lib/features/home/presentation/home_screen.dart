@@ -2,13 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:kelimelig/core/constants/enums.dart';
+import 'package:kelimelig/core/constants/user_messages.dart';
 import 'package:kelimelig/core/l10n/l10n.dart';
+import 'package:kelimelig/core/services/rewarded_ad_flow.dart';
 import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
 import 'package:kelimelig/core/theme/cosmic_glass.dart';
 import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/domain/entities/game_models.dart';
 import 'package:kelimelig/domain/entities/user_entity.dart';
+import 'package:kelimelig/domain/game/game_server.dart';
+import 'package:kelimelig/features/auth/cubit/auth_cubit.dart';
 import 'package:kelimelig/core/widgets/game_logo.dart';
 import 'package:kelimelig/features/home/cubit/home_cubit.dart';
 import 'package:kelimelig/injection.dart';
@@ -77,6 +81,8 @@ class _HomeView extends StatelessWidget {
                     const _ModeCard(duel: true),
                     const SizedBox(height: 12),
                     const _ModeCard(duel: false),
+                    const SizedBox(height: 12),
+                    const _AdCoinPanel(),
                   ],
                 ),
               );
@@ -97,14 +103,16 @@ class _LeagueCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = sl<L10n>();
-    final accent = AppColors.forLeague(user.currentLeague);
+    final accent = user.currentLeague == LeagueTier.bronze
+        ? const Color(0xFFFFC107)
+        : AppColors.forLeague(user.currentLeague);
     final title = l10n.t('league_named').replaceAll(
       '{tier}',
       user.currentLeague.labelFor(l10n.id).toUpperCase(),
     );
     return CosmicGlassCard(
       padding: _homeCardPadding,
-      colors: const [AppColors.cosmicGold, Color(0xFFF39C12), Color(0xFFE67E22)],
+      colors: const [Color(0xFFFFC107), Color(0xFFFF8C00), Color(0xFFFFC107)],
       onTap: () => user.isAnonymous
           ? context.go('/profile')
           : context.push('/settings'),
@@ -232,13 +240,13 @@ class _DailyCta extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = sl<L10n>();
     final subtitle = user.isAnonymous ? l10n.t('daily_guest') : l10n.t('daily_reg');
-    const colors = [AppColors.cosmicGreen, AppColors.cosmicTeal];
+    const accent = Color(0xFF00FFAA);
     return CosmicGlassCard(
       padding: _homeCardPadding,
       colors: const [
-        AppColors.cosmicGreen,
-        AppColors.cosmicTeal,
-        Color(0xFF27AE60),
+        accent,
+        Color(0xFF00C9A7),
+        accent,
       ],
       onTap: () async {
         await context.push('/game/daily');
@@ -250,23 +258,19 @@ class _DailyCta extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: colors,
-              ),
+              borderRadius: BorderRadius.circular(12),
+              color: const Color(0x66000000),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.cosmicGreen.withValues(alpha: 0.5),
-                  blurRadius: 22,
+                  color: accent.withValues(alpha: 0.28),
+                  blurRadius: 12,
                 ),
               ],
             ),
             alignment: Alignment.center,
             child: const Icon(
               Icons.calendar_today_rounded,
-              color: Colors.white,
+              color: accent,
               size: 22,
             ),
           ),
@@ -280,7 +284,7 @@ class _DailyCta extends StatelessWidget {
                   style: const TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 17,
-                    color: Color(0xFFF8FAFC),
+                    color: accent,
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -309,9 +313,10 @@ class _ModeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = sl<L10n>();
+    final accent = duel ? const Color(0xFF3A7BD5) : const Color(0xFF00D2FF);
     final colors = duel
-        ? const [AppColors.cosmicBlue, AppColors.cosmicTeal]
-        : const [AppColors.cosmicBlue, Color(0xFF1B4F72)];
+        ? const [Color(0xFF3A7BD5), Color(0xFF2E5A9C)]
+        : const [Color(0xFF00D2FF), Color(0xFF1288A8)];
     return CosmicGlassCard(
       padding: _homeCardPadding,
       colors: [
@@ -326,24 +331,20 @@ class _ModeCard extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: colors,
-              ),
+              borderRadius: BorderRadius.circular(12),
+              color: const Color(0x66000000),
               boxShadow: [
                 BoxShadow(
-                  color: colors[0].withValues(alpha: 0.5),
-                  blurRadius: 22,
+                  color: accent.withValues(alpha: 0.28),
+                  blurRadius: 12,
                 ),
               ],
             ),
             alignment: Alignment.center,
             child: Icon(
-              duel ? Icons.bolt_rounded : Icons.meeting_room_rounded,
-              color: Colors.white,
-              size: 24,
+              duel ? Icons.bolt_rounded : Icons.lock_rounded,
+              color: accent,
+              size: 22,
             ),
           ),
           const SizedBox(width: 14),
@@ -353,10 +354,10 @@ class _ModeCard extends StatelessWidget {
               children: [
                 Text(
                   l10n.t(duel ? 'duel_title' : 'room_title'),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 17,
-                    color: Color(0xFFF8FAFC),
+                    color: accent,
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -388,9 +389,9 @@ class _EndlessCard extends StatelessWidget {
     return CosmicGlassCard(
       padding: _homeCardPadding,
       colors: const [
-        AppColors.cosmicPurple,
-        Color(0xFF8E44AD),
-        AppColors.cosmicRed,
+        Color(0xFFB200FF),
+        Color(0xFF7A1FA2),
+        Color(0xFFB200FF),
       ],
       onTap: () => context.push('/game/endless'),
       child: Row(
@@ -399,16 +400,12 @@ class _EndlessCard extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [AppColors.cosmicPurple, Color(0xFF8E44AD)],
-              ),
+              borderRadius: BorderRadius.circular(12),
+              color: const Color(0x66000000),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.cosmicPurple.withValues(alpha: 0.5),
-                  blurRadius: 22,
+                  color: const Color(0xFFB200FF).withValues(alpha: 0.28),
+                  blurRadius: 12,
                 ),
               ],
             ),
@@ -416,7 +413,7 @@ class _EndlessCard extends StatelessWidget {
             child: const Text(
               '∞',
               style: TextStyle(
-                color: Colors.white,
+                color: Color(0xFFB200FF),
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
                 height: 1,
@@ -433,7 +430,7 @@ class _EndlessCard extends StatelessWidget {
                   style: const TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 17,
-                    color: Color(0xFFF8FAFC),
+                    color: Color(0xFFB200FF),
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -774,5 +771,170 @@ class _PeriodBoardCard extends StatelessWidget {
         RankPeriod.season => l10n.t('season_this'),
         RankPeriod.year => l10n.t('yearly_this'),
       };
+}
+
+class _AdCoinPanel extends StatefulWidget {
+  const _AdCoinPanel();
+
+  @override
+  State<_AdCoinPanel> createState() => _AdCoinPanelState();
+}
+
+class _AdCoinPanelState extends State<_AdCoinPanel> {
+  var _busy = false;
+  int? _reward;
+
+  @override
+  void initState() {
+    super.initState();
+    sl<GameServer>().getConfig().then((config) {
+      if (mounted) setState(() => _reward = config.adCoinReward);
+    });
+  }
+
+  Future<void> _watch() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final auth = context.read<AuthCubit>();
+    final before = auth.state.user?.coin ?? 0;
+    final coins = await collectRewardedAdCoins(
+      server: sl<GameServer>(),
+      userId: auth.state.user?.id ?? '',
+      balanceBefore: before,
+    );
+    if (!mounted) return;
+    await auth.refreshUser();
+    if (!mounted) return;
+    await context.read<HomeCubit>().load();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(coins == 0 ? UserMessages.adUnavailable : '+$coins coin'),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = sl<L10n>();
+    final amount = _reward ?? 15;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _busy ? null : _watch,
+        borderRadius: BorderRadius.circular(20),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0x26FFC107), Color(0x26FF8C00)],
+            ),
+            border: Border.all(color: const Color(0x66FFC107)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x66000000),
+                blurRadius: 18,
+                offset: Offset(0, 8),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Color(0x33FFC107),
+                ),
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.card_giftcard_rounded,
+                  color: Color(0xFFFFC107),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      l10n.t('home_ad_title'),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      l10n.t('home_ad_sub').replaceAll('{n}', '$amount'),
+                      style: const TextStyle(
+                        color: Color(0xB3FFFFFF),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFFC107), Color(0xFFFF8C00)],
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x66FFC107),
+                      blurRadius: 12,
+                      offset: Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: _busy
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.black,
+                          ),
+                        )
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.play_arrow_rounded,
+                              color: Colors.black,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              l10n.t('home_ad_watch'),
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 

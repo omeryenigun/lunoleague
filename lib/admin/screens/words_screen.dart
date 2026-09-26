@@ -22,6 +22,7 @@ class _WordsScreenState extends State<WordsScreen> {
 
   String _query = '';
   WordStatus? _status;
+  bool? _playable;
   var _reloadToken = 0;
   var _importing = false;
   var _page = 0;
@@ -33,6 +34,7 @@ class _WordsScreenState extends State<WordsScreen> {
       if (w.language != locale) return false;
       if (w.length != league.wordLength) return false;
       if (_status != null && w.status != _status) return false;
+      if (_playable != null && w.playable != _playable) return false;
       return true;
     }).toList()
       ..sort((a, b) => a.displayWord.compareTo(b.displayWord));
@@ -111,7 +113,24 @@ class _WordsScreenState extends State<WordsScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Wrap(
             spacing: 8,
+            runSpacing: 8,
             children: [
+              FilterChip(
+                label: const Text('Aktif'),
+                selected: _playable == true,
+                onSelected: (_) => setState(() {
+                  _playable = _playable == true ? null : true;
+                  _page = 0;
+                }),
+              ),
+              FilterChip(
+                label: const Text('Pasif'),
+                selected: _playable == false,
+                onSelected: (_) => setState(() {
+                  _playable = _playable == false ? null : false;
+                  _page = 0;
+                }),
+              ),
               FilterChip(
                 label: const Text('Hepsi'),
                 selected: _status == null,
@@ -136,7 +155,7 @@ class _WordsScreenState extends State<WordsScreen> {
         Expanded(
           child: AdminBody(
             key: ValueKey(
-              '$_reloadToken-$locale-${league.name}-$_status',
+              '$_reloadToken-$locale-${league.name}-$_status-$_playable',
             ),
             future: _load(locale, league),
             builder: (context, words) {

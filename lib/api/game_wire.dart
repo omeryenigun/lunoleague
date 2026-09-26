@@ -91,6 +91,7 @@ Map<String, dynamic> wireSession(GameSessionView view) => {
       'revealedLetters': {
         for (final e in view.revealedLetters.entries) '${e.key}': e.value,
       },
+      'letterHintsOnRow': view.letterHintsOnRow,
       'definitionHint': view.definitionHint,
       'startedAt': view.startedAt.toIso8601String(),
       'expiresAt': view.expiresAt.toIso8601String(),
@@ -128,6 +129,7 @@ GameSessionView readSession(Object? raw) {
     status: GameStatus.values.byName(map['status'] as String),
     hintUsed: map['hintUsed'] as bool? ?? false,
     revealedLetters: revealed,
+    letterHintsOnRow: map['letterHintsOnRow'] as int? ?? 0,
     definitionHint: map['definitionHint'] as String?,
     startedAt: DateKeys.playerInstant(DateTime.parse(map['startedAt'] as String)),
     expiresAt: DateKeys.playerInstant(DateTime.parse(map['expiresAt'] as String)),

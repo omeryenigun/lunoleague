@@ -54,7 +54,7 @@ class AppConfig {
         dailyLoseCoins: 5,
         hint1Cost: 10,
         hint2Cost: 15,
-        adCoinReward: 5,
+        adCoinReward: 15,
         streakBonusXp: const {
           5: 100,
           7: 250,
@@ -109,7 +109,7 @@ class AppConfig {
       dailyLoseCoins: map['dailyLoseCoins'] as int? ?? 5,
       hint1Cost: map['hint1Cost'] as int? ?? 10,
       hint2Cost: map['hint2Cost'] as int? ?? 15,
-      adCoinReward: map['adCoinReward'] as int? ?? 5,
+      adCoinReward: map['adCoinReward'] as int? ?? 15,
       streakBonusXp: {
         for (final e in streakRaw.entries) int.parse(e.key): e.value as int,
       },

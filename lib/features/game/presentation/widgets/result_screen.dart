@@ -78,6 +78,35 @@ String buildShareText({
   return buf.toString().trimRight();
 }
 
+Future<void> shareFinishedBoard({
+  required L10n l10n,
+  required bool won,
+  required String word,
+  required List<EvaluatedGuess> guesses,
+  required int used,
+  required int maxAttempts,
+}) async {
+  final title = won ? l10n.t('result_win_title') : l10n.t('result_lose_title');
+  final score = l10n
+      .t('share_score')
+      .replaceAll('{n}', '$used')
+      .replaceAll('{m}', '$maxAttempts');
+  final buf = StringBuffer('${AppConstants.appName}\n$title\n$word\n$score\n\n');
+  for (final guess in guesses) {
+    for (final status in guess.statuses) {
+      buf.write(switch (status) {
+        LetterStatus.correct => '🟩',
+        LetterStatus.present => '🟨',
+        _ => '⬜',
+      });
+    }
+    buf.writeln();
+  }
+  await SharePlus.instance.share(
+    ShareParams(text: buf.toString().trimRight()),
+  );
+}
+
 String _shareSigned(int value) => value > 0 ? '+$value' : '$value';
 
 String _shareClock(int seconds) {
@@ -453,7 +482,7 @@ class _ResultScreenState extends State<ResultScreen>
                                 const SizedBox(height: 8),
                                 _StatRow(
                                   icon: '🎢',
-                                  label: 'Endless',
+                                  label: l10n.t('endless'),
                                   value: '${outcome.endlessRun}',
                                   valueColor: AppColors.cosmicBlue,
                                 ),

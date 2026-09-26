@@ -32,12 +32,6 @@ class GoogleAuth {
       await google.initialize(serverClientId: serverClientId);
       _ready = true;
     }
-    if (!google.supportsAuthenticate()) {
-      throw AppFailure(
-        UserMessages.googleNotConfigured,
-        code: 'NO_GOOGLE_CLIENT',
-      );
-    }
     try {
       final account = await google.authenticate();
       final id = account.id.trim();
@@ -54,7 +48,16 @@ class GoogleAuth {
           e.code == GoogleSignInExceptionCode.interrupted) {
         return null;
       }
-      throw AppFailure(UserMessages.googleSignInFailed, code: 'GOOGLE_FAILED');
+      final detail = e.description?.trim();
+      final message = detail == null || detail.isEmpty
+          ? UserMessages.googleSignInFailed
+          : '${UserMessages.googleSignInFailed} $detail';
+      throw AppFailure(message, code: 'GOOGLE_FAILED');
+    } on UnimplementedError {
+      throw AppFailure(
+        UserMessages.googleNotConfigured,
+        code: 'NO_GOOGLE_CLIENT',
+      );
     }
   }
 }

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:kelimelig/api/admob_ssv.dart';
+import 'package:kelimelig/api/app_ads_txt.dart';
 import 'package:kelimelig/api/admin_http.dart';
 import 'package:kelimelig/api/game_http.dart';
 import 'package:kelimelig/api/privacy_page.dart';
@@ -27,6 +28,65 @@ Future<void> main() async {
   final scoped = ScopedKeyValueStore(PostgresKv(db), GameIds.lunoLeague);
   final rules = LocalGameServer(scoped);
   await rules.initialize();
+  await rules.importStarterEnglishWords();
+  final common = await rules.importCommonEnglishWords();
+  stdout.writeln(
+    'en common words imported=${common.imported} skipped=${common.skipped} invalid=${common.invalid}',
+  );
+  final more = await rules.importMoreEnglishWords();
+  stdout.writeln(
+    'en more words imported=${more.imported} skipped=${more.skipped} invalid=${more.invalid}',
+  );
+  final extra = await rules.importExtraEnglishWords();
+  stdout.writeln(
+    'en extra words imported=${extra.imported} skipped=${extra.skipped} invalid=${extra.invalid}',
+  );
+  final next = await rules.importNextEnglishWords();
+  stdout.writeln(
+    'en next words imported=${next.imported} skipped=${next.skipped} invalid=${next.invalid}',
+  );
+  final batch = await rules.importBatchEnglishWords();
+  stdout.writeln(
+    'en batch words imported=${batch.imported} skipped=${batch.skipped} invalid=${batch.invalid}',
+  );
+  final plus = await rules.importPlusEnglishWords();
+  stdout.writeln(
+    'en plus words imported=${plus.imported} skipped=${plus.skipped} invalid=${plus.invalid}',
+  );
+  final wave = await rules.importWaveEnglishWords();
+  stdout.writeln(
+    'en wave words imported=${wave.imported} skipped=${wave.skipped} invalid=${wave.invalid}',
+  );
+  final flow = await rules.importFlowEnglishWords();
+  stdout.writeln(
+    'en flow words imported=${flow.imported} skipped=${flow.skipped} invalid=${flow.invalid}',
+  );
+  final german = await rules.importGermanFrequencyWords();
+  stdout.writeln(
+    'de frequency words imported=${german.imported} skipped=${german.skipped} invalid=${german.invalid}',
+  );
+  final germanGlosses = await rules.fillGermanDefinitions();
+  stdout.writeln(
+    'de definitions updated=${germanGlosses.updated} missing=${germanGlosses.missing}',
+  );
+  final droppedGerman = await rules.dropUndefinedGermanWords();
+  stdout.writeln('de undefined words removed=$droppedGerman');
+  final spanish = await rules.importSpanishFrequencyWords();
+  stdout.writeln(
+    'es frequency words imported=${spanish.imported} skipped=${spanish.skipped} invalid=${spanish.invalid}',
+  );
+  final french = await rules.importFrenchFrequencyWords();
+  stdout.writeln(
+    'fr frequency words imported=${french.imported} skipped=${french.skipped} invalid=${french.invalid}',
+  );
+  final italian = await rules.importItalianFrequencyWords();
+  stdout.writeln(
+    'it frequency words imported=${italian.imported} skipped=${italian.skipped} invalid=${italian.invalid}',
+  );
+  final adCoins = await rules.raiseAdCoinReward();
+  stdout.writeln('ad coin reward=$adCoins');
+  final dropped = await rules.dropNoiseEnglishWords();
+  stdout.writeln('en noise words removed=$dropped');
 
   final router = Router()
     ..get('/health', (_) => jsonResponse({'ok': true}))
@@ -42,7 +102,8 @@ Future<void> main() async {
     ..post('/v1/game', (request) => handleGame(request, db, scoped))
     ..get('/v1/admob/reward', (request) => handleAdmobReward(request, rules))
     ..get('/privacy', privacyPolicyPage)
-    ..get('/privacy/', privacyPolicyPage);
+    ..get('/privacy/', privacyPolicyPage)
+    ..get('/app-ads.txt', appAdsTxtPage);
   mountAdminApi(router, db);
   _mountAdminWeb(router);
 
@@ -65,11 +126,7 @@ void _mountAdminWeb(Router router) {
     ..get('/admin', (_) => Response.found('/admin/'))
     ..mount('/admin/', (Request request) async {
       final response = await files(request);
-      final type = response.headers['content-type'] ?? '';
-      if (type.contains('text/html')) {
-        return response.change(headers: {'cache-control': 'no-store'});
-      }
-      return response;
+      return response.change(headers: {'cache-control': 'no-store'});
     });
 }
 

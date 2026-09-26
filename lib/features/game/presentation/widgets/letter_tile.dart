@@ -16,6 +16,7 @@ class LetterTile extends StatefulWidget {
     this.delay = Duration.zero,
     this.flip = false,
     this.active = false,
+    this.hinted = false,
   });
 
   final String letter;
@@ -24,6 +25,7 @@ class LetterTile extends StatefulWidget {
   final Duration delay;
   final bool flip;
   final bool active;
+  final bool hinted;
 
   @override
   State<LetterTile> createState() => _LetterTileState();
@@ -120,6 +122,9 @@ class _LetterTileState extends State<LetterTile>
   }
 
   Color get _textColor {
+    if (widget.hinted && widget.status == LetterStatus.empty) {
+      return const Color(0xFF38BDF8);
+    }
     return switch (widget.status) {
       LetterStatus.correct || LetterStatus.present => AppColors.cosmicBg,
       LetterStatus.absent => const Color(0xFF94A3B8),
@@ -163,6 +168,11 @@ class _LetterTileState extends State<LetterTile>
           color: const Color(0xB3475565),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: const Color(0x80475569), width: 2),
+        ),
+      LetterStatus.empty when widget.hinted => BoxDecoration(
+          color: const Color(0xE60F172A),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF38BDF8), width: 2),
         ),
       LetterStatus.empty when widget.active || widget.letter.isNotEmpty =>
         BoxDecoration(

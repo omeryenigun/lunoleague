@@ -11,6 +11,7 @@ class GuessBoard extends StatelessWidget {
     required this.guesses,
     required this.currentInput,
     required this.revealed,
+    this.currentAttempt = 0,
     this.animateLast = false,
   });
 
@@ -19,6 +20,7 @@ class GuessBoard extends StatelessWidget {
   final List<EvaluatedGuess> guesses;
   final List<String> currentInput;
   final Map<int, String> revealed;
+  final int currentAttempt;
   final bool animateLast;
 
   @override
@@ -58,18 +60,18 @@ class GuessBoard extends StatelessWidget {
     var status = LetterStatus.empty;
     var flip = false;
     var active = false;
+    var hinted = false;
+    final activeRow = currentAttempt.clamp(guesses.length, maxAttempts);
     if (row < guesses.length) {
       letter = _charAt(guesses[row].guess, col);
       status = guesses[row].statuses[col];
       flip = animateLast && row == guesses.length - 1;
-    } else if (row == guesses.length) {
-      if (col < currentInput.length) {
-        letter = currentInput[col];
-        active = true;
-      } else if (revealed[col] != null) {
-        letter = revealed[col]!;
-        active = true;
-      }
+    } else if (row == activeRow && col < currentInput.length) {
+      letter = currentInput[col];
+      active = true;
+    } else if (row == activeRow && revealed[col] != null) {
+      letter = revealed[col]!;
+      hinted = true;
     }
     return LetterTile(
       letter: letter,
@@ -77,6 +79,7 @@ class GuessBoard extends StatelessWidget {
       size: size,
       flip: flip,
       active: active,
+      hinted: hinted,
       delay: Duration(milliseconds: 70 * col),
     );
   }

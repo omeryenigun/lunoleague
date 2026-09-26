@@ -37,4 +37,32 @@ void main() {
     );
     expect((await server.currentUser())!.coin, before);
   });
+
+  test('a verified ad writes coins once', () async {
+    final server = LocalGameServer(
+      MemoryKeyValueStore(),
+      grantUnverifiedAds: false,
+    );
+    await server.initialize();
+    final user = await server.signInWithGoogle(
+      googleId: 'viewer',
+      displayName: 'Viewer',
+    );
+    final before = user.coin;
+    final reward = (await server.getConfig()).adCoinReward;
+    expect(
+      await server.grantRewardedAdProof(userId: user.id, transactionId: 'tx-1'),
+      isTrue,
+    );
+    expect((await server.currentUser())!.coin, before + reward);
+    expect(
+      await server.grantRewardedAdProof(userId: user.id, transactionId: 'tx-1'),
+      isTrue,
+    );
+    expect((await server.currentUser())!.coin, before + reward);
+    expect(
+      await server.grantRewardedAdProof(userId: '', transactionId: 'tx-2'),
+      isFalse,
+    );
+  });
 }
