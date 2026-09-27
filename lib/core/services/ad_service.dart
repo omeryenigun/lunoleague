@@ -5,7 +5,7 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:kelimelig/core/constants/admob.dart';
 
 class AdService {
-  Future<bool> showRewarded(String userId) async {
+  Future<bool> showRewarded(String userId, {String? customData}) async {
     if (kIsWeb || userId.isEmpty) return false;
     final unitId = kReleaseMode ? admobRewardedUnitId : admobTestRewardedUnitId;
     final loaded = Completer<RewardedAd?>();
@@ -22,7 +22,7 @@ class AdService {
     final ad = await loaded.future;
     if (ad == null) return false;
     await ad.setServerSideOptions(
-      ServerSideVerificationOptions(userId: userId),
+      ServerSideVerificationOptions(userId: userId, customData: customData),
     );
     // Android 15 draws full-screen ads under the navigation bar, which
     // covers the close button. Immersive mode hides that bar for the ad.

@@ -100,6 +100,22 @@ class GameView extends StatelessWidget {
             onReplay: () {
               if (context.mounted) context.read<GameCubit>().start();
             },
+            onOpenNextDaily: () async {
+              final player = await sl<GameServer>().currentUser();
+              if (player == null || !context.mounted) return;
+              final opened = await openNextDailyWithAd(
+                server: sl<GameServer>(),
+                userId: player.id,
+              );
+              if (!context.mounted) return;
+              if (opened) {
+                context.read<GameCubit>().start();
+                return;
+              }
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(sl<L10n>().t('daily_next_wait'))),
+              );
+            },
             onReviveWithAd: null,
             onEndAd: null,
           );
@@ -142,9 +158,18 @@ class GameView extends StatelessWidget {
                                 onPressed: () => context.go('/home'),
                               ),
                               Expanded(
-                                child: ShimmerTitle(
-                                  text: title,
-                                  fontSize: 22,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    ShimmerTitle(
+                                      text: title,
+                                      fontSize: 22,
+                                    ),
+                                    if (type == GameType.daily) ...[
+                                      const SizedBox(width: 8),
+                                      _DailyIndexBadge(index: session.dailyIndex),
+                                    ],
+                                  ],
                                 ),
                               ),
                               if (!session.isFinished)
@@ -447,6 +472,46 @@ class _FinishedSummary extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _DailyIndexBadge extends StatelessWidget {
+  const _DailyIndexBadge({required this.index});
+
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = '$index';
+    final size = label.length > 1 ? 34.0 : 28.0;
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF00FFAA), AppColors.cosmicTeal],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF00FFAA).withValues(alpha: 0.4),
+            blurRadius: 12,
+          ),
+        ],
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: AppColors.cosmicBg,
+          fontWeight: FontWeight.w900,
+          fontSize: label.length > 1 ? 13 : 15,
+          height: 1,
+        ),
       ),
     );
   }

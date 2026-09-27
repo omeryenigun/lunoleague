@@ -23,10 +23,19 @@ Future<Response> handleAdmobReward(Request request, LocalGameServer game) async 
   if (!await verifyAdmobQuery(uri.query)) return Response(400);
   final unit = params['ad_unit'] ?? '';
   if (_isOurRewardedUnit(unit)) {
-    await game.grantRewardedAdProof(
-      userId: params['user_id'] ?? '',
-      transactionId: params['transaction_id'] ?? '',
-    );
+    final userId = params['user_id'] ?? '';
+    final transactionId = params['transaction_id'] ?? '';
+    if (params['custom_data'] == 'daily_next') {
+      await game.grantDailyNextProof(
+        userId: userId,
+        transactionId: transactionId,
+      );
+    } else {
+      await game.grantRewardedAdProof(
+        userId: userId,
+        transactionId: transactionId,
+      );
+    }
   }
   return Response.ok('ok');
 }

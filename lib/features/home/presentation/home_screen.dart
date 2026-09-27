@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -66,7 +67,12 @@ class _HomeView extends StatelessWidget {
                     const SizedBox(height: 18),
                     _LeagueCard(user: user, snap: snap),
                     const SizedBox(height: 12),
-                    _DailyCta(user: user),
+                    _DailyCta(user: user, snap: snap),
+                    const SizedBox(height: 12),
+                    OutlinedButton(
+                      onPressed: () => context.push('/grid'),
+                      child: const Text('Luno Grid'),
+                    ),
                     const SizedBox(height: 12),
                     _EndlessCard(best: user.endlessBest),
                     if (snap.dailyRewardAvailable && !user.isAnonymous) ...[
@@ -232,14 +238,56 @@ class _Stat extends StatelessWidget {
 }
 
 class _DailyCta extends StatelessWidget {
-  const _DailyCta({required this.user});
+  const _DailyCta({required this.user, required this.snap});
 
   final UserEntity user;
+  final HomeSnapshot snap;
+
+  String _title(L10n l10n) {
+    if (snap.dailyStatus == DailyStatus.started) return l10n.t('daily_resume');
+    if (snap.dailyNeedsAd) {
+      return kIsWeb
+          ? l10n.t('daily_next_wait')
+          : l10n.t('daily_next_ad').replaceAll('{n}', '${snap.dailyIndex}');
+    }
+    return l10n.t('daily_next_play').replaceAll('{n}', '${snap.dailyIndex}');
+  }
+
+  Future<void> _open(BuildContext context) async {
+    final l10n = sl<L10n>();
+    if (snap.dailyNeedsAd) {
+      if (kIsWeb) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.t('daily_next_wait'))),
+        );
+        return;
+      }
+      final opened = await openNextDailyWithAd(
+        server: sl<GameServer>(),
+        userId: user.id,
+      );
+      if (!context.mounted) return;
+      if (!opened) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.t('daily_next_wait'))),
+        );
+        return;
+      }
+      await context.read<HomeCubit>().load();
+    }
+    if (!context.mounted) return;
+    await context.push('/game/daily');
+    if (context.mounted) await context.read<HomeCubit>().load();
+  }
 
   @override
   Widget build(BuildContext context) {
     final l10n = sl<L10n>();
-    final subtitle = user.isAnonymous ? l10n.t('daily_guest') : l10n.t('daily_reg');
+    final subtitle = snap.dailyNeedsAd
+        ? l10n.t('daily_next_wait')
+        : user.isAnonymous
+            ? l10n.t('daily_guest')
+            : l10n.t('daily_reg');
     const accent = Color(0xFF00FFAA);
     return CosmicGlassCard(
       padding: _homeCardPadding,
@@ -248,10 +296,7 @@ class _DailyCta extends StatelessWidget {
         Color(0xFF00C9A7),
         accent,
       ],
-      onTap: () async {
-        await context.push('/game/daily');
-        if (context.mounted) await context.read<HomeCubit>().load();
-      },
+      onTap: () => _open(context),
       child: Row(
         children: [
           Container(
@@ -280,7 +325,7 @@ class _DailyCta extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  l10n.t('daily_play'),
+                  _title(l10n),
                   style: const TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 17,

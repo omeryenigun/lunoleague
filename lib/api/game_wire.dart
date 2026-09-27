@@ -98,6 +98,7 @@ Map<String, dynamic> wireSession(GameSessionView view) => {
       'outcome': view.outcome == null ? null : wireOutcome(view.outcome!),
       'answer': view.answer,
       'solved': view.solved,
+      'dailyIndex': view.dailyIndex,
     };
 
 GameSessionView readSession(Object? raw) {
@@ -136,6 +137,7 @@ GameSessionView readSession(Object? raw) {
     outcome: map['outcome'] == null ? null : readOutcome(map['outcome']),
     answer: map['answer'] as String?,
     solved: map['solved'] as bool?,
+    dailyIndex: map['dailyIndex'] as int? ?? 1,
   );
 }
 
@@ -166,6 +168,8 @@ Map<String, dynamic> wireHome(HomeSnapshot home) => {
       'leaguePoints': home.leaguePoints,
       'offline': home.offline,
       'periodStandings': home.periodStandings.map(wireBrief).toList(),
+      'dailyIndex': home.dailyIndex,
+      'dailyNeedsAd': home.dailyNeedsAd,
     };
 
 HomeSnapshot readHome(Object? raw) {
@@ -182,6 +186,8 @@ HomeSnapshot readHome(Object? raw) {
     periodStandings: [
       for (final item in map['periodStandings'] as List? ?? const []) readBrief(item),
     ],
+    dailyIndex: map['dailyIndex'] as int? ?? 1,
+    dailyNeedsAd: map['dailyNeedsAd'] as bool? ?? false,
   );
 }
 

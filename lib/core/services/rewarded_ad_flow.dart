@@ -22,3 +22,21 @@ Future<int> collectRewardedAdCoins({
   }
   return 0;
 }
+
+const dailyNextAdData = 'daily_next';
+
+/// Shows a rewarded ad that opens the next shared daily. Coins stay unchanged.
+/// Returns true when that daily number is stored and can be played.
+Future<bool> openNextDailyWithAd({
+  required GameServer server,
+  required String userId,
+}) async {
+  final shown = await AdService().showRewarded(userId, customData: dailyNextAdData);
+  if (!shown) return false;
+  for (var i = 0; i < 20; i++) {
+    final home = await server.homeSnapshot();
+    if (!home.dailyNeedsAd) return true;
+    await Future<void>.delayed(const Duration(seconds: 1));
+  }
+  return false;
+}

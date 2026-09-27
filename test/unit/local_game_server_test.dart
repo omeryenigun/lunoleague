@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kelimelig/core/constants/enums.dart';
 import 'package:kelimelig/core/utils/date_keys.dart';
@@ -1229,5 +1231,129 @@ zurna,tr,İkinci,Tekrar.,zurna,müzik,,,
       (await server.signInWithEmail(email: 'ada@luno.test', password: 'secret1')).coin,
       525,
     );
+  });
+
+  test('shared extra daily stays in order and skips marathon', () async {
+    final root = MemoryKeyValueStore();
+    final host = LocalGameServer(SessionKv(root), random: Random(3));
+    final guest = LocalGameServer(SessionKv(root), random: Random(9));
+    await host.initialize();
+    final player = await host.signInWithGoogle(googleId: 'host-daily', displayName: 'Ayse');
+    final other = await guest.signInWithGoogle(googleId: 'guest-daily', displayName: 'Berk');
+
+    var run = await host.startEndless();
+    final endlessWord = (await host.adminGetSession(run.sessionId))!.word;
+    run = await host.submitGuess(run.sessionId, endlessWord);
+    expect(run.outcome!.endlessRun, 1);
+
+    var first = await host.startDaily();
+    expect(first.dailyIndex, 1);
+    final secret = (await host.adminGetSession(first.sessionId))!.word;
+    final coinsBefore = (await host.currentUser())!.coin;
+    first = await host.submitGuess(first.sessionId, secret);
+    expect(first.outcome!.won, isTrue);
+    expect(first.outcome!.streak, 1);
+    expect(first.outcome!.leaguePoints, greaterThan(0));
+    expect((await host.currentUser())!.coin, coinsBefore + 25);
+
+    var guestFirst = await guest.startDaily();
+    expect(guestFirst.dailyIndex, 1);
+    expect((await guest.adminGetSession(guestFirst.sessionId))!.word, secret);
+    expect(
+      await guest.grantDailyNextProof(userId: other.id, transactionId: 'before-finish'),
+      isFalse,
+    );
+    guestFirst = await guest.submitGuess(guestFirst.sessionId, secret);
+    expect(guestFirst.outcome!.won, isTrue);
+
+    final waiting = await host.homeSnapshot();
+    expect(waiting.dailyStatus, DailyStatus.completed);
+    expect(waiting.dailyNeedsAd, isTrue);
+    expect(waiting.dailyIndex, 2);
+    expect((await host.startDaily()).sessionId, first.sessionId);
+
+    final day = DateKeys.dayKey(DateTime.now());
+    final coinsAtAd = (await host.currentUser())!.coin;
+    final guestCoinsAtAd = (await guest.currentUser())!.coin;
+    await Future.wait([
+      host.grantDailyNextProof(userId: player.id, transactionId: 'race-a'),
+      guest.grantDailyNextProof(userId: other.id, transactionId: 'race-b'),
+    ]);
+    expect((await host.currentUser())!.coin, coinsAtAd);
+    expect((await guest.currentUser())!.coin, guestCoinsAtAd);
+    expect(await root.get('daily_games', '${day}_tr_bronze_2'), isNotNull);
+    expect(await root.get('daily_games', '${day}_tr_bronze_3'), isNull);
+
+    final opened = await host.homeSnapshot();
+    expect(opened.dailyNeedsAd, isFalse);
+    expect(opened.dailyIndex, 2);
+    expect((await guest.homeSnapshot()).dailyNeedsAd, isFalse);
+
+    var second = await host.startDaily();
+    var guestSecond = await guest.startDaily();
+    expect(second.dailyIndex, 2);
+    expect(guestSecond.dailyIndex, 2);
+    expect(second.sessionId, isNot(guestSecond.sessionId));
+    final hostWord = (await host.adminGetSession(second.sessionId))!.word;
+    final guestWord = (await guest.adminGetSession(guestSecond.sessionId))!.word;
+    expect(hostWord, guestWord);
+    expect(hostWord, isNot(secret));
+
+    final beforeSecond = (await host.currentUser())!.coin;
+    second = await host.submitGuess(second.sessionId, hostWord);
+    expect(second.outcome!.won, isTrue);
+    expect(second.outcome!.streak, 1);
+    expect(second.outcome!.xpEarned, greaterThan(0));
+    expect(second.outcome!.leaguePoints, greaterThan(0));
+    expect(second.outcome!.coinEarned, 25);
+    expect((await host.currentUser())!.coin, beforeSecond + 25);
+    expect((await host.currentUser())!.endlessBest, 1);
+    expect(await root.getMeta('endless_finished_${player.id}_tr'), '1');
+    expect(await root.getMeta('endless_run_${player.id}_tr'), '1');
+    expect(await root.getMeta('endless_wins_${player.id}_tr'), '1');
+
+    final listed = await host.adminDailyMap();
+    final firstId = (await root.get('game_sessions', first.sessionId))!['wordId'];
+    final secondId = (await root.get('game_sessions', second.sessionId))!['wordId'];
+    expect(listed['${day}_tr_bronze'], firstId);
+    expect(listed['${day}_tr_bronze_2'], secondId);
+    expect(DateTime.tryParse(listed['${day}_tr_bronze_2_at'] ?? ''), isNotNull);
+  });
+
+  test('losing daily 1 still requires an ad before daily 2', () async {
+    final root = MemoryKeyValueStore();
+    final host = LocalGameServer(SessionKv(root), random: Random(4));
+    await host.initialize();
+    final player = await host.signInWithGoogle(googleId: 'lose-daily', displayName: 'Kayip');
+    var session = await host.startDaily();
+    final secret = (await host.adminGetSession(session.sessionId))!.word;
+    final wrongs = (await host.adminListWords())
+        .where(
+          (word) =>
+              word.length == 5 &&
+              word.playable &&
+              word.language == 'tr' &&
+              !TurkishText.equals(word.word, secret),
+        )
+        .map((word) => word.word)
+        .take(6)
+        .toList();
+    for (final guess in wrongs) {
+      session = await host.submitGuess(session.sessionId, guess);
+    }
+    expect(session.outcome!.won, isFalse);
+    expect(session.outcome!.coinEarned, 5);
+    final afterLoss = (await host.currentUser())!.coin;
+    expect((await host.homeSnapshot()).dailyNeedsAd, isTrue);
+    expect((await host.startDaily()).sessionId, session.sessionId);
+    expect(
+      await host.grantDailyNextProof(userId: player.id, transactionId: 'lose-ad'),
+      isTrue,
+    );
+    expect((await host.currentUser())!.coin, afterLoss);
+    final next = await host.startDaily();
+    expect(next.dailyIndex, 2);
+    expect(next.isFinished, isFalse);
+    expect(next.sessionId, isNot(session.sessionId));
   });
 }

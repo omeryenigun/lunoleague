@@ -110,7 +110,7 @@ void main() {
       isDaily: true,
     );
     expect(text, contains('KAYBETTİN'));
-    expect(text, contains('Bu sefer olmadı, yarın tekrar dene'));
+    expect(text, contains('Sıradaki daily aynı gün açılır'));
     expect(text, contains('Skor 6/6 · Süre 00:09'));
     expect(text, contains('Lig puanı +10'));
     expect(text, isNot(contains('KALEM')));

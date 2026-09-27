@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:kelimelig/core/constants/app_constants.dart';
 import 'package:kelimelig/core/constants/enums.dart';
@@ -128,6 +129,7 @@ class ResultScreen extends StatefulWidget {
     required this.onReplay,
     this.onReviveWithAd,
     this.onEndAd,
+    this.onOpenNextDaily,
   });
 
   final GameOutcome outcome;
@@ -139,6 +141,7 @@ class ResultScreen extends StatefulWidget {
   final VoidCallback onReplay;
   final VoidCallback? onReviveWithAd;
   final Future<bool> Function()? onEndAd;
+  final Future<void> Function()? onOpenNextDaily;
 
   @override
   State<ResultScreen> createState() => _ResultScreenState();
@@ -159,10 +162,29 @@ class _ResultScreenState extends State<ResultScreen>
   final _rng = Random(42);
   var _endAdClaimed = false;
   var _endAdBusy = false;
+  var _nextBusy = false;
+  HomeSnapshot? _nextDaily;
   List<ResultPlace> _board = const [];
 
   GameOutcome get outcome => widget.outcome;
   bool get won => outcome.won;
+
+  bool get _needsAd => widget.isDaily && (_nextDaily?.dailyNeedsAd ?? false);
+
+  bool get _canPlayNext =>
+      widget.isDaily &&
+      _nextDaily != null &&
+      !_nextDaily!.dailyNeedsAd &&
+      _nextDaily!.dailyStatus == DailyStatus.available;
+
+  Future<void> _loadNextDaily() async {
+    if (!widget.isDaily) return;
+    try {
+      final home = await sl<GameServer>().homeSnapshot();
+      if (!mounted) return;
+      setState(() => _nextDaily = home);
+    } catch (_) {}
+  }
 
   Future<void> _loadBoard() async {
     try {
@@ -188,6 +210,7 @@ class _ResultScreenState extends State<ResultScreen>
   void initState() {
     super.initState();
     _loadBoard();
+    _loadNextDaily();
     _enter = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 720),
@@ -290,6 +313,17 @@ class _ResultScreenState extends State<ResultScreen>
   }
 
   String _primaryLabel(L10n l10n) {
+    if (_needsAd) {
+      if (kIsWeb) return l10n.t('daily_next_wait');
+      return l10n
+          .t('daily_next_ad')
+          .replaceAll('{n}', '${_nextDaily!.dailyIndex}');
+    }
+    if (_canPlayNext) {
+      return l10n
+          .t('daily_next_play')
+          .replaceAll('{n}', '${_nextDaily!.dailyIndex}');
+    }
     if (widget.isDaily) return l10n.t('home');
     if (won) return l10n.t('result_next');
     return widget.onReviveWithAd != null
@@ -298,8 +332,19 @@ class _ResultScreenState extends State<ResultScreen>
   }
 
   VoidCallback get _primaryAction {
+    if (_needsAd && !kIsWeb && widget.onOpenNextDaily != null) return _openNextDaily;
+    if (_canPlayNext) return widget.onReplay;
     if (widget.isDaily) return widget.onHome;
     return widget.onReplay;
+  }
+
+  void _openNextDaily() {
+    final open = widget.onOpenNextDaily;
+    if (open == null || _nextBusy) return;
+    _nextBusy = true;
+    open().whenComplete(() {
+      _nextBusy = false;
+    });
   }
 
   Future<void> _share() async {

@@ -73,6 +73,32 @@ class _DailyScreenState extends State<DailyScreen> {
       map['${day}_${language}_${league.name}'] ??
       (language == 'tr' ? map['${day}_${league.name}'] : null);
 
+  List<String> _openedLines(
+    Map<String, String> map,
+    Map<String, WordEntity> wordsById,
+    String day,
+    String language,
+    LeagueTier league,
+  ) {
+    final lines = <String>[];
+    for (var index = 2; index < 100; index++) {
+      final base = '${day}_${language}_${league.name}_$index';
+      final id = map[base];
+      if (id == null) break;
+      final word = wordsById[id]?.displayWord ?? id;
+      lines.add('$index - $word - ${_openedClock(map['${base}_at'])}');
+    }
+    return lines;
+  }
+
+  String _openedClock(String? iso) {
+    final parsed = DateTime.tryParse(iso ?? '');
+    if (parsed == null) return '—';
+    final local = parsed.toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(local.day)}.${two(local.month)}.${local.year} ${two(local.hour)}:${two(local.minute)}';
+  }
+
   Set<String> _usedInMonth(
     Map<String, String> map,
     String language,
@@ -310,11 +336,12 @@ class _DailyScreenState extends State<DailyScreen> {
                           headingRowColor:
                               WidgetStateProperty.all(AppColors.surface),
                           dataRowMinHeight: 48,
-                          dataRowMaxHeight: 64,
+                          dataRowMaxHeight: 180,
                           columnSpacing: 24,
                           columns: const [
                             DataColumn(label: Text('Tarih')),
                             DataColumn(label: Text('Kelime')),
+                            DataColumn(label: Text('Açılan daily')),
                             DataColumn(label: Text('Açıklama')),
                             DataColumn(label: Text('İşlem')),
                           ],
@@ -329,6 +356,13 @@ class _DailyScreenState extends State<DailyScreen> {
                                 );
                                 final word =
                                     wordId == null ? null : wordsById[wordId];
+                                final opened = _openedLines(
+                                  data.map,
+                                  wordsById,
+                                  day,
+                                  language,
+                                  league,
+                                );
                                 final date = DateKeys.parseDay(day);
                                 final busy = _dayBusy == day;
                                 final isToday =
@@ -400,6 +434,38 @@ class _DailyScreenState extends State<DailyScreen> {
                                                 : AppColors.textPrimary,
                                           ),
                                         ),
+                                      ),
+                                    ),
+                                    DataCell(
+                                      SizedBox(
+                                        width: 280,
+                                        child: opened.isEmpty
+                                            ? const Text(
+                                                '—',
+                                                style: TextStyle(
+                                                  color: AppColors.textSecondary,
+                                                ),
+                                              )
+                                            : Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  for (final line in opened)
+                                                    Text(
+                                                      line,
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: const TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                        color: AppColors
+                                                            .textPrimary,
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
                                       ),
                                     ),
                                     DataCell(

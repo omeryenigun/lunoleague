@@ -21,6 +21,7 @@ class GameSessionView {
     this.outcome,
     this.answer,
     this.solved,
+    this.dailyIndex = 1,
   });
 
   final String sessionId;
@@ -46,6 +47,9 @@ class GameSessionView {
 
   /// True when the finished session was won. Null while the game is open.
   final bool? solved;
+
+  /// Today's shared daily number. 1 is the first game of the day.
+  final int dailyIndex;
 
   bool get isFinished =>
       status == GameStatus.won ||
@@ -122,6 +126,8 @@ class HomeSnapshot {
     required this.leaguePoints,
     required this.offline,
     this.periodStandings = const [],
+    this.dailyIndex = 1,
+    this.dailyNeedsAd = false,
   });
 
   final UserEntity user;
@@ -133,6 +139,12 @@ class HomeSnapshot {
   final int leaguePoints;
   final bool offline;
   final List<PeriodStandingBrief> periodStandings;
+
+  /// The daily number the player should open next, or the one already open.
+  final int dailyIndex;
+
+  /// True when that number is not stored yet and an ad must create it.
+  final bool dailyNeedsAd;
 }
 
 class DailyRewardResult {

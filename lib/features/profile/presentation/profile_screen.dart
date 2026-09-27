@@ -852,7 +852,8 @@ class _StatsCompareState extends State<_StatsCompare> {
         ? 0
         : others.map((e) => e.points).reduce((a, b) => a + b) / others.length;
     final today = _span == _StatsSpan.today;
-    final playedToday = widget.bundle.home.dailyStatus == DailyStatus.completed;
+    final playedToday = widget.bundle.home.dailyStatus == DailyStatus.completed ||
+        widget.bundle.home.dailyIndex > 1;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       decoration: BoxDecoration(

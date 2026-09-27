@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:kelimelig/core/constants/app_constants.dart';
@@ -18,6 +19,8 @@ import 'package:kelimelig/data/local/de_frequency_words.dart';
 import 'package:kelimelig/data/local/es_frequency_words.dart';
 import 'package:kelimelig/data/local/fr_frequency_words.dart';
 import 'package:kelimelig/data/local/it_frequency_words.dart';
+import 'package:kelimelig/data/local/pt_frequency_words.dart';
+import 'package:kelimelig/data/local/ru_frequency_words.dart';
 import 'package:kelimelig/data/local/de_glosses.dart';
 import 'package:kelimelig/data/local/en_flow_words.dart';
 import 'package:kelimelig/data/local/en_wave_words.dart';
@@ -64,6 +67,7 @@ class LocalGameServer implements GameServer {
   final Uuid _uuid;
   final DateTime Function() _clock;
   final Random _random;
+  final Map<String, Future<void>> _dailySlotLocks = {};
 
   /// When set, a shop token must pass this check before coins are granted.
   /// The live API verifies the Play receipt. Tests leave this unset.
@@ -96,6 +100,8 @@ class LocalGameServer implements GameServer {
   static const _esFrequencyKey = 'es_frequency_words_v1';
   static const _frFrequencyKey = 'fr_frequency_words_v1';
   static const _itFrequencyKey = 'it_frequency_words_v1';
+  static const _ptFrequencyKey = 'pt_frequency_words_v1';
+  static const _ruFrequencyKey = 'ru_frequency_words_v1';
   static const _adCoin15Key = 'ad_coin_reward_15_v1';
   static const _noiseEnglishWords = {
     'thehun',
@@ -320,6 +326,26 @@ class LocalGameServer implements GameServer {
     }
     final result = await adminImportWords(itFrequencyWordsCsv);
     await _store.putMeta(_itFrequencyKey, '1');
+    return result;
+  }
+
+  /// Adds Portuguese words that have a real gloss. Accents fold, so ação is ACAO.
+  Future<WordImportResult> importPortugueseFrequencyWords() async {
+    if (await _store.getMeta(_ptFrequencyKey) == '1') {
+      return const WordImportResult(imported: 0, skipped: 0, invalid: 0);
+    }
+    final result = await adminImportWords(ptFrequencyWordsCsv);
+    await _store.putMeta(_ptFrequencyKey, '1');
+    return result;
+  }
+
+  /// Adds Russian words that have a real gloss. Yo stays yo.
+  Future<WordImportResult> importRussianFrequencyWords() async {
+    if (await _store.getMeta(_ruFrequencyKey) == '1') {
+      return const WordImportResult(imported: 0, skipped: 0, invalid: 0);
+    }
+    final result = await adminImportWords(ruFrequencyWordsCsv);
+    await _store.putMeta(_ruFrequencyKey, '1');
     return result;
   }
 
@@ -977,12 +1003,30 @@ class LocalGameServer implements GameServer {
     user = await _applyMissedStreak(user);
     user = await _maybeRolloverLeague(user);
     final today = DateKeys.dayKey(_now);
-    final closed = await _dailyClosed(user, today);
-    final daily = closed
-        ? DailyStatus.completed
-        : await _hasOpenDaily(user)
-            ? DailyStatus.started
-            : DailyStatus.available;
+    final open = await _findActive(user.id, GameType.daily, language: user.locale);
+    final openToday = open != null && _sessionStillOpen(open);
+    final finished = await _maxFinishedDailyIndex(user, today);
+    final stored = await _storedDailyCount(today, user.locale, user.currentLeague);
+    final DailyStatus daily;
+    final int dailyIndex;
+    final bool dailyNeedsAd;
+    if (openToday) {
+      daily = DailyStatus.started;
+      dailyIndex = _sessionDailyIndex(open);
+      dailyNeedsAd = false;
+    } else if (finished == 0) {
+      daily = DailyStatus.available;
+      dailyIndex = 1;
+      dailyNeedsAd = false;
+    } else if (stored >= finished + 1) {
+      daily = DailyStatus.available;
+      dailyIndex = finished + 1;
+      dailyNeedsAd = false;
+    } else {
+      daily = DailyStatus.completed;
+      dailyIndex = finished + 1;
+      dailyNeedsAd = true;
+    }
     final rewardAvailable =
         !user.isAnonymous && user.lastRewardDate != today;
     final week = DateKeys.weekId(_now);
@@ -1001,6 +1045,8 @@ class LocalGameServer implements GameServer {
       leaguePoints: me?.points ?? 0,
       offline: false,
       periodStandings: periods,
+      dailyIndex: dailyIndex,
+      dailyNeedsAd: dailyNeedsAd,
     );
   }
 
@@ -1076,6 +1122,7 @@ class LocalGameServer implements GameServer {
       'league': league.name,
       'language': locale,
       'wordId': picked.id,
+      'index': 1,
       'isActive': true,
       'source': 'auto',
       'createdAt': _now.toIso8601String(),
@@ -1149,6 +1196,7 @@ class LocalGameServer implements GameServer {
       outcome: outcome,
       answer: answer,
       solved: solved,
+      dailyIndex: raw['gameType'] == GameType.daily.name ? _sessionDailyIndex(raw) : 1,
     );
   }
 
@@ -1189,42 +1237,153 @@ class LocalGameServer implements GameServer {
     return DateTime.parse(raw['expiresAt'] as String).isAfter(_now);
   }
 
-  String _dailyLockKey(UserEntity user) => 'daily_done_${user.id}_${user.locale}';
-
-  Future<bool> _dailyClosed(UserEntity user, String today) async {
-    if (await _findFinishedDaily(user, today) != null) return true;
-    if (user.playedDailyOn(today)) return true;
-    if (await _store.getMeta(_dailyLockKey(user)) == today) return true;
-    return false;
+  int _sessionDailyIndex(Map<String, dynamic> raw) {
+    final stored = raw['dailyIndex'];
+    if (stored is int && stored > 0) return stored;
+    return 1;
   }
 
-  Future<Map<String, dynamic>?> _findFinishedDaily(
+  bool _dailySessionFinished(Map<String, dynamic> session, UserEntity user, String today) {
+    if (session['userId'] != user.id) return false;
+    if (session['gameType'] != GameType.daily.name) return false;
+    final language = session['language'] as String? ?? 'tr';
+    if (language != user.locale) return false;
+    final status = session['status'] as String?;
+    final finished = status == GameStatus.won.name ||
+        status == GameStatus.lost.name ||
+        status == GameStatus.completed.name;
+    if (!finished) return false;
+    final started = DateTime.tryParse(session['startedAt'] as String? ?? '');
+    return started != null && DateKeys.dayKey(started) == today;
+  }
+
+  Future<int> _maxFinishedDailyIndex(UserEntity user, String today) async {
+    var maxIndex = 0;
+    for (final session in await _store.values('game_sessions')) {
+      if (!_dailySessionFinished(session, user, today)) continue;
+      final index = _sessionDailyIndex(session);
+      if (index > maxIndex) maxIndex = index;
+    }
+    return maxIndex;
+  }
+
+  Future<Map<String, dynamic>?> _finishedDailySession(
     UserEntity user,
     String today,
+    int index,
   ) async {
-    final sessions = await _store.values('game_sessions');
-    for (final session in sessions) {
-      if (session['userId'] != user.id) continue;
-      if (session['gameType'] != GameType.daily.name) continue;
-      final language = session['language'] as String? ?? 'tr';
-      if (language != user.locale) continue;
-      final status = session['status'] as String?;
-      final finished = status == GameStatus.won.name ||
-          status == GameStatus.lost.name ||
-          status == GameStatus.completed.name;
-      if (!finished) continue;
-      final started = DateTime.tryParse(session['startedAt'] as String? ?? '');
-      if (started != null && DateKeys.dayKey(started) == today) {
-        await _store.putMeta(_dailyLockKey(user), today);
-        return session;
-      }
+    Map<String, dynamic>? found;
+    for (final session in await _store.values('game_sessions')) {
+      if (!_dailySessionFinished(session, user, today)) continue;
+      if (_sessionDailyIndex(session) != index) continue;
+      found = session;
     }
-    return null;
+    return found;
   }
 
-  Future<bool> _hasOpenDaily(UserEntity user) async {
-    final existing = await _findActive(user.id, GameType.daily, language: user.locale);
-    return existing != null && _sessionStillOpen(existing);
+  String _dailySlotKey(String date, String language, LeagueTier league, int index) {
+    final base = _dailyKey(date, language, league);
+    return index <= 1 ? base : '${base}_$index';
+  }
+
+  Future<T> _lockedDaily<T>(String key, Future<T> Function() action) async {
+    final previous = _dailySlotLocks[key] ?? Future<void>.value();
+    final done = Completer<void>();
+    _dailySlotLocks[key] = done.future;
+    try {
+      await previous;
+      return await action();
+    } finally {
+      done.complete();
+      if (identical(_dailySlotLocks[key], done.future)) {
+        _dailySlotLocks.remove(key);
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>?> _readDailySlot(
+    String day,
+    String locale,
+    LeagueTier league,
+    int index,
+  ) async {
+    var existing = await _store.get('daily_games', _dailySlotKey(day, locale, league, index));
+    if (existing == null && index <= 1 && locale == 'tr') {
+      existing = await _store.get('daily_games', '${day}_${league.name}');
+    }
+    return existing;
+  }
+
+  Future<int> _storedDailyCount(String day, String locale, LeagueTier league) async {
+    var count = 0;
+    while (await _readDailySlot(day, locale, league, count + 1) != null) {
+      count++;
+      if (count > 200) break;
+    }
+    return count;
+  }
+
+  Future<Set<String>> _usedDailyWordIds(String day, String locale, LeagueTier league) async {
+    final ids = <String>{};
+    final count = await _storedDailyCount(day, locale, league);
+    for (var index = 1; index <= count; index++) {
+      final row = await _readDailySlot(day, locale, league, index);
+      final id = row?['wordId'] as String?;
+      if (id != null) ids.add(id);
+    }
+    return ids;
+  }
+
+  Future<WordEntity> _wordForSlot(Map<String, dynamic> slot) async {
+    final word = await _store.get('words', slot['wordId'] as String);
+    if (word == null) {
+      throw AppFailure(UserMessages.serverError, code: 'NO_WORD');
+    }
+    return WordEntity.fromMap(word);
+  }
+
+  /// Creates the next shared daily after [user] has finished the latest one.
+  /// A second caller in the same moment reuses that word and does not add coins.
+  Future<bool> grantDailyNextProof({
+    required String userId,
+    required String transactionId,
+  }) async {
+    if (userId.isEmpty || transactionId.isEmpty) return false;
+    final seen = 'admob_$transactionId';
+    if (await _store.getMeta(seen) == '1') return true;
+    final map = await _store.get('users', userId);
+    if (map == null) return false;
+    final user = UserEntity.fromMap(map);
+    final day = DateKeys.dayKey(_now);
+    final locale = user.locale;
+    final league = user.currentLeague;
+    final created = await _lockedDaily('${day}_${locale}_${league.name}', () async {
+      final finished = await _maxFinishedDailyIndex(user, day);
+      final stored = await _storedDailyCount(day, locale, league);
+      if (finished < 1) return false;
+      if (finished < stored) return true;
+      if (await _readDailySlot(day, locale, league, stored + 1) != null) return true;
+      final avoid = await _usedDailyWordIds(day, locale, league);
+      final list = await _playable(league.wordLength, language: locale);
+      final pool = list.where((word) => !avoid.contains(word.id)).toList();
+      if (pool.isEmpty) return false;
+      final picked = pool[_random.nextInt(pool.length)];
+      final next = stored + 1;
+      await _store.put('daily_games', _dailySlotKey(day, locale, league, next), {
+        'date': day,
+        'league': league.name,
+        'language': locale,
+        'wordId': picked.id,
+        'index': next,
+        'isActive': true,
+        'source': 'ad',
+        'createdAt': _now.toIso8601String(),
+      });
+      return true;
+    });
+    if (!created) return false;
+    await _store.putMeta(seen, '1');
+    return true;
   }
 
   Future<Map<String, dynamic>?> _findActive(
@@ -1251,10 +1410,11 @@ class LocalGameServer implements GameServer {
     required UserEntity user,
     required GameType type,
     required WordEntity word,
+    int dailyIndex = 1,
   }) async {
     final id = _uuid.v4();
     final now = _now;
-    final map = {
+    final map = <String, dynamic>{
       'id': id,
       'userId': user.id,
       'gameType': type.name,
@@ -1272,6 +1432,7 @@ class LocalGameServer implements GameServer {
       'startedAt': now.toIso8601String(),
       'expiresAt': _expiresAtFor(type).toIso8601String(),
       'endlessStreak': 0,
+      if (type == GameType.daily) 'dailyIndex': dailyIndex,
     };
     await _store.put('game_sessions', id, map);
     return map;
@@ -1285,17 +1446,40 @@ class LocalGameServer implements GameServer {
     }
     user = await _applyMissedStreak(user);
     final today = DateKeys.dayKey(_now);
-    if (await _dailyClosed(user, today)) {
-      final finished = await _findFinishedDaily(user, today);
-      if (finished != null) return _sessionToView(finished);
-      throw AppFailure(UserMessages.dailyCompleted, code: 'DAILY_DONE');
-    }
     final existing = await _findActive(user.id, GameType.daily, language: user.locale);
     if (existing != null && _sessionStillOpen(existing)) {
       return _sessionToView(existing);
     }
-    final word = await _dailyWord(user);
-    final session = await _createSession(user: user, type: GameType.daily, word: word);
+    final finished = await _maxFinishedDailyIndex(user, today);
+    final next = finished + 1;
+    final league = user.currentLeague;
+    final locale = user.locale;
+    var slot = await _readDailySlot(today, locale, league, next);
+    if (slot == null && next == 1) {
+      final word = await _lockedDaily(
+        '${today}_${locale}_${league.name}',
+        () => _dailyWord(user),
+      );
+      final session = await _createSession(
+        user: user,
+        type: GameType.daily,
+        word: word,
+        dailyIndex: 1,
+      );
+      return _sessionToView(session);
+    }
+    if (slot == null) {
+      final last = await _finishedDailySession(user, today, finished);
+      if (last != null) return _sessionToView(last);
+      throw AppFailure(UserMessages.dailyCompleted, code: 'DAILY_DONE');
+    }
+    final word = await _wordForSlot(slot);
+    final session = await _createSession(
+      user: user,
+      type: GameType.daily,
+      word: word,
+      dailyIndex: next,
+    );
     return _sessionToView(session);
   }
 
@@ -2011,7 +2195,8 @@ class LocalGameServer implements GameServer {
 
     if (type == GameType.daily) {
       final today = DateKeys.dayKey(_now);
-      if (!user.playedDailyOn(today)) {
+      final firstToday = !user.playedDailyOn(today);
+      if (firstToday) {
         final last = user.lastDailyFor(user.locale);
         if (last != null && DateKeys.daysBetween(last, today) == 1) {
           streak = user.streak + 1;
@@ -2020,29 +2205,30 @@ class LocalGameServer implements GameServer {
         } else {
           streak = user.streak + 1;
         }
-        xp = _progression.dailyXp(
-          config: config,
-          won: won,
-          hintUsed: hintUsed,
-          perfect: perfect,
-          streakAfter: streak,
-        );
-        coins = _progression.dailyCoins(config: config, won: won);
-        leaguePts = user.canJoinLeague
-            ? _progression.leaguePoints(
-                guesses: guesses,
-                won: won,
-                hintUsed: hintUsed,
-              )
-            : 0;
         next = user.copyWith(
           lastDailyDate: today,
           lastDailyByLocale: {...user.lastDailyByLocale, user.locale: today},
           streak: streak,
           longestStreak: streak > user.longestStreak ? streak : user.longestStreak,
         );
-        await _store.putMeta(_dailyLockKey(user), today);
+      } else {
+        streak = user.streak;
       }
+      xp = _progression.dailyXp(
+        config: config,
+        won: won,
+        hintUsed: hintUsed,
+        perfect: perfect,
+        streakAfter: streak,
+      );
+      coins = _progression.dailyCoins(config: config, won: won);
+      leaguePts = user.canJoinLeague
+          ? _progression.leaguePoints(
+              guesses: guesses,
+              won: won,
+              hintUsed: hintUsed,
+            )
+          : 0;
     } else if (type == GameType.endless) {
       if (won) {
         xp = _progression.endlessXp(config);
@@ -3234,6 +3420,7 @@ class LocalGameServer implements GameServer {
       'league': league.name,
       'language': locale,
       'wordId': wordId,
+      'index': 1,
       'isActive': true,
       'source': 'admin',
       'createdAt': _now.toIso8601String(),
@@ -3601,9 +3788,17 @@ class LocalGameServer implements GameServer {
       final league = r['league'] as String;
       final wordId = r['wordId'] as String;
       final lang = r['language'] as String? ?? 'tr';
-      map['${date}_${lang}_$league'] = wordId;
-      if (lang == 'tr') {
-        map['${date}_$league'] = wordId;
+      final index = r['index'] as int? ?? 1;
+      final base = '${date}_${lang}_$league';
+      if (index <= 1) {
+        map[base] = wordId;
+        if (lang == 'tr') map['${date}_$league'] = wordId;
+      } else {
+        map['${base}_$index'] = wordId;
+        final opened = r['createdAt'] as String?;
+        if (opened != null && opened.isNotEmpty) {
+          map['${base}_${index}_at'] = opened;
+        }
       }
     }
     return map;
