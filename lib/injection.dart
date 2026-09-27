@@ -3,6 +3,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:kelimelig/core/l10n/l10n.dart';
 import 'package:kelimelig/core/theme/appearance.dart';
 import 'package:kelimelig/core/services/ad_service.dart';
+import 'package:kelimelig/core/services/device_link.dart';
 import 'package:kelimelig/core/services/billing_gateway.dart';
 import 'package:kelimelig/core/services/google_auth.dart';
 import 'package:kelimelig/core/services/audio_manager.dart';
@@ -67,6 +68,7 @@ Future<void> configureDependencies({
   sl.registerSingleton<GameServer>(server);
   sl.registerSingleton<LunoFallServer>(fall);
   sl.registerSingleton<LunoGridServer>(grid);
+  sl.registerSingleton<DeviceLink>(DeviceLink());
   sl.registerSingleton<L10n>(L10n());
   sl.registerSingleton<Appearance>(Appearance());
   sl.registerSingleton<LoggerService>(LoggerService());

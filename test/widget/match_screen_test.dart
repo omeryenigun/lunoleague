@@ -29,7 +29,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: DuelScreen()));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
-    expect(find.text('DÜELLO'), findsOneWidget);
+    expect(find.text('Düello'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 3));
@@ -37,7 +37,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: RoomScreen()));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
-    expect(find.text('ÖZEL ODA'), findsOneWidget);
+    expect(find.text('Özel Oda'), findsOneWidget);
     expect(find.text('ODA OLUŞTUR'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());

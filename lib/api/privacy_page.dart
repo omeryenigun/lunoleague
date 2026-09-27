@@ -19,19 +19,54 @@ const _html = '''
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Onyapp Gizlilik Politikası</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://onyapp.app/css/style.css?v=8">
   <style>
-    body { font-family: Georgia, serif; max-width: 46rem; margin: 2rem auto; padding: 0 1.25rem 3rem; line-height: 1.55; color: #1a1a1a; }
-    h1 { font-size: 1.7rem; }
-    h2 { font-size: 1.2rem; margin-top: 1.8rem; }
-    h3 { font-size: 1.05rem; margin-top: 1.4rem; }
-    h4 { font-size: 1rem; margin-top: 1.2rem; }
-    p, li { font-size: 1rem; }
-    table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
-    th, td { border: 1px solid #ccc; padding: 0.45rem 0.6rem; text-align: left; vertical-align: top; }
-    hr { border: 0; border-top: 1px solid #ddd; margin: 1.5rem 0; }
+    .legal { max-width: 1180px; margin: 0 auto; padding: 48px 24px 80px; }
+    .legal h1 { font-size: clamp(1.8rem, 3vw, 2.4rem); letter-spacing: -.03em; margin-bottom: 12px; }
+    .legal h2 { font-size: 1.25rem; margin: 1.8rem 0 .6rem; letter-spacing: -.02em; }
+    .legal h3 { font-size: 1.05rem; margin: 1.3rem 0 .4rem; }
+    .legal h4 { font-size: 1rem; margin: 1.1rem 0 .4rem; }
+    .legal p, .legal li { color: var(--muted); font-size: .98rem; }
+    .legal strong { color: var(--text); }
+    .legal a { color: var(--cyan); }
+    .legal hr { border: 0; border-top: 1px solid var(--line); margin: 1.6rem 0; }
+    .legal ul { margin: .4rem 0 1rem 1.2rem; }
+    .legal table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+    .legal th, .legal td { border: 1px solid var(--line); padding: .5rem .65rem; text-align: left; vertical-align: top; color: var(--muted); }
+    .legal th { color: var(--text); }
+    html.lang-en [data-legal="tr"] { display: none; }
+    html:not(.lang-en) [data-legal="en"] { display: none; }
   </style>
+  <script>
+    try {
+      if (localStorage.getItem('ony-lang') === 'en') document.documentElement.classList.add('lang-en');
+    } catch (e) {}
+  </script>
 </head>
 <body>
+<header>
+  <nav class="nav">
+    <a href="/" class="logo"><span class="logo-mark" aria-hidden="true">🎮</span><span><b>Onyapp</b></span></a>
+    <div class="nav-end">
+      <div class="menu">
+        <a href="/" data-i18n="navHome">Ana Sayfa</a>
+        <a href="/oyunlar" data-i18n="navGames">Oyunlar</a>
+        <a href="/hakkimizda" data-i18n="navAbout">Hakkımızda</a>
+        <a href="/iletisim" data-i18n="navContact">İletişim</a>
+      </div>
+      <div class="langs" role="group" aria-label="Language">
+        <button type="button" data-lang="tr">TR</button>
+        <button type="button" data-lang="en">EN</button>
+      </div>
+      <button class="nav-toggle" type="button" aria-label="Menü">☰</button>
+    </div>
+  </nav>
+</header>
+<main class="legal">
+<article class="legal-lang" lang="tr" data-legal="tr">
   <h1>Onyapp Gizlilik Politikası</h1>
   <p><strong>Son güncelleme: 27 Eylül 2026</strong></p>
   <p>Bu Gizlilik Politikası, <strong>Onyapp</strong> mobil uygulaması ("Onyapp", "Uygulama", "biz", "bize" veya "bizim") aracılığıyla gerçekleştirilen kişisel veri işleme faaliyetleri hakkında kullanıcıları bilgilendirmek amacıyla hazırlanmıştır.</p>
@@ -536,6 +571,524 @@ const _html = '''
   <p>Bu politika, kullanıcıların kanunlardan doğan emredici haklarını ortadan kaldırmaz, sınırlandırmaz veya bunlardan feragat edilmesini sağlamaz.</p>
   <p>Uygulanabilir mevzuat ile bu politika arasında zorunlu bir farklılık olması halinde, uygulanabilir mevzuatın emredici hükümleri önceliklidir.</p>
   <p><strong>Son güncelleme:</strong> 27 Eylül 2026</p>
+</article>
+<article class="legal-lang" lang="en" data-legal="en">
+  <h1>Onyapp Privacy Policy</h1>
+  <p><strong>Last updated: 27 September 2026</strong></p>
+  <p>This Privacy Policy is prepared to inform users about the personal data processing activities carried out through the <strong>Onyapp</strong> mobile application ("Onyapp", the "Application", "we", "us", or "our").</p>
+  <p>This policy aims to inform users under Turkey's Law No. 6698 on the Protection of Personal Data ("KVKK"), the European Union General Data Protection Regulation ("GDPR"), and, to the extent applicable, United Kingdom data protection law and applicable federal and state privacy laws in the United States.</p>
+  <p>The privacy and user-data policies of application stores such as the Apple App Store and Google Play also apply.</p>
+  <hr>
+  <h2>1. Data Controller / Data Processor</h2>
+  <p>For personal data processed within Onyapp, the data controller, depending on the relevant processing activity, acts as:</p>
+  <p><strong>[Şirket Unvanı]</strong><br>
+  <strong>Address:</strong> [Şirket Adresi]<br>
+  <strong>Email:</strong> [Gizlilik / KVKK E-posta Adresi]<br>
+  <strong>Web:</strong> [Web Sitesi]</p>
+  <p>Some personal data may also be processed independently, or on our behalf, by third-party service providers used to operate the application, within the scope of their own services.</p>
+  <p>For a third party's own data processing activities, that provider's privacy policy and terms also apply.</p>
+  <hr>
+  <h2>2. What Information Do We Process?</h2>
+  <p>The information processed in Onyapp may vary depending on which features of the application are used.</p>
+  <h3>2.1. Guest User Information</h3>
+  <p>When Onyapp's guest feature is used, the following may be processed:</p>
+  <ul>
+    <li>A player/user identifier created by the application,</li>
+    <li>An automatically generated display name,</li>
+    <li>Game progress,</li>
+    <li>Scores,</li>
+    <li>League points,</li>
+    <li>Achievements,</li>
+    <li>Coin balance,</li>
+    <li>Streak information,</li>
+    <li>Play time and in-game performance information.</li>
+  </ul>
+  <p>Guest use does not require a first name, last name, or email address.</p>
+  <p>Device, application, and technical connection information may still be processed by third-party SDKs or the server infrastructure for the operation and security of their own services.</p>
+  <hr>
+  <h3>2.2. Account Creation with Email</h3>
+  <p>If an account is created with email, the following may be processed:</p>
+  <ul>
+    <li>Name,</li>
+    <li>Email address,</li>
+    <li>User account identifier,</li>
+    <li>A secure cryptographic hash of the password,</li>
+    <li>Account and game progress information.</li>
+  </ul>
+  <p>The password itself is not stored in plain text.</p>
+  <p>The cryptographic methods and technical security measures used to store the password securely may be updated over time.</p>
+  <hr>
+  <h3>2.3. Sign-in with Google</h3>
+  <p>If sign-in with Google is used, information provided to the application by Google may be processed.</p>
+  <p>This may include:</p>
+  <ul>
+    <li>Google account identifier,</li>
+    <li>Name,</li>
+    <li>Email address,</li>
+    <li>Technical identity information related to the Google account.</li>
+  </ul>
+  <p>Onyapp does not receive or store the Google account password.</p>
+  <p>If you sign in with a Google account, Google's own privacy policy and terms of service also apply.</p>
+  <hr>
+  <h3>2.4. Profile Photo</h3>
+  <p>A profile photo may be uploaded optionally by the user.</p>
+  <p>A profile photo is processed in order to:</p>
+  <ul>
+    <li>Display it on the user profile,</li>
+    <li>Personalize the user account,</li>
+    <li>Create the in-game profile appearance.</li>
+  </ul>
+  <p>Uploading a profile photo is not required.</p>
+  <p>The user may remove or change the profile photo through the relevant features of the application.</p>
+  <p>Unless the user expressly uploads one, Onyapp does not take a profile photo from the camera or photo gallery on its own.</p>
+  <hr>
+  <h2>3. Game and Usage Data</h2>
+  <p>The following information may be processed so that Onyapp's game features can work:</p>
+  <ul>
+    <li>Score,</li>
+    <li>Play time,</li>
+    <li>Guesses,</li>
+    <li>Correct and incorrect answers,</li>
+    <li>League points,</li>
+    <li>League ranking,</li>
+    <li>Streak,</li>
+    <li>Achievements,</li>
+    <li>Game level,</li>
+    <li>In-game progress,</li>
+    <li>Coin balance,</li>
+    <li>In-game rewards used or earned,</li>
+    <li>Game sessions,</li>
+    <li>Game results,</li>
+    <li>Username and profile information.</li>
+  </ul>
+  <p>This information may be processed to provide the game experience, save progress, build rankings, grant rewards, and detect cheating or abusive activity.</p>
+  <hr>
+  <h2>4. Purchase and Payment Information</h2>
+  <p>If a purchase is made inside Onyapp through Google Play Billing or Apple's in-app purchase system, the payment is processed by the relevant application store.</p>
+  <p>Onyapp does not receive or store payment information such as:</p>
+  <ul>
+    <li>Credit card number,</li>
+    <li>Debit card number,</li>
+    <li>CVV/CVC,</li>
+    <li>Card PIN,</li>
+    <li>Online banking information.</li>
+  </ul>
+  <p>The following information may be processed to verify the purchase:</p>
+  <ul>
+    <li>Product identifier,</li>
+    <li>Purchase transaction identifier,</li>
+    <li>Purchase token,</li>
+    <li>Transaction date,</li>
+    <li>Transaction status,</li>
+    <li>The relevant user or account identifier,</li>
+    <li>The type and status of the purchased product.</li>
+  </ul>
+  <p>Google Play's payment and privacy policies apply to Google Play purchases, and Apple's apply to Apple purchases.</p>
+  <hr>
+  <h2>5. Rewarded Ads and Advertising Technologies</h2>
+  <p>Onyapp may use third-party advertising services such as Google AdMob to offer rewarded ads inside the application.</p>
+  <p>When a rewarded ad is shown, the application or the server may process the following so that the reward is granted to the correct user only once and the same ad transaction cannot be reused:</p>
+  <ul>
+    <li>Ad unit information,</li>
+    <li>Ad transaction / verification identifier,</li>
+    <li>User or player identifier,</li>
+    <li>Reward information,</li>
+    <li>Transaction time,</li>
+    <li>Verification status of the transaction.</li>
+  </ul>
+  <p>Google AdMob and related advertising SDKs may, depending on the configuration in use, the device, the operating system, and the user's region, process information such as an advertising identifier, device information, IP address, application information, and ad interactions within the scope of their own services.</p>
+  <p>These activities are subject to Google's own privacy policies and the relevant regional requirements.</p>
+  <p>On platforms where permission is required for personalized advertising or for tracking across apps and websites, the user may be offered the choice and permission mechanisms the platform requires.</p>
+  <p>On Apple devices, where tracking across other companies' apps and websites is required, Apple's App Tracking Transparency ("ATT") system and the related user permissions apply.</p>
+  <p>Apple requires that the data practices of the application and of integrated third-party SDKs be described accurately in App Store privacy disclosures.</p>
+  <hr>
+  <h2>6. Notifications</h2>
+  <p>If the user allows a daily reminder or similar notifications, Onyapp may create a notification on the device.</p>
+  <p>Notification permission:</p>
+  <ul>
+    <li>Can be turned off in the device settings,</li>
+    <li>Can be managed in the application settings,</li>
+    <li>Is not enabled unless the user asks for it.</li>
+  </ul>
+  <p>If the current technical implementation does not store a notification address or push token on the server, only local notifications created on the device are used.</p>
+  <p>If the technical design is later changed to a push notification system, the related data processing will be described by updating this policy.</p>
+  <hr>
+  <h2>7. Technical Data and Logs</h2>
+  <p>The following technical information may be processed within the application or server infrastructure in order to secure the application, detect errors, improve performance, and prevent abuse:</p>
+  <ul>
+    <li>IP address,</li>
+    <li>Date and time,</li>
+    <li>Application version,</li>
+    <li>Operating system,</li>
+    <li>Device type,</li>
+    <li>Language and region settings,</li>
+    <li>Technical information about the network connection,</li>
+    <li>Error logs,</li>
+    <li>Server logs,</li>
+    <li>Session and security records,</li>
+    <li>Technical identifiers that can be associated with a user or device.</li>
+  </ul>
+  <p>Not all of this information may be collected in the same way for every user or on every platform.</p>
+  <p>Technical records are kept for as long as they are needed for security and operation of the service, and are deleted or anonymized after a reasonable period unless a legal reason requires longer retention.</p>
+  <hr>
+  <h2>8. Sources of Information</h2>
+  <p>Personal data may be obtained from the following sources:</p>
+  <ol>
+    <li>Information the user provides directly,</li>
+    <li>Information provided through a Google account,</li>
+    <li>Verification information from Google Play or Apple purchase systems,</li>
+    <li>Technical information created automatically while the user uses the application,</li>
+    <li>Advertising SDKs and other integrated third-party services,</li>
+    <li>Game and security records created on Onyapp servers.</li>
+  </ol>
+  <hr>
+  <h2>9. Why Do We Use Personal Data?</h2>
+  <p>Personal data may be processed for the following purposes:</p>
+  <ul>
+    <li>To create and manage a user account,</li>
+    <li>To verify the user's identity,</li>
+    <li>To create a player profile,</li>
+    <li>To save game progress,</li>
+    <li>To restore game progress across sessions,</li>
+    <li>To calculate scores,</li>
+    <li>To build leagues and rankings,</li>
+    <li>To record achievements,</li>
+    <li>To manage the coin balance,</li>
+    <li>To grant in-game rewards,</li>
+    <li>To verify purchases,</li>
+    <li>To verify rewarded ads,</li>
+    <li>To prevent the same ad transaction from being rewarded more than once,</li>
+    <li>To prevent fraud, cheating, abuse, and unauthorized access,</li>
+    <li>To keep the application secure,</li>
+    <li>To detect errors,</li>
+    <li>To improve the application's performance and stability,</li>
+    <li>To show the notifications the user requested,</li>
+    <li>To meet legal obligations,</li>
+    <li>To respond to user requests and applications,</li>
+    <li>To exercise or defend our legal rights.</li>
+  </ul>
+  <p>If personal data will be used for a new purpose that is incompatible with the purposes described in this policy, the user is informed separately, or the required permission is obtained, where applicable law requires it.</p>
+  <hr>
+  <h2>10. Legal Bases for Processing</h2>
+  <h3>10.1. KVKK</h3>
+  <p>For users in Turkey, personal data may be processed under one or more of the legal conditions for processing set out in the KVKK, depending on the nature of the activity.</p>
+  <p>These legal bases may include:</p>
+  <ul>
+    <li>Being expressly provided for by law,</li>
+    <li>Being necessary for the establishment or performance of a contract,</li>
+    <li>Compliance with a legal obligation of the data controller,</li>
+    <li>Processing being mandatory for the establishment, exercise, or protection of a right,</li>
+    <li>The legitimate interest of the data controller,</li>
+    <li>The explicit consent of the data subject.</li>
+  </ul>
+  <p>Under the KVKK, explicit consent is not a mandatory condition for every act of processing. The legal basis appropriate to the relevant activity is assessed separately.</p>
+  <p>Under the KVKK, the user is informed about the identity of the data controller, the purposes of processing, the persons or groups to whom data may be transferred, the method and legal basis of collection, and the rights of the data subject.</p>
+  <hr>
+  <h3>10.2. GDPR / European Economic Area</h3>
+  <p>Where the GDPR applies, personal data may be processed under one of the following legal bases, depending on the nature of the activity:</p>
+  <ul>
+    <li>The establishment or performance of the user's contract,</li>
+    <li>Compliance with a legal obligation,</li>
+    <li>Legitimate interest,</li>
+    <li>The user's explicit consent,</li>
+    <li>Other legal bases recognized under the GDPR, such as protecting the vital interests of the user or another person.</li>
+  </ul>
+  <p>Where processing is based on consent, the user may withdraw consent at any time. Withdrawal does not affect the lawfulness of processing carried out on the basis of consent before the withdrawal.</p>
+  <p>Where the GDPR applies, processing of personal data is carried out in line with the principles of fairness, transparency, purpose limitation, data minimization, accuracy, storage limitation, and security.</p>
+  <hr>
+  <h2>11. Sharing of Personal Data</h2>
+  <p>Personal data is not sold or rented.</p>
+  <p>To the extent necessary for the service to work, data may still be shared with parties in the following categories:</p>
+  <h3>Google</h3>
+  <ul>
+    <li>Google Sign-In,</li>
+    <li>Google Play Billing,</li>
+    <li>Google AdMob,</li>
+    <li>Related Google SDKs and services.</li>
+  </ul>
+  <h3>Apple</h3>
+  <p>For the App Store and in-app purchase services used on Apple devices, the related transaction verification information may be processed through Apple's systems.</p>
+  <h3>Railway</h3>
+  <p>Railway infrastructure is used to host Onyapp's application and server infrastructure.</p>
+  <h3>Technical service providers</h3>
+  <p>If other infrastructure, security, analytics, error-monitoring, or technical service providers become necessary for the application to work, those providers may access personal data according to the scope of that service.</p>
+  <p>Such providers access, as far as possible, only the data required to perform the service given to them.</p>
+  <p>For a third-party provider's own independent processing, that provider's privacy policy also applies.</p>
+  <hr>
+  <h2>12. Third-Party Services</h2>
+  <p>The main categories of third-party services Onyapp uses, or may use, are:</p>
+  <table>
+    <thead>
+      <tr><th>Service</th><th>Purpose</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Google Sign-In</td><td>Account sign-in</td></tr>
+      <tr><td>Google Play Billing</td><td>In-app purchases</td></tr>
+      <tr><td>Google AdMob</td><td>Rewarded ads</td></tr>
+      <tr><td>Apple App Store / StoreKit</td><td>iOS app distribution and in-app purchases</td></tr>
+      <tr><td>Railway</td><td>Server and application infrastructure</td></tr>
+    </tbody>
+  </table>
+  <p>Those services' own privacy policies may apply to their own processing.</p>
+  <p>Onyapp does not control the independent processing activities of third-party service providers. Where a provider is used by Onyapp as a processor, the contractual and technical measures required by applicable law are sought.</p>
+  <hr>
+  <h2>13. International Data Transfers</h2>
+  <p>The infrastructure of some service providers used by Onyapp may be located outside Turkey, the European Union, or the European Economic Area.</p>
+  <p>Personal data may therefore be transferred to, or processed in, servers in different countries where that is technically necessary for the service.</p>
+  <p>For users in Turkey, transfers of personal data abroad are carried out in line with the KVKK's cross-border transfer rules and applicable secondary legislation.</p>
+  <p>Under the KVKK, standard contracts, binding corporate rules, or other appropriate safeguards provided by law may be used according to the legal structure of the transfer. After the 2024 amendments, the KVKK regulates standard contracts as one of the appropriate safeguard methods for transfers abroad.</p>
+  <p>Where the GDPR applies, transfers to countries outside the European Economic Area may be carried out using mechanisms that comply with the GDPR's international transfer rules. These may include an adequacy decision or, where applicable, Standard Contractual Clauses (SCCs) adopted by the European Commission.</p>
+  <hr>
+  <h2>14. How Long Data Is Kept</h2>
+  <p>Personal data is kept only for as long as it is needed for the purpose of processing, or for as long as a legal obligation requires.</p>
+  <p>When the retention period is set, the following are taken into account:</p>
+  <ul>
+    <li>Whether the account is active,</li>
+    <li>The service life of the game,</li>
+    <li>Purchase verification requirements,</li>
+    <li>Accounting and tax obligations,</li>
+    <li>Security and prevention of abuse,</li>
+    <li>Resolution of legal disputes,</li>
+    <li>Legal retention obligations.</li>
+  </ul>
+  <p>In general:</p>
+  <p><strong>Account data:</strong> For as long as the account is active, or until the user requests deletion.</p>
+  <p><strong>Game data:</strong> For as long as it is needed to provide the service linked to the account.</p>
+  <p><strong>Guest data:</strong> For as long as it is needed to provide the guest account and the related game service.</p>
+  <p><strong>Purchase records:</strong> For as long as needed for purchase verification, accounting, tax, and legal obligations.</p>
+  <p><strong>Ad reward verification records:</strong> For as long as needed to grant the reward only once and to prevent abuse.</p>
+  <p><strong>Security and server logs:</strong> For a reasonable period needed for security, error detection, and prevention of abuse.</p>
+  <p>When the retention period ends, the data is deleted, anonymized, or put into a form that can no longer identify the person.</p>
+  <hr>
+  <h2>15. Account and Data Deletion</h2>
+  <p>The user may request deletion of their account and of the personal data linked to that account.</p>
+  <p>A deletion request may be sent to:</p>
+  <p><strong>Email:</strong> [Gizlilik / Veri Silme E-posta Adresi]</p>
+  <p>After the request is verified, the relevant account and personal data are deleted or anonymized within the period required by applicable law, except for information that must be kept by law.</p>
+  <p>Some information may not be deletable immediately because of legal obligations, fraud or security reviews, resolution of disputes, or the exercise of legal rights.</p>
+  <p>Google Play requires apps that allow account creation to offer a way for users to delete their account and associated data. Onyapp's account deletion mechanism must therefore be reachable in the application and/or through a suitable web channel.</p>
+  <hr>
+  <h2>16. User Rights</h2>
+  <p>Depending on applicable law, users may have the following rights.</p>
+  <h3>16.1. Rights under the KVKK</h3>
+  <p>Under the KVKK, users may have the right to:</p>
+  <ul>
+    <li>Learn whether their personal data is processed,</li>
+    <li>Request information about the processing if it has been processed,</li>
+    <li>Learn the purpose of processing and whether it is used in line with that purpose,</li>
+    <li>Know the third parties to whom personal data is transferred in Turkey or abroad,</li>
+    <li>Request correction of incomplete or inaccurate data,</li>
+    <li>Request deletion or destruction of personal data under the conditions set out in the law,</li>
+    <li>Request that correction, deletion, or destruction be notified to third parties to whom the data was transferred,</li>
+    <li>Object to a result against them that arises from analysis of the processed data solely through automated systems,</li>
+    <li>Request compensation for damage if they suffer damage because of unlawful processing.</li>
+  </ul>
+  <hr>
+  <h2>17. Rights under the GDPR</h2>
+  <p>Where the GDPR applies, users may, depending on the circumstances, have rights such as:</p>
+  <ul>
+    <li>Access to personal data,</li>
+    <li>Correction of inaccurate personal data,</li>
+    <li>Erasure of personal data,</li>
+    <li>Restriction of processing,</li>
+    <li>Data portability,</li>
+    <li>Objection to processing,</li>
+    <li>Withdrawal of consent where processing is based on consent,</li>
+    <li>Rights related to automated decision-making and profiling.</li>
+  </ul>
+  <p>Some of these rights are not absolute and may be subject to the exceptions set out in the GDPR.</p>
+  <p>For example, data that must be kept because of a legal obligation may not be deletable immediately when the user asks for it.</p>
+  <hr>
+  <h2>18. Users in the United Kingdom</h2>
+  <p>Where United Kingdom data protection law applies, users may have rights of access, correction, erasure, restriction of processing, data portability, objection, and other applicable rights under that law.</p>
+  <p>Users in the United Kingdom may also have the right to complain to the Information Commissioner's Office ("ICO"), where that applies.</p>
+  <hr>
+  <h2>19. Users in the United States</h2>
+  <p>Privacy rights in the United States may vary by state.</p>
+  <p>To the extent applicable, users may have some of the following rights under the consumer privacy laws of California, Virginia, Colorado, and other states:</p>
+  <ul>
+    <li>To learn which personal information is collected,</li>
+    <li>To access personal information,</li>
+    <li>To request deletion of personal information,</li>
+    <li>To request correction of inaccurate information,</li>
+    <li>To request a portable copy of personal data,</li>
+    <li>To object to the sale or sharing of personal information,</li>
+    <li>To opt out of the use of personal data for targeted advertising,</li>
+    <li>In some cases, to opt out of profiling or automated decision-making,</li>
+    <li>Not to be treated in a discriminatory way for exercising privacy rights.</li>
+  </ul>
+  <p>For California users, where the CCPA/CPRA applies, rights may include the right to know, delete, and correct, to opt out of sale/sharing, to opt out of targeted advertising, and to be protected against discrimination.</p>
+  <p>In Virginia, where applicable, rights include access, correction, deletion, data portability, and opting out of targeted advertising, sale, or profiling.</p>
+  <p>In Colorado, where applicable, rights include access, correction, deletion, portability, and opting out of sale or targeted advertising.</p>
+  <p>These rights do not apply automatically to every user. The scope, thresholds, and exceptions in the relevant state law are taken into account.</p>
+  <hr>
+  <h2>20. California "Do Not Sell or Share"</h2>
+  <p>Onyapp does not aim to sell personal information for a commercial purpose.</p>
+  <p>If personal information is processed through advertising technologies in a way that could be treated as a "sale" or "sharing", users are given the choice and opt-out mechanisms required by law where California law applies.</p>
+  <p>California law gives consumers certain rights, for applicable businesses, regarding the sale/sharing of personal information and targeted advertising.</p>
+  <hr>
+  <h2>21. Children's Privacy</h2>
+  <p>Onyapp cares about the protection of children's personal information.</p>
+  <p>Applicable children's privacy law is also taken into account as to whether Onyapp is directed at children, and in cases where it is known that a particular user is a child.</p>
+  <p>In the United States, COPPA may apply to online services directed at children under 13, or that actually know they collect personal information from a child under 13. In those cases, obligations such as parental notice and, where applicable, verifiable parental consent may arise.</p>
+  <p>If Onyapp is marketed to children, if data is collected from children, or if age information shows that the user is a child, additional technical and administrative measures may be applied under the relevant children's privacy requirements.</p>
+  <p>In Europe, the GDPR and the special provisions on children in the relevant national law may apply to children's personal data.</p>
+  <p>Apple's and Google's policies for apps directed at children, and their family policies, may also apply.</p>
+  <hr>
+  <h2>22. Special Category / Sensitive Data</h2>
+  <p>Onyapp does not aim to request special-category or sensitive personal data that is not needed for the game service to work.</p>
+  <p>Users should not enter sensitive information such as the following into profile fields inside the application:</p>
+  <ul>
+    <li>Health information,</li>
+    <li>Biometric information,</li>
+    <li>Genetic information,</li>
+    <li>Religious or political opinions,</li>
+    <li>Information about sex life or sexual orientation,</li>
+    <li>Information about race or ethnic origin.</li>
+  </ul>
+  <p>If the user chooses to write such information in areas that are public or visible to other users, the user may be responsible for the consequences of that information being seen by third parties.</p>
+  <p>Onyapp does not request this kind of information as part of the game service.</p>
+  <hr>
+  <h2>23. Profile and Content Shared by the User</h2>
+  <p>Information such as a username, display name, and profile photo may be visible to other users through the application's social or competitive features.</p>
+  <p>Users should not add unnecessary personal information about themselves or other people to profile fields.</p>
+  <p>Information the user shares publicly, or in a way other users can access, may remain personal data depending on the nature of the sharing.</p>
+  <hr>
+  <h2>24. Cookies and Similar Technologies</h2>
+  <p>Onyapp may not use web browser cookies directly.</p>
+  <p>Third-party SDKs integrated into the application may still use similar technologies or device identifiers, including:</p>
+  <ul>
+    <li>Advertising identifier,</li>
+    <li>Device identifiers,</li>
+    <li>Identifiers created by the SDK,</li>
+    <li>IP address,</li>
+    <li>Ad interaction information,</li>
+    <li>Technical device information.</li>
+  </ul>
+  <p>Use of these technologies may vary with the SDK's configuration and the user's country.</p>
+  <hr>
+  <h2>25. Apple App Store Privacy Disclosure</h2>
+  <p>If Onyapp is published on the Apple App Store, the App Privacy information Apple requires in App Store Connect is declared accurately and kept up to date.</p>
+  <p>These disclosures take into account not only Onyapp's own processing, but also the data collection and use of the relevant third-party SDKs integrated into the application. Apple requires privacy labels about the application's data collection and use practices to be provided on the App Store.</p>
+  <p>If Onyapp's data practices change, the related privacy information in App Store Connect is intended to be updated as well.</p>
+  <hr>
+  <h2>26. Google Play Data Safety Disclosure</h2>
+  <p>If Onyapp is published on Google Play, the Data Safety section in Google Play Console is completed in line with the actual data practices of the application and of integrated third-party SDKs.</p>
+  <p>Google Play requires developers to describe accurately how their applications collect, use, and share data, and for that information to be consistent with the privacy policy.</p>
+  <p>The updates needed are therefore made so that this Privacy Policy and the Google Play Data Safety disclosures do not contain different information.</p>
+  <hr>
+  <h2>27. Data Security</h2>
+  <p>Reasonable technical and administrative security measures are applied to protect personal data against:</p>
+  <ul>
+    <li>Unauthorized access,</li>
+    <li>Unauthorized alteration,</li>
+    <li>Loss or destruction,</li>
+    <li>Unauthorized disclosure.</li>
+  </ul>
+  <p>Where appropriate, these may include:</p>
+  <ul>
+    <li>Secure connections,</li>
+    <li>Password hashing,</li>
+    <li>Access controls,</li>
+    <li>Authorization,</li>
+    <li>Server security,</li>
+    <li>Security logs,</li>
+    <li>Detection of unauthorized access,</li>
+    <li>Backup and recovery mechanisms.</li>
+  </ul>
+  <p>No internet connection, electronic storage system, or software infrastructure can be guaranteed to be fully secure.</p>
+  <p>If a personal data security breach occurs, the assessment, notification, and corrective steps required by applicable law are carried out.</p>
+  <hr>
+  <h2>28. Data Minimization</h2>
+  <p>Onyapp adopts the principle of not collecting or processing personal data that is not needed to provide the service.</p>
+  <p>Information that is collected is kept relevant, necessary, and proportionate to the stated purposes.</p>
+  <p>Under the GDPR, data minimization and purpose limitation are also among the core data protection principles.</p>
+  <hr>
+  <h2>29. Automated Decision-Making and Profiling</h2>
+  <p>Onyapp does not aim to make automated decisions about users that produce legal effects or similarly significant effects.</p>
+  <p>Automatic calculation of a game score, league ranking, achievements, or in-game results is not used, on its own, as a decision with legal or similarly significant effects.</p>
+  <p>Ad personalization or profiling carried out by advertising services may take place within those third-party providers' own systems and policies.</p>
+  <hr>
+  <h2>30. Verification of User Requests</h2>
+  <p>To complete requests for access to personal data, account deletion, correction, or similar requests securely, it may be necessary to verify that the person making the request is authorized on the relevant account.</p>
+  <p>More personal data than needed is not requested for identity verification.</p>
+  <p>If a request is assessed as likely to give unauthorized access to another person's data, the security checks required by applicable law may be carried out.</p>
+  <hr>
+  <h2>31. Completion of User Requests</h2>
+  <p>User requests are assessed within the periods set by applicable law.</p>
+  <p>Some requests may not be fulfilled in full, or immediately, because of:</p>
+  <ul>
+    <li>Legal retention obligations,</li>
+    <li>Security requirements,</li>
+    <li>Prevention of fraud and abuse,</li>
+    <li>Legal disputes,</li>
+    <li>The rights of third parties,</li>
+    <li>Technical limitations.</li>
+  </ul>
+  <p>In that case, the user is told the reason to the extent applicable law allows.</p>
+  <hr>
+  <h2>32. Third-Party Websites and Services</h2>
+  <p>Onyapp, or the application, may contain links to third-party websites or services.</p>
+  <p>If those services are not operated by Onyapp, their own privacy policies and terms of use apply.</p>
+  <p>The scope of personal data processing for a third-party service is determined by that third party's own policies.</p>
+  <hr>
+  <h2>33. Changes to the Privacy Policy</h2>
+  <p>This Privacy Policy may be updated from time to time.</p>
+  <p>Changes may be made because of:</p>
+  <ul>
+    <li>New features,</li>
+    <li>New third-party services,</li>
+    <li>Changes in the law,</li>
+    <li>Changes in processing methods,</li>
+    <li>Security or technical requirements.</li>
+  </ul>
+  <p>If there are important changes, users are informed to the extent applicable law requires.</p>
+  <p>The current version of the policy is published on this page, and the date of the current version is shown at the top of the text.</p>
+  <hr>
+  <h2>34. Contacting the Data Controller</h2>
+  <p>For questions about your personal data, your privacy rights, or this policy, you can contact us at:</p>
+  <p><strong>Data controller:</strong> [Şirket Unvanı]<br>
+  <strong>Email:</strong> [Gizlilik E-posta Adresi]<br>
+  <strong>Address:</strong> [Şirket Adresi]<br>
+  <strong>Web:</strong> [Web Sitesi]</p>
+  <p>For account deletion or personal data requests, writing <strong>"Onyapp Veri Talebi"</strong> or <strong>"Onyapp Hesap Silme Talebi"</strong> in the subject line — or the English forms <strong>"Onyapp Data Request"</strong> and <strong>"Onyapp Account Deletion Request"</strong> — can help the request be reviewed faster.</p>
+  <p>For users in Turkey, the applicable application methods and legal periods for requests under the KVKK are reserved.</p>
+  <p>Users in the European Union/EEA or the United Kingdom also have the right, where applicable, to complain to the competent data protection authority in their own country.</p>
+  <hr>
+  <h2>35. Acceptance and Applicability</h2>
+  <p>Use of Onyapp means that this Privacy Policy has been made available to the user, and that the rights granted to the user under applicable law remain reserved.</p>
+  <p>This policy does not remove, limit, or cause a waiver of the mandatory rights users have under the law.</p>
+  <p>If there is a mandatory difference between applicable law and this policy, the mandatory provisions of applicable law take priority.</p>
+  <p><strong>Last updated:</strong> 27 September 2026</p>
+</article>
+</main>
+<footer>
+  <div class="footer-inner">
+    <a href="/" class="logo"><span class="logo-mark" aria-hidden="true">🎮</span><span><b>Onyapp</b></span></a>
+    <div class="footer-links">
+      <a href="/" data-i18n="navHome">Ana Sayfa</a>
+      <a href="/oyunlar" data-i18n="navGames">Oyunlar</a>
+      <a href="/hakkimizda" data-i18n="navAbout">Hakkımızda</a>
+      <a href="/iletisim" data-i18n="navContact">İletişim</a>
+      <a href="https://onyapp.app/privacy" data-i18n="privacy">Gizlilik</a>
+    </div>
+    <div>© 2026 Onyapp</div>
+  </div>
+</footer>
+<script src="https://onyapp.app/js/i18n.js?v=7"></script>
+<script src="https://onyapp.app/js/main.js?v=7"></script>
+<script>
+  function showLegal() {
+    var lang = 'tr';
+    try { lang = currentLang(); } catch (e) {
+      try { lang = localStorage.getItem('ony-lang') === 'en' ? 'en' : 'tr'; } catch (e2) {}
+    }
+    document.documentElement.classList.toggle('lang-en', lang === 'en');
+    document.title = lang === 'en' ? 'Onyapp Privacy Policy' : 'Onyapp Gizlilik Politikası';
+  }
+  document.addEventListener('ony-lang', showLegal);
+  showLegal();
+</script>
 </body>
 </html>
 ''';

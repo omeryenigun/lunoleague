@@ -7,8 +7,6 @@ class UserMessages {
   static String tooShort(int n) => 'Lütfen en az $n harfli bir kelime gir.';
   static String tooLong(int n) => 'Lütfen en fazla $n harfli bir kelime gir.';
   static const invalidGuess = 'Lütfen geçerli bir kelime gir.';
-  static const anonymousDaily =
-      'Günlük ödül için giriş yap (Google, Apple veya e-posta).';
   static const insufficientCoins = 'Yeterli coin yok.';
   static const shieldsFull = 'Streak kalkanı hakkın dolu.';
   static const banned = 'Hesabın askıya alındı.';
@@ -17,6 +15,9 @@ class UserMessages {
   static const emailTaken = 'Bu e-posta zaten kayıtlı. Giriş yap.';
   static const nicknameTaken = 'Bu takma ad kullanılıyor.';
   static const nicknameShort = 'Takma ad en az 2 karakter olmalı.';
+  static const nicknameLong = 'Takma ad en fazla 20 karakter olabilir.';
+  static const nicknameBad = 'Takma ad harf, rakam ve boşluk kullanabilir.';
+  static const personNameBad = 'Ad ve soyad harf içerebilir.';
   static const badCredentials = 'E-posta veya şifre hatalı.';
   static const googleNotConfigured = 'Google girişi henüz ayarlı değil.';
   static const googleSignInFailed = 'Google girişi tamamlanamadı.';

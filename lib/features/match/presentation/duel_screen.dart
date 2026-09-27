@@ -7,6 +7,7 @@ import 'package:kelimelig/core/l10n/l10n.dart';
 import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
 import 'package:kelimelig/core/theme/cosmic_glass.dart';
+import 'package:kelimelig/core/widgets/game_page_header.dart';
 import 'package:kelimelig/domain/entities/match_snapshot.dart';
 import 'package:kelimelig/domain/game/game_server.dart';
 import 'package:kelimelig/features/match/match_copy.dart';
@@ -128,26 +129,7 @@ class _DuelScreenState extends State<DuelScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
             children: [
-              Row(
-                children: [
-                  CosmicGlassIconButton(
-                    icon: Icons.chevron_left_rounded,
-                    onPressed: () => context.go('/home'),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      l10n.t('duel_title'),
-                      style: const TextStyle(
-                        color: Color(0xFFF8FAFC),
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 28),
+              GamePageHeader(title: l10n.t('duel_title')),
               if (_error != null) ...[
                 Text(
                   _error!,

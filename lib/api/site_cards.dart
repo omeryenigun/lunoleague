@@ -12,6 +12,7 @@ const siteCardsMetaKey = 'site_cards_v1';
 const siteCardsCopyKey = 'site_cards_copy_v1';
 const siteCardsSloganKey = 'site_cards_slogan_v1';
 const siteCardsShotKey = 'site_cards_shots_v1';
+const siteCardsGridKey = 'site_cards_grid_v1';
 
 const _iconPaths = [
   '/seed/luno_league_icon.png',
@@ -85,7 +86,7 @@ Future<void> seedSiteCards(Connection db) async {
   final gallery = await _storeSeedImage(
     db,
     cardId: 'luno_league',
-    role: 'gallery',
+    role: siteMediaShowcase,
     paths: _galleryPaths,
     sortOrder: 1,
   );
@@ -215,7 +216,7 @@ Future<void> seedSiteCardShots(Connection db) async {
     await _insertMedia(
       db,
       cardId: 'luno_league',
-      role: 'gallery',
+      role: siteMediaShot,
       bytes: bytes,
       contentType: type,
       sortOrder: shot[2] as int,
@@ -232,6 +233,47 @@ Future<void> seedSiteCardShots(Connection db) async {
   stdout.writeln('site card shots seeded');
 }
 
+/// Adds the Luno Grid showcase card once. Later admin edits stay.
+Future<void> seedSiteCardGrid(Connection db) async {
+  final meta = await db.execute(
+    Sql.named('select value from kv_meta where item_key = @key'),
+    parameters: {'key': siteCardsGridKey},
+  );
+  if (meta.isNotEmpty && meta.first[0] == '1') return;
+  await db.execute(
+    Sql.named('''
+      insert into site_cards (
+        id, name, description, status, sort_order, name_en, description_en
+      )
+      values (
+        'luno_grid', @name, @description, 'soon', 3, @nameEn, @descriptionEn
+      )
+      on conflict (id) do update set
+        name = excluded.name,
+        description = excluded.description,
+        status = excluded.status,
+        sort_order = excluded.sort_order,
+        name_en = excluded.name_en,
+        description_en = excluded.description_en
+    '''),
+    parameters: {
+      'name': 'Luno Kelime Izgarası',
+      'description': 'Harflerden kelime üret, ızgarayı doldur.',
+      'nameEn': 'Luno Word Grid',
+      'descriptionEn': 'Spell words from the letters and fill the grid.',
+    },
+  );
+  await db.execute(
+    Sql.named('''
+      insert into kv_meta (item_key, value)
+      values (@key, '1')
+      on conflict (item_key) do update set value = excluded.value
+    '''),
+    parameters: {'key': siteCardsGridKey},
+  );
+  stdout.writeln('site card grid seeded soon');
+}
+
 void mountSiteCards(Router router, Connection db) {
   router
     ..get('/v1/site/cards', (request) async => _ok(await _cards(db, request)))
@@ -246,11 +288,19 @@ void mountSiteCards(Router router, Connection db) {
     })
     ..post('/v1/admin/site-cards/<id>/icon', (Request request, String id) async {
       if (await adminIdOf(db, request) == null) return _fail(401, 'Oturum geçersiz.');
-      return _upload(db, request, id, role: 'icon');
+      return _upload(db, request, id, role: siteMediaIcon);
+    })
+    ..post('/v1/admin/site-cards/<id>/showcase', (Request request, String id) async {
+      if (await adminIdOf(db, request) == null) return _fail(401, 'Oturum geçersiz.');
+      return _upload(db, request, id, role: siteMediaShowcase);
+    })
+    ..post('/v1/admin/site-cards/<id>/shots', (Request request, String id) async {
+      if (await adminIdOf(db, request) == null) return _fail(401, 'Oturum geçersiz.');
+      return _upload(db, request, id, role: siteMediaShot);
     })
     ..post('/v1/admin/site-cards/<id>/images', (Request request, String id) async {
       if (await adminIdOf(db, request) == null) return _fail(401, 'Oturum geçersiz.');
-      return _upload(db, request, id, role: 'gallery');
+      return _upload(db, request, id, role: siteMediaShot);
     })
     ..delete(
       '/v1/admin/site-cards/<id>/images/<mediaId>',
@@ -259,7 +309,8 @@ void mountSiteCards(Router router, Connection db) {
         final rows = await db.execute(
           Sql.named('''
             delete from site_media
-            where id = @mediaId and card_id = @cardId and role = 'gallery'
+            where id = @mediaId and card_id = @cardId
+              and role in ('icon', 'showcase', 'shot', 'gallery')
           '''),
           parameters: {'mediaId': mediaId, 'cardId': id},
         );
@@ -267,6 +318,34 @@ void mountSiteCards(Router router, Connection db) {
         return _ok(await _cards(db, request));
       },
     );
+}
+
+/// Turns the old mixed gallery into one showcase and the remaining shots.
+Future<void> classifySiteCardMedia(Connection db) async {
+  final gallery = await db.execute('''
+    select id, card_id from site_media
+    where role = 'gallery'
+    order by card_id, sort_order, id
+  ''');
+  if (gallery.isEmpty) return;
+  final showcaseCards = await db.execute('''
+    select distinct card_id from site_media where role = 'showcase'
+  ''');
+  final hasShowcase = {for (final row in showcaseCards) row[0] as String};
+  String? lastCard;
+  for (final row in gallery) {
+    final id = row[0] as String;
+    final cardId = row[1] as String;
+    final firstOfCard = lastCard != cardId;
+    lastCard = cardId;
+    final role = firstOfCard && !hasShowcase.contains(cardId)
+        ? siteMediaShowcase
+        : siteMediaShot;
+    await db.execute(
+      Sql.named('update site_media set role = @role where id = @id'),
+      parameters: {'role': role, 'id': id},
+    );
+  }
 }
 
 Future<void> _upsertCard(
@@ -389,7 +468,7 @@ Future<Response> _update(Connection db, Request request, String id) async {
         Sql.named('''
           update site_media
           set sort_order = @sort
-          where id = @mediaId and card_id = @cardId and role = 'gallery'
+          where id = @mediaId and card_id = @cardId and role = 'shot'
         '''),
         parameters: {'sort': i + 1, 'mediaId': ids[i], 'cardId': id},
       );
@@ -414,37 +493,58 @@ Future<Response> _upload(
   await for (final chunk in request.read()) {
     if (tooBig) continue;
     chunks.addAll(chunk);
-    if (chunks.length > siteMediaMaxBytes) tooBig = true;
+    if (chunks.length > siteMediaUploadMaxBytes) tooBig = true;
   }
   if (chunks.isEmpty) return _fail(400, 'Görsel boş.');
-  if (tooBig) return _fail(413, 'Görsel 1,5 MB sınırını aşıyor.');
-  final type = imageContentType(chunks);
-  if (type == null) return _fail(400, 'Yalnız png, jpeg veya webp.');
-  if (role == 'icon') {
+  if (tooBig) return _fail(413, 'Görsel 8 MB sınırını aşıyor.');
+  if (imageContentType(chunks) == null) {
+    return _fail(400, 'Yalnız png, jpeg veya webp.');
+  }
+  final web = prepareWebImage(chunks, role: role);
+  if (web == null) return _fail(400, 'Görsel işlenemedi.');
+  if (role == siteMediaShot) {
+    final count = await _mediaCount(db, id, siteMediaShot);
+    if (count >= siteShotLimit) {
+      return _fail(400, 'Oyun ekran görüntüsü en fazla 15 olabilir.');
+    }
+  }
+  if (role == siteMediaIcon || role == siteMediaShowcase) {
     await db.execute(
-      Sql.named("delete from site_media where card_id = @card and role = 'icon'"),
-      parameters: {'card': id},
+      Sql.named('delete from site_media where card_id = @card and role = @role'),
+      parameters: {'card': id, 'role': role},
     );
   }
-  final sort = role == 'icon' ? 1 : await _nextGallerySort(db, id);
+  final sort = role == siteMediaShot ? await _nextSort(db, id, role) : 1;
   await _insertMedia(
     db,
     cardId: id,
     role: role,
-    bytes: chunks,
-    contentType: type,
+    bytes: web,
+    contentType: 'image/webp',
     sortOrder: sort,
   );
   return _ok(await _cards(db, request));
 }
 
-Future<int> _nextGallerySort(Connection db, String cardId) async {
+Future<int> _mediaCount(Connection db, String cardId, String role) async {
+  final rows = await db.execute(
+    Sql.named('''
+      select count(*) from site_media
+      where card_id = @card and role = @role
+    '''),
+    parameters: {'card': cardId, 'role': role},
+  );
+  final value = rows.first[0];
+  return value is int ? value : int.parse('$value');
+}
+
+Future<int> _nextSort(Connection db, String cardId, String role) async {
   final rows = await db.execute(
     Sql.named('''
       select coalesce(max(sort_order), 0) from site_media
-      where card_id = @card and role = 'gallery'
+      where card_id = @card and role = @role
     '''),
-    parameters: {'card': cardId},
+    parameters: {'card': cardId, 'role': role},
   );
   final value = rows.first[0];
   final current = value is int ? value : int.parse('$value');
@@ -499,18 +599,22 @@ Future<Map<String, dynamic>> _cards(Connection db, Request request) async {
 }
 
 Map<String, dynamic> _cardJson(ResultRow card, List<ResultRow> media, String origin) {
-  String? iconUrl;
-  final images = <Map<String, dynamic>>[];
+  Map<String, dynamic>? icon;
+  Map<String, dynamic>? showcase;
+  final shots = <Map<String, dynamic>>[];
   for (final row in media) {
-    final url = '$origin/v1/site/media/${row[0]}';
-    if (row[2] == 'icon') {
-      iconUrl = url;
-    } else if (row[2] == 'gallery') {
-      images.add({
-        'id': row[0],
-        'url': url,
-        'sortOrder': row[3],
-      });
+    final item = {
+      'id': row[0],
+      'url': '$origin/v1/site/media/${row[0]}',
+      'sortOrder': row[3],
+    };
+    switch (row[2]) {
+      case siteMediaIcon:
+        icon = item;
+      case siteMediaShowcase:
+        showcase = item;
+      case siteMediaShot:
+        shots.add(item);
     }
   }
   return {
@@ -523,8 +627,14 @@ Map<String, dynamic> _cardJson(ResultRow card, List<ResultRow> media, String ori
     'descriptionEn': card[6],
     'playUrl': card[7],
     'iosUrl': card[8],
-    'iconUrl': iconUrl,
-    'images': images,
+    'icon': icon,
+    'iconUrl': icon?['url'],
+    'showcase': showcase,
+    'shots': shots,
+    'images': [
+      ?showcase,
+      ...shots,
+    ],
   };
 }
 

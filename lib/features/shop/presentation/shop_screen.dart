@@ -5,6 +5,7 @@ import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
 import 'package:kelimelig/core/theme/cosmic_glass.dart';
 import 'package:kelimelig/core/theme/shimmer_title.dart';
+import 'package:kelimelig/core/widgets/game_page_header.dart';
 import 'package:kelimelig/core/services/billing_gateway.dart';
 import 'package:kelimelig/domain/entities/shop_product.dart';
 import 'package:kelimelig/domain/game/game_server.dart';
@@ -119,6 +120,8 @@ class _ShopScreenState extends State<ShopScreen> {
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
                 child: Row(
                   children: [
+                    const HomeTitleButton(),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: ShimmerTitle(
                         text: l10n.t('shop'),

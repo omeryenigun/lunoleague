@@ -40,7 +40,7 @@ class MainShell extends StatelessWidget {
             child: SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 10, 8, 12),
+                padding: const EdgeInsets.fromLTRB(6, 6, 6, 8),
                 child: Row(
                   children: [
                     _NavItem(
@@ -112,12 +112,12 @@ class _NavItem extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 220),
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.symmetric(vertical: 5),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(12),
               gradient: selected
                   ? LinearGradient(
                       colors: [
@@ -140,19 +140,20 @@ class _NavItem extends StatelessWidget {
               children: [
                 Icon(
                   selected ? activeIcon : icon,
-                  size: 22,
+                  size: 20,
                   color: color,
                   shadows: selected
                       ? const [Shadow(color: Color(0xCC2ECC71), blurRadius: 10)]
                       : null,
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
                   label,
                   style: TextStyle(
                     color: color,
-                    fontSize: 11,
+                    fontSize: 10,
                     fontWeight: FontWeight.w700,
+                    height: 1.1,
                   ),
                 ),
               ],

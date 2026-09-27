@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
-import 'package:kelimelig/core/theme/shimmer_title.dart';
+import 'package:kelimelig/core/widgets/game_page_header.dart';
 import 'package:kelimelig/domain/entities/game_models.dart';
 import 'package:kelimelig/domain/game/game_server.dart';
 import 'package:kelimelig/injection.dart';
@@ -18,45 +17,9 @@ class AchievementsScreen extends StatelessWidget {
         child: SafeArea(
           child: Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                child: Row(
-                  children: [
-                    Material(
-                      color: const Color(0x991E293B),
-                      borderRadius: BorderRadius.circular(12),
-                      child: InkWell(
-                        onTap: () => context.pop(),
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: const Color(0x2694A3B8),
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.chevron_left_rounded,
-                            color: Color(0xFFCBD5E1),
-                            size: 26,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const Expanded(
-                      child: Center(
-                        child: ShimmerTitle(
-                          text: 'Başarımlar',
-                          fontSize: 24,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 40),
-                  ],
-                ),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 12, 20, 0),
+                child: GamePageHeader(title: 'Başarımlar'),
               ),
               Expanded(
                 child: FutureBuilder(

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as im;
 import 'package:kelimelig/api/site_card_media.dart';
 
 void main() {
@@ -16,5 +17,25 @@ void main() {
       'image/webp',
     );
     expect(imageContentType([0x00, 0x01, 0x02]), isNull);
+  });
+
+  test('upload becomes a webp sized for its slot', () {
+    final wide = im.Image(width: 800, height: 400);
+    im.fill(wide, color: im.ColorRgb8(20, 120, 200));
+    final png = im.encodePng(wide);
+
+    final icon = prepareWebImage(png, role: siteMediaIcon);
+    expect(icon, isNotNull);
+    expect(imageContentType(icon!), 'image/webp');
+    final iconImage = im.decodeWebP(icon);
+    expect(iconImage!.width, 512);
+    expect(iconImage.height, 256);
+
+    final shot = prepareWebImage(png, role: siteMediaShot);
+    final shotImage = im.decodeWebP(shot!);
+    expect(shotImage!.width, 800);
+    expect(shotImage.height, 400);
+    expect(siteShotLimit, 15);
+    expect(webImageMaxEdge(siteMediaShowcase), 1600);
   });
 }

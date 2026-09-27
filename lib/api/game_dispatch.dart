@@ -83,6 +83,14 @@ Future<Object?> dispatchGame(
           .toMap();
     case 'setDisplayName':
       return (await game.setDisplayName(args['name'] as String? ?? '')).toMap();
+    case 'updateIdentity':
+      return (await game.updateIdentity(
+        firstName: args['firstName'] as String?,
+        lastName: args['lastName'] as String?,
+        nickname: args['nickname'] as String?,
+        avatar: args['avatar'] as String?,
+      ))
+          .toMap();
     case 'completeOnboarding':
       return (await game.completeOnboarding()).toMap();
     case 'updateSettings':

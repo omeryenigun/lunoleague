@@ -14,6 +14,7 @@ import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/core/widgets/game_version_label.dart';
 import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
 import 'package:kelimelig/core/theme/shimmer_title.dart';
+import 'package:kelimelig/core/widgets/game_page_header.dart';
 import 'package:kelimelig/domain/game/game_server.dart';
 import 'package:kelimelig/features/auth/cubit/auth_cubit.dart';
 import 'package:kelimelig/features/auth/presentation/language_switch_button.dart';
@@ -39,6 +40,8 @@ class SettingsScreen extends StatelessWidget {
             children: [
               Row(
                 children: [
+                  const HomeTitleButton(),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: ShimmerTitle(
                       text: l10n.t('settings'),
@@ -118,6 +121,11 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   ],
                 ),
+              ),
+              const SizedBox(height: 14),
+              _SettingsSection(
+                label: l10n.t('how_play'),
+                child: const _HowPlayGuide(),
               ),
               const SizedBox(height: 14),
               _SettingsSection(
@@ -380,6 +388,205 @@ class _SettingsSection extends StatelessWidget {
           const SizedBox(height: 10),
           child,
         ],
+      ),
+    );
+  }
+}
+
+class _HowPlayGuide extends StatelessWidget {
+  const _HowPlayGuide();
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = sl<L10n>();
+    return Column(
+      children: [
+        _HowPlayRow(
+          leading: const _HowColorSquares(),
+          title: l10n.t('how_colors'),
+          body: l10n.t('how_colors_body'),
+        ),
+        _HowPlayRow(
+          leading: const _HowPlayIcon(
+            icon: Icons.calendar_today_rounded,
+            color: Color(0xFF94A3B8),
+          ),
+          title: l10n.t('how_daily'),
+          body: l10n.t('how_daily_body'),
+        ),
+        _HowPlayRow(
+          leading: const _HowPlayIcon(
+            icon: Icons.all_inclusive,
+            color: AppColors.cosmicPurple,
+          ),
+          title: l10n.t('how_marathon'),
+          body: l10n.t('how_marathon_body'),
+        ),
+        _HowPlayRow(
+          leading: const _HowPlayIcon(
+            icon: Icons.bolt_rounded,
+            color: AppColors.cosmicBlue,
+          ),
+          title: l10n.t('how_duel'),
+          body: l10n.t('how_duel_body'),
+        ),
+        _HowPlayRow(
+          leading: const _HowPlayIcon(
+            icon: Icons.lock_rounded,
+            color: Color(0xFF22D3EE),
+          ),
+          title: l10n.t('how_room'),
+          body: l10n.t('how_room_body'),
+        ),
+        _HowPlayRow(
+          leading: const _HowPlayIcon(
+            icon: Icons.military_tech_rounded,
+            color: Color(0xFFF59E0B),
+          ),
+          title: l10n.t('how_league'),
+          body: l10n.t('how_league_body'),
+        ),
+        _HowPlayRow(
+          leading: const _HowPlayIcon(
+            icon: Icons.local_fire_department_rounded,
+            color: AppColors.streak,
+          ),
+          title: l10n.t('how_series'),
+          body: l10n.t('how_series_body'),
+        ),
+        _HowPlayRow(
+          leading: const _HowPlayIcon(
+            icon: Icons.badge_rounded,
+            color: Color(0xFFCBD5E1),
+          ),
+          title: l10n.t('how_member'),
+          body: l10n.t('how_member_body'),
+          showDivider: false,
+        ),
+      ],
+    );
+  }
+}
+
+class _HowPlayRow extends StatelessWidget {
+  const _HowPlayRow({
+    required this.leading,
+    required this.title,
+    required this.body,
+    this.showDivider = true,
+  });
+
+  final Widget leading;
+  final String title;
+  final String body;
+  final bool showDivider;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              leading,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Color(0xFFF1F5F9),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      body,
+                      style: const TextStyle(
+                        color: Color(0xFF94A3B8),
+                        fontSize: 13,
+                        height: 1.45,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (showDivider) const Divider(height: 1, color: Color(0x1494A3B8)),
+      ],
+    );
+  }
+}
+
+class _HowPlayIcon extends StatelessWidget {
+  const _HowPlayIcon({required this.icon, required this.color});
+
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      alignment: Alignment.center,
+      child: Icon(icon, color: color, size: 18),
+    );
+  }
+}
+
+class _HowColorSquares extends StatelessWidget {
+  const _HowColorSquares();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        color: const Color(0x800A0F19),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      alignment: Alignment.center,
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _HowColorSquare(AppColors.correct),
+          SizedBox(width: 2),
+          _HowColorSquare(AppColors.present),
+          SizedBox(width: 2),
+          _HowColorSquare(AppColors.absent),
+        ],
+      ),
+    );
+  }
+}
+
+class _HowColorSquare extends StatelessWidget {
+  const _HowColorSquare(this.color);
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(1.5),
       ),
     );
   }

@@ -343,15 +343,15 @@ magnet,en,A piece of metal that attracts iron.,,,object,1,5,active
     expect(words.where((w) => w.length == 7), isNotEmpty);
   });
 
-  test('anonymous can play daily once without league points', () async {
+  test('anonymous can play daily and earn league points', () async {
     await server.signInAnonymously();
     var session = await server.startDaily();
     expect(session.wordLength, 5);
     final detail = await server.adminGetSession(session.sessionId);
     session = await server.submitGuess(session.sessionId, detail!.word);
     expect(session.outcome!.won, isTrue);
-    expect(session.outcome!.leaguePoints, 0);
-    expect(session.outcome!.rankAfter, isNull);
+    expect(session.outcome!.leaguePoints, greaterThan(0));
+    expect(session.outcome!.rankAfter, isNotNull);
     expect(session.outcome!.streak, 1);
     final review = await server.startDaily();
     expect(review.sessionId, session.sessionId);
@@ -360,8 +360,8 @@ magnet,en,A piece of metal that attracts iron.,,,object,1,5,active
     expect(review.outcome, isNull);
     expect(review.solved, isTrue);
     expect(review.answer, detail.word);
-    expect(await server.leagueStandings(), isEmpty);
-    expect(server.claimDailyReward(), throwsA(isA<AppFailure>()));
+    expect(await server.leagueStandings(), isNotEmpty);
+    expect((await server.claimDailyReward()).coins, greaterThan(0));
   });
 
   test('unfinished daily resumes same session until midnight', () async {
@@ -669,11 +669,12 @@ magnet,en,A piece of metal that attracts iron.,,,object,1,5,active
     expect(board.week.any((e) => e.isCurrentUser && e.points == 10), isTrue);
   });
 
-  test('guest competition boards stay empty', () async {
+  test('a guest joins the league boards', () async {
     await server.signInAnonymously();
     final board = await server.competitionSnapshot();
-    expect(board.guest, isTrue);
-    expect(board.week, isEmpty);
+    expect(board.guest, isFalse);
+    expect(board.week, isNotEmpty);
+    expect(board.week.any((row) => row.isCurrentUser), isTrue);
   });
 
   test('week rollover opens a new daily', () async {
@@ -1105,6 +1106,48 @@ magnet,en,A piece of metal that attracts iron.,,,object,1,5,active
       ),
       throwsA(
         isA<AppFailure>().having((error) => error.code, 'code', 'NICK_TAKEN'),
+      ),
+    );
+  });
+
+  test('an account can set a unique nickname and a legal name', () async {
+    final user = await server.registerWithEmail(
+      email: 'ad@example.com',
+      password: 'secret1',
+      displayName: 'Deniz',
+    );
+    final saved = await server.updateIdentity(
+      firstName: 'Deniz',
+      lastName: 'Yılmaz',
+      nickname: 'Deniz',
+    );
+    expect(saved.id, user.id);
+    expect(saved.firstName, 'Deniz');
+    expect(saved.lastName, 'Yılmaz');
+    expect(saved.displayName, 'Deniz');
+
+    await server.signOut();
+    await server.registerWithEmail(
+      email: 'baska@example.com',
+      password: 'secret1',
+      displayName: 'Ege',
+    );
+    expect(
+      () => server.updateIdentity(nickname: 'deniz'),
+      throwsA(
+        isA<AppFailure>().having((error) => error.code, 'code', 'NICK_TAKEN'),
+      ),
+    );
+    expect(
+      () => server.updateIdentity(nickname: 'ege!'),
+      throwsA(
+        isA<AppFailure>().having((error) => error.code, 'code', 'NICK_BAD'),
+      ),
+    );
+    expect(
+      () => server.updateIdentity(firstName: 'Deniz1'),
+      throwsA(
+        isA<AppFailure>().having((error) => error.code, 'code', 'NAME_BAD'),
       ),
     );
   });
@@ -1635,5 +1678,66 @@ zurna,tr,İkinci,Tekrar.,zurna,müzik,,,
           .series,
       0,
     );
+  });
+
+  test('a guest marathon starts before the first correct word', () async {
+    final host = LocalGameServer(SessionKv(MemoryKeyValueStore()), random: Random(16));
+    await host.initialize();
+    final guest = await host.signInAnonymously();
+    expect(guest.isAnonymous, isTrue);
+    expect(guest.canJoinLeague, isTrue);
+
+    final before = await host.marathonSnapshot();
+    expect(
+      before.leagues.firstWhere((row) => row.league == LeagueTier.bronze).state,
+      MarathonRunState.none,
+    );
+
+    await host.startEndless();
+    final bronze = (await host.marathonSnapshot())
+        .leagues
+        .firstWhere((row) => row.league == LeagueTier.bronze);
+    expect(bronze.state, MarathonRunState.running);
+    expect(bronze.series, 0);
+    expect(bronze.current, isTrue);
+
+    await host.setLeague(LeagueTier.silver);
+    await host.startEndless();
+    expect(
+      (await host.marathonSnapshot())
+          .leagues
+          .firstWhere((row) => row.league == LeagueTier.silver)
+          .state,
+      MarathonRunState.running,
+    );
+
+    await loseRun(host);
+    final missed = await host.marathonSnapshot();
+    expect(
+      missed.leagues.firstWhere((row) => row.league == LeagueTier.silver).state,
+      MarathonRunState.none,
+    );
+    expect(
+      missed.leagues.firstWhere((row) => row.league == LeagueTier.bronze).state,
+      MarathonRunState.running,
+    );
+  });
+
+  test('a guest claims the daily reward and joins the league board', () async {
+    final host = LocalGameServer(SessionKv(MemoryKeyValueStore()), random: Random(17));
+    await host.initialize();
+    final guest = await host.signInAnonymously();
+    final home = await host.homeSnapshot();
+    expect(home.dailyRewardAvailable, isTrue);
+    expect(home.periodStandings, isNotEmpty);
+
+    final reward = await host.claimDailyReward();
+    expect(reward.coins, greaterThan(0));
+    expect((await host.homeSnapshot()).dailyRewardAvailable, isFalse);
+
+    final board = await host.leagueStandings();
+    expect(board.any((row) => row.userId == guest.id), isTrue);
+    final snap = await host.competitionSnapshot();
+    expect(snap.guest, isFalse);
   });
 }

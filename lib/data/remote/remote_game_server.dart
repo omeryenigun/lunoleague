@@ -170,6 +170,20 @@ class RemoteGameServer implements GameServer {
       _user(await _call('setDisplayName', {'name': name}));
 
   @override
+  Future<UserEntity> updateIdentity({
+    String? firstName,
+    String? lastName,
+    String? nickname,
+    String? avatar,
+  }) async =>
+      _user(await _call('updateIdentity', {
+        'firstName': firstName,
+        'lastName': lastName,
+        'nickname': nickname,
+        'avatar': avatar,
+      }));
+
+  @override
   Future<UserEntity> completeOnboarding() async =>
       _user(await _call('completeOnboarding', {}));
 

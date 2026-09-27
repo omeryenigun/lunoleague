@@ -114,9 +114,10 @@ function paintLanding() {
   const thumb = card.iconUrl
     ? `<img src="${esc(card.iconUrl)}" alt="">`
     : name.slice(0, 1);
-  const images = card.images || [];
-  const cover = images[0];
-  const shots = images.slice(1)
+  const split = card.showcase !== undefined || Array.isArray(card.shots);
+  const cover = split ? card.showcase : (card.images || [])[0];
+  const shotList = split ? (card.shots || []) : (card.images || []).slice(1);
+  const shots = shotList
     .map((image) => `<img src="${esc(image.url)}" alt="${name}">`)
     .join('');
   const coverHtml = cover

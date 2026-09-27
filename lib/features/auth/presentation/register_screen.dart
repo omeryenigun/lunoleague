@@ -1,9 +1,6 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:kelimelig/core/constants/user_messages.dart';
 import 'package:kelimelig/core/l10n/l10n.dart';
 import 'package:kelimelig/core/theme/colors.dart';
@@ -11,6 +8,7 @@ import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
 import 'package:kelimelig/core/theme/shimmer_title.dart';
 import 'package:kelimelig/features/auth/cubit/auth_cubit.dart';
 import 'package:kelimelig/features/auth/presentation/language_switch_button.dart';
+import 'package:kelimelig/features/profile/presentation/avatar_pick.dart';
 import 'package:kelimelig/injection.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -24,7 +22,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _name = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
-  final _picker = ImagePicker();
   var _obscure = true;
   String? _avatar;
 
@@ -56,43 +53,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  Future<void> _pick(ImageSource source) async {
-    final file = await _picker.pickImage(
-      source: source,
-      maxWidth: 512,
-      maxHeight: 512,
-      imageQuality: 70,
-    );
-    if (file == null) return;
-    final bytes = await file.readAsBytes();
-    if (!mounted) return;
-    setState(() => _avatar = base64Encode(bytes));
-  }
-
   Future<void> _choosePhoto() async {
-    final l10n = sl<L10n>();
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      backgroundColor: const Color(0xFF0F172A),
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_camera_outlined),
-              title: Text(l10n.t('take_photo')),
-              onTap: () => Navigator.pop(context, ImageSource.camera),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: Text(l10n.t('choose_photo')),
-              onTap: () => Navigator.pop(context, ImageSource.gallery),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (source != null) await _pick(source);
+    final encoded = await pickAvatarBase64(context);
+    if (encoded == null || !mounted) return;
+    setState(() => _avatar = encoded);
   }
 
   Future<void> _register() async {
@@ -176,7 +140,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         backgroundColor: const Color(0xFF1E293B),
                         backgroundImage: avatar == null
                             ? null
-                            : MemoryImage(base64Decode(avatar)),
+                            : MemoryImage(avatarBytes(avatar)!),
                         child: avatar == null
                             ? const Icon(Icons.add_a_photo_outlined, size: 28)
                             : null,
@@ -188,6 +152,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     l10n.t('add_photo'),
                     textAlign: TextAlign.center,
                     style: const TextStyle(color: Color(0xFF94A3B8)),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    l10n.t('photo_crop_hint'),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
                   ),
                   const SizedBox(height: 20),
                   TextField(

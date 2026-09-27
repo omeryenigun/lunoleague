@@ -44,7 +44,7 @@ class _GridOverview extends StatelessWidget {
           padding: const EdgeInsets.all(20),
           children: [
             const Text(
-              'Luno Grid kaydı. Lig puanı ve coin buraya yazılmaz.',
+              'Luno Kelime Izgarası kaydı. Lig puanı ve coin buraya yazılmaz.',
               style: TextStyle(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 16),

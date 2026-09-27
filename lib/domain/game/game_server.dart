@@ -29,6 +29,12 @@ abstract class GameServer {
     required String password,
   });
   Future<UserEntity> setDisplayName(String name);
+  Future<UserEntity> updateIdentity({
+    String? firstName,
+    String? lastName,
+    String? nickname,
+    String? avatar,
+  });
   Future<UserEntity> completeOnboarding();
   Future<UserEntity> updateSettings({
     bool? soundOn,

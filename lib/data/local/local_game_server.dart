@@ -873,11 +873,8 @@ class LocalGameServer implements GameServer {
 
     final nameFromEmail = normalized.split('@').first;
     final typed = displayName?.trim() ?? '';
-    if (typed.isNotEmpty && typed.length < 2) {
-      throw AppFailure(UserMessages.nicknameShort, code: 'SHORT_NICK');
-    }
     final name = typed.isNotEmpty
-        ? typed
+        ? _acceptNickname(typed)
         : (nameFromEmail.length >= 2 ? nameFromEmail : 'Oyuncu');
 
     final salt = _uuid.v4();
@@ -891,14 +888,14 @@ class LocalGameServer implements GameServer {
     if (existing != null && existing.isAnonymous) {
       user = await _grantStarterCoins(
         await _saveUser(
-          existing.copyWith(
-            authProvider: AuthProvider.email,
-            isAnonymous: false,
-            email: normalized,
+        existing.copyWith(
+          authProvider: AuthProvider.email,
+          isAnonymous: false,
+          email: normalized,
             displayName: name,
             avatar: avatar ?? existing.avatar,
-            lastLoginAt: _now,
-          ),
+          lastLoginAt: _now,
+        ),
         ),
         registered: true,
       );
@@ -970,13 +967,13 @@ class LocalGameServer implements GameServer {
     if (existing != null && existing.isAnonymous) {
       return _grantStarterCoins(
         await _saveUser(
-          existing.copyWith(
-            authProvider: provider,
-            isAnonymous: false,
+        existing.copyWith(
+          authProvider: provider,
+          isAnonymous: false,
             email: email ?? existing.email,
             displayName: _guestLabel(existing.displayName) ? name : existing.displayName,
-            lastLoginAt: _now,
-          ),
+          lastLoginAt: _now,
+        ),
         ),
         registered: true,
       );
@@ -999,13 +996,64 @@ class LocalGameServer implements GameServer {
 
   @override
   Future<UserEntity> setDisplayName(String name) async {
-    final trimmed = name.trim();
-    if (trimmed.length < 2) {
-      throw AppFailure('Kullanıcı adı en az 2 karakter olmalı.');
-    }
     final user = await _requireUser();
+    final trimmed = _acceptNickname(name);
     await _ensureNicknameFree(trimmed, exceptUserId: user.id);
     return _saveUser(user.copyWith(displayName: trimmed));
+  }
+
+  @override
+  Future<UserEntity> updateIdentity({
+    String? firstName,
+    String? lastName,
+    String? nickname,
+    String? avatar,
+  }) async {
+    var user = await _requireUser();
+    if (user.isAnonymous) {
+      throw AppFailure('Ad, soyad ve takma ad hesapta düzenlenir.', code: 'ACCOUNT');
+    }
+    if (firstName != null) {
+      final value = _acceptPersonName(firstName);
+      user = user.copyWith(firstName: value, clearFirstName: value == null);
+    }
+    if (lastName != null) {
+      final value = _acceptPersonName(lastName);
+      user = user.copyWith(lastName: value, clearLastName: value == null);
+    }
+    if (nickname != null) {
+      final value = _acceptNickname(nickname);
+      await _ensureNicknameFree(value, exceptUserId: user.id);
+      user = user.copyWith(displayName: value);
+    }
+    if (avatar != null && avatar.isNotEmpty) {
+      user = user.copyWith(avatar: avatar);
+    }
+    return _saveUser(user);
+  }
+
+  String _acceptNickname(String raw) {
+    final name = raw.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (name.length < 2) {
+      throw AppFailure(UserMessages.nicknameShort, code: 'SHORT_NICK');
+    }
+    if (name.length > 20) {
+      throw AppFailure(UserMessages.nicknameLong, code: 'NICK_LONG');
+    }
+    if (!RegExp(r'^[\p{L}\p{N}]+(?: [\p{L}\p{N}]+)*$', unicode: true).hasMatch(name)) {
+      throw AppFailure(UserMessages.nicknameBad, code: 'NICK_BAD');
+    }
+    return name;
+  }
+
+  String? _acceptPersonName(String raw) {
+    final name = raw.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (name.isEmpty) return null;
+    if (name.length > 40 ||
+        !RegExp(r'^[\p{L}]+(?:[ -][\p{L}]+)*$', unicode: true).hasMatch(name)) {
+      throw AppFailure(UserMessages.personNameBad, code: 'NAME_BAD');
+    }
+    return name;
   }
 
   Future<void> _ensureNicknameFree(String name, {String? exceptUserId}) async {
@@ -1147,8 +1195,7 @@ class LocalGameServer implements GameServer {
       dailyIndex = finished + 1;
       dailyNeedsAd = true;
     }
-    final rewardAvailable =
-        !user.isAnonymous && user.lastRewardDate != today;
+    final rewardAvailable = user.lastRewardDate != today;
     final week = DateKeys.weekId(_now);
     final standings = user.canJoinLeague ? await _ensureLeague(user) : <LeaderboardEntry>[];
     final me = standings.where((e) => e.isCurrentUser).firstOrNull;
@@ -1317,6 +1364,7 @@ class LocalGameServer implements GameServer {
       answer: answer,
       solved: solved,
       dailyIndex: raw['gameType'] == GameType.daily.name ? _sessionDailyIndex(raw) : 1,
+      wordId: finished ? (raw['wordId'] as String? ?? '') : '',
     );
   }
 
@@ -1700,12 +1748,22 @@ class LocalGameServer implements GameServer {
     return _sessionToView(session);
   }
 
+  Future<void> _markFreshMarathonOpen(UserEntity user) async {
+    final run = int.tryParse(await _runMeta(user, 'endless_run') ?? '0') ?? 0;
+    final atRisk =
+        int.tryParse(await _runMeta(user, 'endless_run_at_risk') ?? '') ?? 0;
+    if (run == 0 && atRisk == 0) {
+      await _store.putMeta(_runMetaKey(user, 'endless_open'), '1');
+    }
+  }
+
   @override
   Future<GameSessionView> startEndless() async {
     final user = await _requireUser();
     await _migrateEndlessLeague(user);
     final existing = await _findActive(user.id, GameType.endless, language: user.locale);
     if (existing != null && _sessionStillOpen(existing)) {
+      await _markFreshMarathonOpen(user);
       return _sessionToView(existing);
     }
     final word = await _pickWord(user.currentLeague, language: user.locale);
@@ -1713,6 +1771,7 @@ class LocalGameServer implements GameServer {
     final run = int.tryParse(await _runMeta(user, 'endless_run') ?? '0') ?? 0;
     session['endlessStreak'] = run;
     await _store.put('game_sessions', session['id'] as String, session);
+    await _markFreshMarathonOpen(user);
     return _sessionToView(session);
   }
 
@@ -2431,22 +2490,22 @@ class LocalGameServer implements GameServer {
         );
       } else {
         streak = user.streak;
-      }
-      xp = _progression.dailyXp(
-        config: config,
-        won: won,
-        hintUsed: hintUsed,
-        perfect: perfect,
-        streakAfter: streak,
-      );
-      coins = _progression.dailyCoins(config: config, won: won);
-      leaguePts = user.canJoinLeague
-          ? _progression.leaguePoints(
-              guesses: guesses,
-              won: won,
-              hintUsed: hintUsed,
-            )
-          : 0;
+        }
+        xp = _progression.dailyXp(
+          config: config,
+          won: won,
+          hintUsed: hintUsed,
+          perfect: perfect,
+          streakAfter: streak,
+        );
+        coins = _progression.dailyCoins(config: config, won: won);
+        leaguePts = user.canJoinLeague
+            ? _progression.leaguePoints(
+                guesses: guesses,
+                won: won,
+                hintUsed: hintUsed,
+              )
+            : 0;
     } else if (type == GameType.endless) {
       if (won) {
         xp = _progression.endlessXp(config);
@@ -2473,6 +2532,9 @@ class LocalGameServer implements GameServer {
           await _store.putMeta(_runMetaKey(user, 'endless_run_at_risk'), '');
         }
         await _store.putMeta(_runMetaKey(user, 'endless_run'), '0');
+        if (prev <= 0) {
+          await _store.putMeta(_runMetaKey(user, 'endless_open'), '');
+        }
       }
       final finished =
           (int.tryParse(await _runMeta(user, 'endless_finished') ?? '0') ?? 0) + 1;
@@ -2669,9 +2731,6 @@ class LocalGameServer implements GameServer {
   @override
   Future<DailyRewardResult> claimDailyReward() async {
     var user = await _requireUser();
-    if (user.isAnonymous) {
-      throw AppFailure(UserMessages.anonymousDaily, code: 'ANON');
-    }
     final today = DateKeys.dayKey(_now);
     if (user.lastRewardDate == today) {
       throw AppFailure('Günlük ödülü zaten aldın.');
@@ -2737,7 +2796,7 @@ class LocalGameServer implements GameServer {
     final user = await _requireUser();
     await _migrateEndlessLeague(user);
     try {
-      await watchRewardedAd();
+    await watchRewardedAd();
     } on AppFailure {
       // A signed ad may already have granted coins. The run still resumes.
     }
@@ -2755,6 +2814,7 @@ class LocalGameServer implements GameServer {
     final atRisk = int.tryParse(await _runMeta(user, 'endless_run_at_risk') ?? '') ?? 0;
     if (atRisk <= 0) return false;
     await _store.putMeta(_runMetaKey(user, 'endless_run_at_risk'), '');
+    await _store.putMeta(_runMetaKey(user, 'endless_open'), '');
     return true;
   }
 
@@ -2769,6 +2829,8 @@ class LocalGameServer implements GameServer {
           int.tryParse(await _runMeta(user, 'endless_run_at_risk', league: league) ?? '') ?? 0;
       final played =
           int.tryParse(await _runMeta(user, 'endless_finished', league: league) ?? '') ?? 0;
+      final open =
+          await _runMeta(user, 'endless_open', league: league) == '1';
       final best = await _leagueBest(user, user.locale, league);
       final week = await _periodStanding(user, league, 'week', DateKeys.weekId(_now));
       final month = await _periodStanding(user, league, 'month', DateKeys.monthId(_now));
@@ -2777,7 +2839,9 @@ class LocalGameServer implements GameServer {
           ? MarathonRunState.running
           : atRisk > 0
               ? MarathonRunState.paused
-              : MarathonRunState.none;
+              : open
+                  ? MarathonRunState.running
+                  : MarathonRunState.none;
       leagues.add(
         MarathonLeagueStatus(
           league: league,

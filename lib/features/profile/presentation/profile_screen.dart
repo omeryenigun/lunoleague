@@ -9,8 +9,11 @@ import 'package:kelimelig/core/l10n/l10n.dart';
 import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
 import 'package:kelimelig/core/theme/shimmer_title.dart';
+import 'package:kelimelig/core/widgets/game_page_header.dart';
 import 'package:kelimelig/domain/entities/game_models.dart';
 import 'package:kelimelig/domain/entities/user_entity.dart';
+import 'package:kelimelig/core/errors/failures.dart';
+import 'package:kelimelig/features/profile/presentation/avatar_pick.dart';
 import 'package:kelimelig/domain/game/game_server.dart';
 import 'package:kelimelig/features/auth/cubit/auth_cubit.dart';
 import 'package:kelimelig/injection.dart';
@@ -45,6 +48,109 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _changePhoto() async {
+    final encoded = await pickAvatarBase64(context);
+    if (encoded == null || !mounted) return;
+    try {
+      await sl<GameServer>().updateIdentity(avatar: encoded);
+      if (mounted) _reload();
+    } on AppFailure catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    }
+  }
+
+  Future<void> _editIdentity(UserEntity user) async {
+    final l10n = sl<L10n>();
+    final first = TextEditingController(text: user.firstName ?? '');
+    final last = TextEditingController(text: user.lastName ?? '');
+    final nick = TextEditingController(text: user.displayName);
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF0F172A),
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            18,
+            20,
+            18 + MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: first,
+                textCapitalization: TextCapitalization.words,
+                decoration: InputDecoration(labelText: l10n.t('first_name')),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: last,
+                textCapitalization: TextCapitalization.words,
+                decoration: InputDecoration(labelText: l10n.t('last_name')),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: nick,
+                decoration: InputDecoration(labelText: l10n.t('nickname')),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: Text(l10n.t('save')),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    final firstText = first.text;
+    final lastText = last.text;
+    final nickText = nick.text;
+    first.dispose();
+    last.dispose();
+    nick.dispose();
+    if (saved != true || !mounted) return;
+    try {
+      await sl<GameServer>().updateIdentity(
+        firstName: firstText,
+        lastName: lastText,
+        nickname: nickText,
+      );
+      if (mounted) _reload();
+    } on AppFailure catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    final auth = context.read<AuthCubit>();
+    await auth.google();
+    if (!mounted) return;
+    final error = auth.state.error;
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error)),
+      );
+      return;
+    }
+    if (auth.state.user?.authProvider != AuthProvider.google) {
+      return;
+    }
+    await auth.finishOnboarding();
+    if (mounted) _reload();
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = sl<L10n>();
@@ -66,6 +172,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   Row(
                     children: [
+                      const HomeTitleButton(),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: ShimmerTitle(
                           text: l10n.t('profile'),
@@ -76,57 +184,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ],
                   ),
                   const SizedBox(height: 18),
-                  _AvatarRing(avatar: u.avatar),
+                  GestureDetector(
+                    onTap: u.isAnonymous ? null : _changePhoto,
+                    child: _AvatarRing(
+                      avatar: u.avatar,
+                      editable: !u.isAnonymous,
+                    ),
+                  ),
                   const SizedBox(height: 12),
                   Text(
                     u.displayName,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFFF8FAFC),
-                      letterSpacing: -0.2,
-                      shadows: [
-                        Shadow(color: Color(0x4D2ECC71), blurRadius: 18),
-                      ],
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFFE6EDF3),
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        gradient: LinearGradient(
-                          colors: [
-                            AppColors.forLeague(u.currentLeague)
-                                .withValues(alpha: 0.18),
-                            AppColors.forLeague(u.currentLeague)
-                                .withValues(alpha: 0.08),
-                          ],
-                        ),
-                        border: Border.all(
-                          color: AppColors.forLeague(u.currentLeague)
-                              .withValues(alpha: 0.45),
-                        ),
-                      ),
-                      child: Text(
-                        u.isAnonymous
-                            ? l10n.t('guest_badge')
-                            : '${u.currentLeague.symbol} ${u.currentLeague.labelFor(l10n.id).toUpperCase()} ${l10n.t('league').toUpperCase()}',
-                        style: TextStyle(
-                          color: u.isAnonymous
-                              ? const Color(0xFFCBD5E1)
-                              : AppColors.forLeague(u.currentLeague),
-                          fontWeight: FontWeight.w800,
-                          fontSize: 12,
-                          letterSpacing: 0.6,
-                        ),
+                  if (!u.isAnonymous &&
+                      ((u.firstName ?? '').isNotEmpty || (u.lastName ?? '').isNotEmpty)) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      '${u.firstName ?? ''} ${u.lastName ?? ''}'.trim(),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Color(0xFF94A3B8),
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
+                  ],
+                  if (!u.isAnonymous)
+                    TextButton(
+                      onPressed: () => _editIdentity(u),
+                      child: Text(l10n.t('edit_profile')),
+                    ),
+                  const SizedBox(height: 8),
+                  Center(
+                    child: u.isAnonymous
+                        ? _GuestBadge(label: l10n.t('guest_badge'))
+                        : _LeagueBadge(user: u, l10n: l10n),
                   ),
                   if (u.hasWeekTitle) ...[
                     const SizedBox(height: 8),
@@ -142,85 +238,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                   if (u.isAnonymous) ...[
                     const SizedBox(height: 18),
-                    _GlassCard(
-                      child: Column(
-                        children: [
-                          Text(
-                            l10n.t('profile_login_sub'),
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Color(0xFF94A3B8),
-                              height: 1.4,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          CosmicContinueButton(
-                            label: l10n.t('sign_in_title'),
-                            showArrow: false,
-                            onPressed: _openLogin,
-                          ),
-                          const SizedBox(height: 10),
-                          OutlinedButton(
-                            onPressed: _openRegister,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFFF0FDF4),
-                              minimumSize: const Size.fromHeight(48),
-                              side: BorderSide(
-                                color: AppColors.cosmicBlue.withValues(alpha: 0.45),
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                            ),
-                            child: Text(l10n.t('email_register')),
-                          ),
-                          const SizedBox(height: 10),
-                          OutlinedButton.icon(
-                            onPressed: () async {
-                              final auth = context.read<AuthCubit>();
-                              await auth.google();
-                              if (!context.mounted) return;
-                              final error = auth.state.error;
-                              if (error != null) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text(error)),
-                                );
-                                return;
-                              }
-                              if (auth.state.user?.authProvider !=
-                                  AuthProvider.google) {
-                                return;
-                              }
-                              await auth.finishOnboarding();
-                              if (mounted) _reload();
-                            },
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: AppColors.cosmicGreen,
-                              side: BorderSide(
-                                color: AppColors.cosmicGreen.withValues(
-                                  alpha: 0.45,
-                                ),
-                              ),
-                            ),
-                            icon: const Icon(Icons.login),
-                            label: Text(l10n.t('google')),
-                          ),
-                          if (Theme.of(context).platform ==
-                              TargetPlatform.iOS) ...[
-                            const SizedBox(height: 8),
-                            OutlinedButton(
-                              onPressed: () async {
-                                final auth = context.read<AuthCubit>();
-                                await auth.apple();
-                                await auth.finishOnboarding();
-                                if (mounted) _reload();
-                              },
-                              child: Text(l10n.t('apple')),
-                            ),
-                          ],
-                        ],
-                      ),
+                    _ProfileAuthCard(
+                      subtitle: l10n.t('profile_login_sub'),
+                      signInLabel: l10n.t('sign_in_title'),
+                      appleLabel: l10n.t('apple'),
+                      googleLabel: l10n.t('google'),
+                      orLabel: l10n.t('or_divider'),
+                      registerLabel: l10n.t('email_register'),
+                      onSignIn: _openLogin,
+                      onGoogle: _signInWithGoogle,
+                      onRegister: _openRegister,
                     ),
                   ],
                   const SizedBox(height: 16),
@@ -295,6 +322,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           showDivider: true,
                         ),
                         _MenuRow(
+                          label: '🏁 ${l10n.t('marathon_stats')}',
+                          onTap: () => context.push('/marathon'),
+                          showDivider: true,
+                        ),
+                        _MenuRow(
                           label: '🏅 Başarımlar',
                           onTap: () => context.push('/achievements'),
                           showDivider: true,
@@ -354,49 +386,72 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-class _AvatarRing extends StatefulWidget {
-  const _AvatarRing({this.avatar});
+class _AvatarRing extends StatelessWidget {
+  const _AvatarRing({this.avatar, this.editable = false});
 
   final String? avatar;
-
-  @override
-  State<_AvatarRing> createState() => _AvatarRingState();
-}
-
-class _AvatarRingState extends State<_AvatarRing>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _spin;
-
-  @override
-  void initState() {
-    super.initState();
-    _spin = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 6),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _spin.dispose();
-    super.dispose();
-  }
+  final bool editable;
 
   @override
   Widget build(BuildContext context) {
     return Center(
       child: SizedBox(
-        width: 104,
-        height: 104,
-        child: AnimatedBuilder(
-          animation: _spin,
-          builder: (context, child) {
-            return CustomPaint(
-              painter: _RingPainter(progress: _spin.value),
-              child: child,
-            );
-          },
-          child: Center(child: _avatarFace(widget.avatar)),
+        width: 108,
+        height: 108,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: 108,
+              height: 108,
+              padding: const EdgeInsets.all(3),
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: SweepGradient(
+                  startAngle: math.pi,
+                  colors: [
+                    Color(0xFF4ADE80),
+                    Color(0xFF22D3EE),
+                    Color(0xFFA855F7),
+                    Color(0xFFF59E0B),
+                    Color(0xFF4ADE80),
+                  ],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0x4022C55E),
+                    blurRadius: 24,
+                  ),
+                ],
+              ),
+              child: DecoratedBox(
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Color(0xFF0A0E1A),
+                ),
+                child: Center(child: _avatarFace(avatar)),
+              ),
+            ),
+            if (editable)
+              const Positioned(
+                right: 0,
+                bottom: 0,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Color(0xFF14532D),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.all(6),
+                    child: Icon(
+                      Icons.photo_camera_outlined,
+                      size: 16,
+                      color: Color(0xFFDCFCE7),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -416,48 +471,420 @@ Widget _avatarFace(String? avatar) {
       );
     } catch (_) {}
   }
-  return const Text(
-    '👑',
-    style: TextStyle(
-      fontSize: 46,
-      shadows: [
-        Shadow(color: Color(0x80F1C40F), blurRadius: 18),
-      ],
-    ),
-  );
+  return const Text('👑', style: TextStyle(fontSize: 48));
 }
 
-class _RingPainter extends CustomPainter {
-  _RingPainter({required this.progress});
+class _GuestBadge extends StatelessWidget {
+  const _GuestBadge({required this.label});
 
-  final double progress;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        color: const Color(0x1FF59E0B),
+        border: Border.all(color: const Color(0x80F59E0B)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Color(0xFFFBBF24),
+          fontWeight: FontWeight.w800,
+          fontSize: 11.5,
+          letterSpacing: 2,
+        ),
+      ),
+    );
+  }
+}
+
+class _LeagueBadge extends StatelessWidget {
+  const _LeagueBadge({required this.user, required this.l10n});
+
+  final UserEntity user;
+  final L10n l10n;
+
+  @override
+  Widget build(BuildContext context) {
+    final leagueColor = AppColors.forLeague(user.currentLeague);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        gradient: LinearGradient(
+          colors: [
+            leagueColor.withValues(alpha: 0.18),
+            leagueColor.withValues(alpha: 0.08),
+          ],
+        ),
+        border: Border.all(color: leagueColor.withValues(alpha: 0.45)),
+      ),
+      child: Text(
+        '${user.currentLeague.symbol} ${user.currentLeague.labelFor(l10n.id).toUpperCase()} ${l10n.t('league').toUpperCase()}',
+        style: TextStyle(
+          color: leagueColor,
+          fontWeight: FontWeight.w800,
+          fontSize: 12,
+          letterSpacing: 0.6,
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileAuthCard extends StatelessWidget {
+  const _ProfileAuthCard({
+    required this.subtitle,
+    required this.signInLabel,
+    required this.appleLabel,
+    required this.googleLabel,
+    required this.orLabel,
+    required this.registerLabel,
+    required this.onSignIn,
+    required this.onGoogle,
+    required this.onRegister,
+  });
+
+  final String subtitle;
+  final String signInLabel;
+  final String appleLabel;
+  final String googleLabel;
+  final String orLabel;
+  final String registerLabel;
+  final VoidCallback onSignIn;
+  final VoidCallback onGoogle;
+  final VoidCallback onRegister;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F1729),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFF1E293B)),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFF94A3B8),
+                fontSize: 12.5,
+                height: 1.45,
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          _ProfilePrimaryCta(label: signInLabel, onPressed: onSignIn),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: AbsorbPointer(
+                  absorbing: true,
+                  child: _ProfileSocialBtn(
+                    icon: const Icon(
+                      Icons.apple,
+                      size: 16,
+                      color: Color(0xFFE2E8F0),
+                    ),
+                    label: appleLabel,
+                    foreground: const Color(0xFFE2E8F0),
+                    borderColor: const Color(0x40FFFFFF),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _ProfileSocialBtn(
+                  icon: const _GoogleMark(),
+                  label: googleLabel,
+                  foreground: const Color(0xFF8AB4F8),
+                  borderColor: const Color(0x594285F4),
+                  onPressed: onGoogle,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const Expanded(
+                child: ColoredBox(
+                  color: Color(0xFF1E293B),
+                  child: SizedBox(height: 1),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Text(
+                  orLabel.toUpperCase(),
+                  style: const TextStyle(
+                    color: Color(0xFF475569),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+              ),
+              const Expanded(
+                child: ColoredBox(
+                  color: Color(0xFF1E293B),
+                  child: SizedBox(height: 1),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _ProfileRegisterBtn(label: registerLabel, onPressed: onRegister),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfilePrimaryCta extends StatelessWidget {
+  const _ProfilePrimaryCta({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF22C55E),
+            Color(0xFF06B6D4),
+            Color(0xFFA855F7),
+          ],
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x4D22C55E),
+            blurRadius: 20,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(12),
+          child: SizedBox(
+            width: double.infinity,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Color(0xFFFFFFFF),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileSocialBtn extends StatelessWidget {
+  const _ProfileSocialBtn({
+    required this.icon,
+    required this.label,
+    required this.foreground,
+    required this.borderColor,
+    this.onPressed,
+  });
+
+  final Widget icon;
+  final String label;
+  final Color foreground;
+  final Color borderColor;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFF131A2B),
+      borderRadius: BorderRadius.circular(11),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(11),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(11),
+            border: Border.all(color: borderColor),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              icon,
+              const SizedBox(width: 7),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: foreground,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    height: 1.15,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileRegisterBtn extends StatelessWidget {
+  const _ProfileRegisterBtn({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(10),
+        child: CustomPaint(
+          painter: _DashedRRectPainter(
+            color: const Color(0xFF334155),
+            radius: 10,
+          ),
+          child: SizedBox(
+            width: double.infinity,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Color(0xFF4ADE80),
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DashedRRectPainter extends CustomPainter {
+  _DashedRRectPainter({required this.color, required this.radius});
+
+  final Color color;
+  final double radius;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3
-      ..shader = SweepGradient(
-        startAngle: 0,
-        endAngle: math.pi * 2,
-        transform: GradientRotation(progress * math.pi * 2),
-        colors: const [
-          AppColors.cosmicGreen,
-          AppColors.cosmicTeal,
-          AppColors.cosmicBlue,
-          Color(0xFF9B59B6),
-          AppColors.cosmicRed,
-          AppColors.cosmicGold,
-          AppColors.cosmicGreen,
-        ],
-      ).createShader(rect);
-    canvas.drawCircle(size.center(Offset.zero), size.width / 2 - 2, paint);
+    final rrect = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      Radius.circular(radius),
+    );
+    final source = Path()..addRRect(rrect);
+    final dashed = Path();
+    for (final metric in source.computeMetrics()) {
+      var distance = 0.0;
+      var draw = true;
+      while (distance < metric.length) {
+        final length = draw ? 5.0 : 3.5;
+        final next = math.min(distance + length, metric.length);
+        if (draw) {
+          dashed.addPath(metric.extractPath(distance, next), Offset.zero);
+        }
+        distance = next;
+        draw = !draw;
+      }
+    }
+    canvas.drawPath(
+      dashed,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1,
+    );
   }
 
   @override
-  bool shouldRepaint(covariant _RingPainter oldDelegate) =>
-      oldDelegate.progress != progress;
+  bool shouldRepaint(covariant _DashedRRectPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.radius != radius;
+}
+
+class _GoogleMark extends StatelessWidget {
+  const _GoogleMark();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      width: 14,
+      height: 14,
+      child: CustomPaint(painter: _GoogleMarkPainter()),
+    );
+  }
+}
+
+class _GoogleMarkPainter extends CustomPainter {
+  const _GoogleMarkPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.shortestSide;
+    final stroke = s * 0.2;
+    final rect = Rect.fromLTWH(stroke / 2, stroke / 2, s - stroke, s - stroke);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.butt;
+    paint.color = const Color(0xFFEA4335);
+    canvas.drawArc(rect, -2.2, 1.5, false, paint);
+    paint.color = const Color(0xFFFBBC05);
+    canvas.drawArc(rect, 2.2, 1.2, false, paint);
+    paint.color = const Color(0xFF34A853);
+    canvas.drawArc(rect, 0.85, 1.35, false, paint);
+    paint.color = const Color(0xFF4285F4);
+    canvas.drawArc(rect, -0.55, 1.35, false, paint);
+    canvas.drawLine(
+      Offset(size.width * 0.5, size.height * 0.5),
+      Offset(size.width - stroke * 0.15, size.height * 0.5),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _GlassCard extends StatelessWidget {
@@ -609,44 +1036,11 @@ class StatisticsScreen extends StatelessWidget {
         child: SafeArea(
           child: Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                child: Row(
-                  children: [
-                    Material(
-                      color: const Color(0x991E293B),
-                      borderRadius: BorderRadius.circular(12),
-                      child: InkWell(
-                        onTap: () => context.pop(),
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: const Color(0x2694A3B8),
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.chevron_left_rounded,
-                            color: Color(0xFFCBD5E1),
-                            size: 26,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const Expanded(
-                      child: Center(
-                        child: ShimmerTitle(
-                          text: 'İstatistik',
-                          fontSize: 24,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 40),
-                  ],
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: GamePageHeader(
+                  title: 'İstatistik',
+                  bottomSpacing: 0,
                 ),
               ),
               Expanded(

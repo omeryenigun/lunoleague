@@ -88,7 +88,7 @@ void main() {
     expect(find.text('Kayıtlı hesap gerekir'), findsNothing);
   });
 
-  testWidgets('home enables daily for guest without league', (tester) async {
+  testWidgets('home enables daily and league for a guest', (tester) async {
     await sl<GameServer>().signInAnonymously();
     await sl<GameServer>().completeOnboarding();
     await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
@@ -96,11 +96,11 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.text('GÜNLÜK OYNA'), findsOneWidget);
     expect(find.text('DÜELLO'), findsOneWidget);
-    expect(find.text('ÖZEL ODA'), findsOneWidget);
     expect(find.text('BRONZ LİG'), findsOneWidget);
-    expect(find.text('Kayıt gerekir'), findsOneWidget);
+    expect(find.text('Kayıt gerekir'), findsNothing);
     expect(find.text('Kayıtlı hesap gerekir'), findsNothing);
-    expect(find.textContaining('Lig için kayıt gerekir'), findsOneWidget);
+    expect(find.textContaining('Lig için kayıt gerekir'), findsNothing);
+    expect(find.textContaining('kayıt gerekir'), findsNothing);
   });
 
   testWidgets('result screen shows win state', (tester) async {

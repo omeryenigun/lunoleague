@@ -166,6 +166,8 @@ class UserEntity {
     this.leagueByLocale = const {},
     this.progressByLocale = const {},
     this.avatar,
+    this.firstName,
+    this.lastName,
   });
 
   final String id;
@@ -220,6 +222,8 @@ class UserEntity {
   final Map<String, String> leagueByLocale;
   final Map<String, LocaleProgress> progressByLocale;
   final String? avatar;
+  final String? firstName;
+  final String? lastName;
 
   UserEntity stampCurrentLocale() {
     final map = Map<String, LocaleProgress>.from(progressByLocale);
@@ -261,7 +265,7 @@ class UserEntity {
       weekTitleUntil != null && weekTitleUntil!.isAfter(DateTime.now());
 
   bool get canPlayDaily => !isBanned;
-  bool get canJoinLeague => !isAnonymous && !isBanned;
+  bool get canJoinLeague => !isBanned;
 
   double get winRate =>
       gamesPlayed == 0 ? 0 : gamesWon / gamesPlayed;
@@ -326,6 +330,10 @@ class UserEntity {
     bool clearFastest = false,
     bool clearLastPlayedWeek = false,
     String? avatar,
+    String? firstName,
+    bool clearFirstName = false,
+    String? lastName,
+    bool clearLastName = false,
   }) {
     return UserEntity(
       id: id,
@@ -384,6 +392,8 @@ class UserEntity {
       leagueByLocale: leagueByLocale ?? this.leagueByLocale,
       progressByLocale: progressByLocale ?? this.progressByLocale,
       avatar: avatar ?? this.avatar,
+      firstName: clearFirstName ? null : (firstName ?? this.firstName),
+      lastName: clearLastName ? null : (lastName ?? this.lastName),
     );
   }
 
@@ -442,6 +452,8 @@ class UserEntity {
           for (final e in progressByLocale.entries) e.key: e.value.toMap(),
         },
         'avatar': avatar,
+        'firstName': firstName,
+        'lastName': lastName,
       };
 
   factory UserEntity.fromMap(Map<dynamic, dynamic> map) {
@@ -506,6 +518,8 @@ class UserEntity {
       leagueByLocale: _stringMap(map['leagueByLocale']),
       progressByLocale: _progressMap(map['progressByLocale'], map['leagueByLocale']),
       avatar: map['avatar'] as String?,
+      firstName: map['firstName'] as String?,
+      lastName: map['lastName'] as String?,
     );
   }
 }

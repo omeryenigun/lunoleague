@@ -30,8 +30,10 @@ class SiteCard {
     required this.iosUrl,
     required this.status,
     required this.sortOrder,
+    required this.iconId,
     required this.iconUrl,
-    required this.images,
+    required this.showcase,
+    required this.shots,
   });
 
   final String id;
@@ -43,13 +45,14 @@ class SiteCard {
   final String iosUrl;
   final String status;
   final int sortOrder;
+  final String? iconId;
   final String? iconUrl;
-  final List<SiteImage> images;
+  final SiteImage? showcase;
+  final List<SiteImage> shots;
 
   bool get live => status == 'live';
 
   factory SiteCard.fromJson(Map<String, dynamic> json) {
-    final images = json['images'];
     return SiteCard(
       id: json['id'] as String,
       name: json['name'] as String,
@@ -60,13 +63,24 @@ class SiteCard {
       iosUrl: json['iosUrl'] as String? ?? '',
       status: json['status'] as String,
       sortOrder: json['sortOrder'] as int,
-      iconUrl: json['iconUrl'] as String?,
-      images: [
-        if (images is List)
-          for (final item in images)
-            if (item is Map) SiteImage.fromJson(Map<String, dynamic>.from(item)),
-      ],
+      iconId: _image(json['icon'])?.id,
+      iconUrl: json['iconUrl'] as String? ?? _image(json['icon'])?.url,
+      showcase: _image(json['showcase']),
+      shots: _images(json['shots']),
     );
+  }
+
+  static SiteImage? _image(Object? raw) {
+    if (raw is! Map) return null;
+    return SiteImage.fromJson(Map<String, dynamic>.from(raw));
+  }
+
+  static List<SiteImage> _images(Object? raw) {
+    if (raw is! List) return const [];
+    return [
+      for (final item in raw)
+        if (item is Map) SiteImage.fromJson(Map<String, dynamic>.from(item)),
+    ];
   }
 }
 
@@ -117,8 +131,17 @@ class SiteCardApi {
     return _cards(response);
   }
 
-  Future<List<SiteCard>> upload(SiteCard card, List<int> bytes, String type, {required bool icon}) async {
-    final path = icon ? 'icon' : 'images';
+  Future<List<SiteCard>> upload(
+    SiteCard card,
+    List<int> bytes,
+    String type, {
+    required String role,
+  }) async {
+    final path = switch (role) {
+      'icon' => 'icon',
+      'showcase' => 'showcase',
+      _ => 'shots',
+    };
     final response = await http.post(
       Uri.parse('$_root/v1/admin/site-cards/${card.id}/$path'),
       headers: {

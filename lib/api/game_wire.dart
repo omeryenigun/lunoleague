@@ -99,6 +99,7 @@ Map<String, dynamic> wireSession(GameSessionView view) => {
       'answer': view.answer,
       'solved': view.solved,
       'dailyIndex': view.dailyIndex,
+      'wordId': view.wordId,
     };
 
 GameSessionView readSession(Object? raw) {
@@ -138,6 +139,7 @@ GameSessionView readSession(Object? raw) {
     answer: map['answer'] as String?,
     solved: map['solved'] as bool?,
     dailyIndex: map['dailyIndex'] as int? ?? 1,
+    wordId: map['wordId'] as String? ?? '',
   );
 }
 

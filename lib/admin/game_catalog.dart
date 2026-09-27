@@ -121,8 +121,8 @@ class AdminGameCatalog {
     ),
     AdminGameDefinition(
       id: GameIds.lunoGrid,
-      name: 'Luno Grid',
-      summary: 'Harf çemberi',
+      name: 'Luno Kelime Izgarası',
+      summary: 'Harflerden kelime üret, ızgarayı doldur.',
       icon: Icons.grid_on,
       sections: [
         AdminSection.overview,

@@ -225,14 +225,18 @@ class _SiteCardFormState extends State<SiteCardForm> {
     }
   }
 
-  Future<void> _pick({required bool icon}) async {
+  Future<void> _pick(String role) async {
+    if (role == siteMediaShot && (_card?.shots.length ?? 0) >= siteShotLimit) {
+      setState(() => _error = 'Oyun ekran görüntüsü en fazla 15 olabilir.');
+      return;
+    }
     final file = await _picker.pickImage(source: ImageSource.gallery);
     if (file == null || _card == null) return;
     final bytes = await file.readAsBytes();
     final type = imageContentType(bytes);
     if (!mounted) return;
-    if (type == null || bytes.length > siteMediaMaxBytes) {
-      setState(() => _error = 'Yalnız 1,5 MB altındaki png, jpeg veya webp.');
+    if (type == null || bytes.length > siteMediaUploadMaxBytes) {
+      setState(() => _error = 'Yalnız 8 MB altındaki png, jpeg veya webp.');
       return;
     }
     setState(() {
@@ -240,7 +244,7 @@ class _SiteCardFormState extends State<SiteCardForm> {
       _error = null;
     });
     try {
-      final cards = await _api.upload(_card!, bytes, type, icon: icon);
+      final cards = await _api.upload(_card!, bytes, type, role: role);
       if (!mounted) return;
       setState(() => _card = cards.where((item) => item.id == widget.cardId).firstOrNull);
     } on AdminAuthException catch (e) {
@@ -268,7 +272,7 @@ class _SiteCardFormState extends State<SiteCardForm> {
   }
 
   Future<void> _move(int index, int delta) async {
-    final images = [...?_card?.images];
+    final images = [...?_card?.shots];
     final next = index + delta;
     if (next < 0 || next >= images.length) return;
     final item = images.removeAt(index);
@@ -288,10 +292,12 @@ class _SiteCardFormState extends State<SiteCardForm> {
               : ListView(
                   padding: const EdgeInsets.all(24),
                   children: [
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 640),
+                    Align(
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 720),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           TextField(
                             controller: _name,
@@ -345,58 +351,77 @@ class _SiteCardFormState extends State<SiteCardForm> {
                                 : (next) => setState(() => _status = next.first),
                           ),
                           const SizedBox(height: 20),
-                          const Text('İkon', style: TextStyle(fontWeight: FontWeight.w800)),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              _Thumb(url: card.iconUrl, size: 72),
-                              const SizedBox(width: 12),
-                              OutlinedButton(
-                                onPressed: _busy ? null : () => _pick(icon: true),
-                                child: const Text('İkon seç'),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 20),
-                          Row(
-                            children: [
-                              const Expanded(
-                                child: Text('Görseller', style: TextStyle(fontWeight: FontWeight.w800)),
-                              ),
-                              OutlinedButton(
-                                onPressed: _busy ? null : () => _pick(icon: false),
-                                child: const Text('Görsel ekle'),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          for (var i = 0; i < card.images.length; i++)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: Row(
-                                children: [
-                                  _Thumb(url: card.images[i].url, size: 64),
-                                  const Spacer(),
-                                  IconButton(
-                                    tooltip: 'Yukarı',
-                                    onPressed: _busy || i == 0 ? null : () => _move(i, -1),
-                                    icon: const Icon(Icons.arrow_upward),
-                                  ),
-                                  IconButton(
-                                    tooltip: 'Aşağı',
-                                    onPressed: _busy || i == card.images.length - 1
-                                        ? null
-                                        : () => _move(i, 1),
-                                    icon: const Icon(Icons.arrow_downward),
-                                  ),
-                                  IconButton(
-                                    tooltip: 'Sil',
-                                    onPressed: _busy ? null : () => _remove(card.images[i].id),
-                                    icon: const Icon(Icons.delete_outline),
-                                  ),
-                                ],
-                              ),
+                          _MediaBlock(
+                            title: 'İkon',
+                            hint: '1 adet. Yükleme sonrası WebP olarak kaydedilir.',
+                            child: _MediaActions(
+                              url: card.iconUrl,
+                              busy: _busy,
+                              pickLabel: card.iconUrl == null ? 'İkon ekle' : 'İkonu değiştir',
+                              onPick: () => _pick(siteMediaIcon),
+                              onRemove: card.iconId == null ? null : () => _remove(card.iconId!),
                             ),
+                          ),
+                          const SizedBox(height: 12),
+                          _MediaBlock(
+                            title: 'Vitrin sayfası',
+                            hint: '1 adet. Yükleme sonrası WebP olarak kaydedilir.',
+                            child: _MediaActions(
+                              url: card.showcase?.url,
+                              busy: _busy,
+                              pickLabel: card.showcase == null ? 'Vitrin ekle' : 'Vitrini değiştir',
+                              onPick: () => _pick(siteMediaShowcase),
+                              onRemove: card.showcase == null
+                                  ? null
+                                  : () => _remove(card.showcase!.id),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _MediaBlock(
+                            title: 'Oyun ekran görüntüleri ${card.shots.length}/$siteShotLimit',
+                            hint: 'En fazla 15 adet. Yükleme sonrası WebP olarak kaydedilir.',
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                OutlinedButton(
+                                  onPressed: _busy || card.shots.length >= siteShotLimit
+                                      ? null
+                                      : () => _pick(siteMediaShot),
+                                  child: const Text('Ekran görüntüsü ekle'),
+                                ),
+                                if (card.shots.isNotEmpty) const SizedBox(height: 12),
+                                for (var i = 0; i < card.shots.length; i++)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: Row(
+                                      children: [
+                                        _Thumb(url: card.shots[i].url, size: 72),
+                                        const SizedBox(width: 8),
+                                        IconButton(
+                                          tooltip: 'Yukarı',
+                                          onPressed: _busy || i == 0 ? null : () => _move(i, -1),
+                                          icon: const Icon(Icons.arrow_upward),
+                                        ),
+                                        IconButton(
+                                          tooltip: 'Aşağı',
+                                          onPressed: _busy || i == card.shots.length - 1
+                                              ? null
+                                              : () => _move(i, 1),
+                                          icon: const Icon(Icons.arrow_downward),
+                                        ),
+                                        IconButton(
+                                          tooltip: 'Sil',
+                                          onPressed: _busy
+                                              ? null
+                                              : () => _remove(card.shots[i].id),
+                                          icon: const Icon(Icons.delete_outline),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
                           if (_error != null) ...[
                             const SizedBox(height: 12),
                             Text(_error!, style: const TextStyle(color: AppColors.danger)),
@@ -409,8 +434,89 @@ class _SiteCardFormState extends State<SiteCardForm> {
                         ],
                       ),
                     ),
+                    ),
                   ],
                 ),
+    );
+  }
+}
+
+class _MediaBlock extends StatelessWidget {
+  const _MediaBlock({
+    required this.title,
+    required this.hint,
+    required this.child,
+  });
+
+  final String title;
+  final String hint;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            hint,
+            style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.35),
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _MediaActions extends StatelessWidget {
+  const _MediaActions({
+    required this.url,
+    required this.busy,
+    required this.pickLabel,
+    required this.onPick,
+    required this.onRemove,
+  });
+
+  final String? url;
+  final bool busy;
+  final String pickLabel;
+  final VoidCallback onPick;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final remove = onRemove;
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        _Thumb(url: url, size: 72),
+        OutlinedButton(
+          onPressed: busy ? null : onPick,
+          child: Text(pickLabel),
+        ),
+        if (remove != null)
+          IconButton(
+            tooltip: 'Kaldır',
+            onPressed: busy ? null : remove,
+            icon: const Icon(Icons.delete_outline),
+          ),
+      ],
     );
   }
 }

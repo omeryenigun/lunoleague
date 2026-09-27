@@ -5,20 +5,30 @@ import 'package:kelimelig/domain/entities/game_models.dart';
 import 'package:kelimelig/domain/game/game_server.dart';
 
 class HomeState extends Equatable {
-  const HomeState({this.loading = true, this.snapshot, this.error});
+  const HomeState({
+    this.loading = true,
+    this.snapshot,
+    this.error,
+    this.offline = false,
+  });
 
   final bool loading;
   final HomeSnapshot? snapshot;
   final String? error;
+  final bool offline;
 
   @override
-  List<Object?> get props => [loading, snapshot, error];
+  List<Object?> get props => [loading, snapshot, error, offline];
 }
 
 class HomeCubit extends Cubit<HomeState> {
   HomeCubit(this._server) : super(const HomeState());
 
   final GameServer _server;
+
+  void showOffline() {
+    emit(const HomeState(loading: false, offline: true));
+  }
 
   Future<void> load() async {
     emit(const HomeState(loading: true));

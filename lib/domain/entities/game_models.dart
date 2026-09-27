@@ -22,6 +22,7 @@ class GameSessionView {
     this.answer,
     this.solved,
     this.dailyIndex = 1,
+    this.wordId = '',
   });
 
   final String sessionId;
@@ -50,6 +51,9 @@ class GameSessionView {
 
   /// Today's shared daily number. 1 is the first game of the day.
   final int dailyIndex;
+
+  /// Secret id, sent only after the session is finished.
+  final String wordId;
 
   bool get isFinished =>
       status == GameStatus.won ||
@@ -298,6 +302,46 @@ class SavedWord {
 
 enum MarathonRunState { none, running, paused }
 
+class MarathonBoardPlayer {
+  const MarathonBoardPlayer({
+    required this.displayName,
+    required this.score,
+    this.isCurrentUser = false,
+  });
+
+  final String displayName;
+  final int score;
+  final bool isCurrentUser;
+
+  Map<String, dynamic> toMap() => {
+        'displayName': displayName,
+        'score': score,
+        'isCurrentUser': isCurrentUser,
+      };
+
+  factory MarathonBoardPlayer.fromMap(Map<String, dynamic> map) {
+    return MarathonBoardPlayer(
+      displayName: map['displayName'] as String? ??
+          map['name'] as String? ??
+          'Oyuncu',
+      score: map['score'] as int? ?? map['points'] as int? ?? 0,
+      isCurrentUser: map['isCurrentUser'] == true,
+    );
+  }
+}
+
+List<MarathonBoardPlayer> marathonBoardFrom(dynamic raw) {
+  if (raw is! List) return const [];
+  return raw
+      .whereType<Map>()
+      .map(
+        (row) => MarathonBoardPlayer.fromMap(
+          Map<String, dynamic>.from(row),
+        ),
+      )
+      .toList();
+}
+
 class MarathonLeagueStatus {
   const MarathonLeagueStatus({
     required this.league,
@@ -313,6 +357,10 @@ class MarathonLeagueStatus {
     this.monthRank,
     this.yearBest = 0,
     this.yearRank,
+    this.weekBoard = const [],
+    this.monthBoard = const [],
+    this.yearBoard = const [],
+    this.allBoard = const [],
   });
 
   final LeagueTier league;
@@ -328,6 +376,10 @@ class MarathonLeagueStatus {
   final int? monthRank;
   final int yearBest;
   final int? yearRank;
+  final List<MarathonBoardPlayer> weekBoard;
+  final List<MarathonBoardPlayer> monthBoard;
+  final List<MarathonBoardPlayer> yearBoard;
+  final List<MarathonBoardPlayer> allBoard;
 
   Map<String, dynamic> toMap() => {
         'league': league.name,
@@ -343,6 +395,14 @@ class MarathonLeagueStatus {
         'monthRank': monthRank,
         'yearBest': yearBest,
         'yearRank': yearRank,
+        if (weekBoard.isNotEmpty)
+          'weekBoard': weekBoard.map((row) => row.toMap()).toList(),
+        if (monthBoard.isNotEmpty)
+          'monthBoard': monthBoard.map((row) => row.toMap()).toList(),
+        if (yearBoard.isNotEmpty)
+          'yearBoard': yearBoard.map((row) => row.toMap()).toList(),
+        if (allBoard.isNotEmpty)
+          'allBoard': allBoard.map((row) => row.toMap()).toList(),
       };
 
   factory MarathonLeagueStatus.fromMap(Map<String, dynamic> map) {
@@ -360,6 +420,10 @@ class MarathonLeagueStatus {
       monthRank: map['monthRank'] as int?,
       yearBest: map['yearBest'] as int? ?? 0,
       yearRank: map['yearRank'] as int?,
+      weekBoard: marathonBoardFrom(map['weekBoard']),
+      monthBoard: marathonBoardFrom(map['monthBoard']),
+      yearBoard: marathonBoardFrom(map['yearBoard']),
+      allBoard: marathonBoardFrom(map['allBoard'] ?? map['board']),
     );
   }
 }

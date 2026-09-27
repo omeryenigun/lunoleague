@@ -369,6 +369,7 @@ class _GameCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(game.icon, color: AppColors.accent),
               const SizedBox(width: 12),
@@ -390,7 +391,24 @@ class _GameCard extends StatelessWidget {
                   ],
                 ),
               ),
-              FilledButton(onPressed: onOpen, child: const Text('Yönet')),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  FilledButton(onPressed: onOpen, child: const Text('Yönet')),
+                  const SizedBox(height: 8),
+                  OutlinedButton(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => SiteCardForm(cardId: game.id),
+                        ),
+                      );
+                    },
+                    child: const Text('Vitrini Düzenle'),
+                  ),
+                ],
+              ),
             ],
           ),
           const SizedBox(height: 12),

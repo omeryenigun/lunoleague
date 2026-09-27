@@ -34,7 +34,7 @@ class KelimeLigApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (_) => AuthCubit(sl())..bootstrap(),
+      create: (_) => AuthCubit(sl()),
       child: const _AppView(),
     );
   }

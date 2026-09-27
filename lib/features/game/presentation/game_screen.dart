@@ -13,12 +13,13 @@ import 'package:kelimelig/core/services/haptic_manager.dart';
 import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
 import 'package:kelimelig/core/theme/cosmic_glass.dart';
-import 'package:kelimelig/core/theme/shimmer_title.dart';
+import 'package:kelimelig/core/widgets/game_page_header.dart';
 import 'package:kelimelig/core/widgets/midnight_countdown.dart';
 import 'package:kelimelig/domain/entities/game_models.dart';
 import 'package:kelimelig/domain/game/game_server.dart';
 import 'package:kelimelig/features/auth/cubit/auth_cubit.dart';
 import 'package:kelimelig/features/game/cubit/game_cubit.dart';
+import 'package:kelimelig/features/game/presentation/widgets/daily_result_standings.dart';
 import 'package:kelimelig/features/game/presentation/widgets/guess_board.dart';
 import 'package:kelimelig/features/game/presentation/widgets/result_screen.dart';
 import 'package:kelimelig/features/match/presentation/match_result_screen.dart';
@@ -96,7 +97,7 @@ class GameView extends StatelessWidget {
             kind: type == GameType.room ? 'room' : 'duel',
           );
         }
-        if (outcome != null && session != null) {
+        if (outcome != null && session != null && type != GameType.daily) {
           return ResultScreen(
             outcome: outcome,
             guesses: session.guesses,
@@ -123,6 +124,7 @@ class GameView extends StatelessWidget {
         }
 
         final l10n = sl<L10n>();
+        final finishedDaily = type == GameType.daily && session?.isFinished == true;
         final title = switch (type) {
           GameType.daily => l10n.t('daily_mode'),
           GameType.endless => l10n.t('endless'),
@@ -136,7 +138,7 @@ class GameView extends StatelessWidget {
               child: state.loading || session == null
                   ? state.errorCode == 'DAILY_DONE'
                       ? SizedBox.expand(
-                          child: _DailyClosed(onHome: () => context.go('/home')),
+                          child: const _DailyClosed(),
                         )
                       : Center(
                           child: Text(
@@ -152,48 +154,107 @@ class GameView extends StatelessWidget {
                           ),
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                          child: Row(
-                            children: [
-                              CosmicGlassIconButton(
-                                icon: Icons.chevron_left_rounded,
-                                onPressed: () => context.go('/home'),
-                              ),
-                              Expanded(
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    ShimmerTitle(
-                                      text: title,
-                                      fontSize: 22,
+                          child: GamePageHeader(
+                            title: title,
+                            bottomSpacing: 0,
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (!session.isFinished)
+                                  _UntilStart(
+                                    startedAt: session.startedAt,
+                                    waiting: (seconds) => Text(
+                                      '$seconds',
+                                      style: const TextStyle(
+                                        color: AppColors.cosmicTeal,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 22,
+                                      ),
                                     ),
-                                    if (type == GameType.daily) ...[
-                                      const SizedBox(width: 8),
-                                      _DailyIndexBadge(index: session.dailyIndex),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                              if (!session.isFinished)
-                                _UntilStart(
-                                  startedAt: session.startedAt,
-                                  waiting: (seconds) => Text(
-                                    '$seconds',
-                                    style: const TextStyle(
-                                      color: AppColors.cosmicTeal,
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: 22,
+                                    ready: _PlayClock(
+                                      startedAt: session.startedAt,
                                     ),
                                   ),
-                                  ready: _PlayClock(startedAt: session.startedAt),
+                                if (type == GameType.daily) ...[
+                                  const SizedBox(width: 8),
+                                  _DailyIndexBadge(index: session.dailyIndex),
+                                ],
+                                const SizedBox(width: 8),
+                                _AttemptPill(
+                                  current: session.currentAttempt,
+                                  max: session.maxAttempts,
                                 ),
-                              const SizedBox(width: 8),
-                              _AttemptPill(
-                                current: session.currentAttempt,
-                                max: session.maxAttempts,
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
+                        if (finishedDaily)
+                          Expanded(
+                            child: SingleChildScrollView(
+                              child: Column(
+                                children: [
+                                  _FinishedSummary(
+                                    won: session.solved == true,
+                                    lost: session.solved == false,
+                                    answer: session.answer,
+                                  ),
+                                  if (session.dailyIndex <
+                                      AppConstants.maxDailySlots)
+                                    const Padding(
+                                      padding:
+                                          EdgeInsets.fromLTRB(20, 10, 20, 0),
+                                      child: _ContinueDailyButton(),
+                                    ),
+                                  if (session.definitionHint != null)
+                                    Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        20,
+                                        8,
+                                        20,
+                                        0,
+                                      ),
+                                      child: Text(
+                                        session.definitionHint!,
+                                        style: const TextStyle(
+                                          color: AppColors.cosmicGold,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 12,
+                                    ),
+                                    child: GuessBoard(
+                                      wordLength: session.wordLength,
+                                      maxAttempts: session.maxAttempts,
+                                      guesses: session.guesses,
+                                      currentInput: state.input,
+                                      revealed: session.revealedLetters,
+                                      currentAttempt: session.currentAttempt,
+                                      animateLast: state.flipping ||
+                                          session.guesses.isNotEmpty,
+                                    ),
+                                  ),
+                                  _FinishedActions(session: session),
+                                  DailyResultStandings(
+                                    wordId: session.wordId.isNotEmpty
+                                        ? session.wordId
+                                        : (session.outcome?.wordId ?? ''),
+                                    playerWon: session.solved == true,
+                                    playerGuesses: session.guesses.isEmpty
+                                        ? session.currentAttempt
+                                        : session.guesses.length,
+                                    seedKey:
+                                        '${session.wordId}_${session.dailyIndex}_${state.locale}',
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        else ...[
                         if (session.isFinished) ...[
                           _FinishedSummary(
                             won: session.solved == true,
@@ -297,6 +358,7 @@ class GameView extends StatelessWidget {
                               ],
                             ),
                           ),
+                        ],
                       ],
                     ),
             ),
@@ -588,9 +650,7 @@ class _DailyIndexBadge extends StatelessWidget {
 }
 
 class _DailyClosed extends StatelessWidget {
-  const _DailyClosed({required this.onHome});
-
-  final VoidCallback onHome;
+  const _DailyClosed();
 
   @override
   Widget build(BuildContext context) {
@@ -601,10 +661,7 @@ class _DailyClosed extends StatelessWidget {
         children: [
           Align(
             alignment: Alignment.centerLeft,
-            child: CosmicGlassIconButton(
-              icon: Icons.chevron_left_rounded,
-              onPressed: onHome,
-            ),
+            child: const HomeTitleButton(),
           ),
           const Spacer(),
           Text(

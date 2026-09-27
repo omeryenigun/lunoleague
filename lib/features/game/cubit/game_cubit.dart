@@ -83,7 +83,7 @@ class GameCubit extends Cubit<GameState> {
       emit(GameState(
         loading: false,
         session: session,
-        league: user != null && user.canJoinLeague ? user.currentLeague : null,
+        league: user?.currentLeague,
         coins: user?.coin ?? 0,
         locale: locale,
       ));

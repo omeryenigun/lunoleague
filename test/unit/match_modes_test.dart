@@ -161,7 +161,7 @@ void main() {
     expect(board.rows.first.solved, isTrue);
     expect(board.rows.first.userId, (await b.currentUser())!.id);
     expect(board.rows.last.solved, isFalse);
-    expect(await a.leagueStandings(), isEmpty);
+    expect(await a.leagueStandings(), isNotEmpty);
   });
 
   test('fewer guesses beat a faster clock, and equal guesses use the clock', () async {
