@@ -52,22 +52,23 @@ void main() {
 
   test('new language screens use their own copy', () {
     final l10n = L10n()..id = 'de';
-    expect(l10n.t('endless'), 'Marathon');
+    expect(l10n.t('endless'), 'Wortmarathon');
     l10n.id = 'es';
-    expect(l10n.t('endless'), 'Maratón');
+    expect(l10n.t('endless'), 'Maratón de palabras');
     l10n.id = 'fr';
     expect(l10n.t('home'), 'Accueil');
     l10n.id = 'it';
     expect(l10n.t('league'), 'Lega');
     l10n.id = 'ru';
-    expect(l10n.t('endless'), 'Марафон');
+    expect(l10n.t('endless'), 'Словесный марафон');
     l10n.id = 'nl';
     expect(l10n.t('home'), 'Home');
     l10n.id = 'pt';
     expect(l10n.t('league'), 'Liga');
     l10n.id = 'pl';
-    expect(l10n.t('endless'), 'Maraton');
+    expect(l10n.t('endless'), 'Maraton słów');
     l10n.id = 'tr';
-    expect(l10n.t('endless'), 'MARATON');
+    expect(l10n.t('endless'), 'Kelime Maratonu');
+    expect(l10n.t('endless_home'), 'KELİME MARATONU');
   });
 }

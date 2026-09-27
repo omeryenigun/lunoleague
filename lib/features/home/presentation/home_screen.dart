@@ -395,7 +395,7 @@ class _EndlessCard extends StatelessWidget {
         Color(0xFF7A1FA2),
         Color(0xFFB200FF),
       ],
-      onTap: () => context.push('/game/endless'),
+      onTap: () => context.push('/marathon'),
       child: Row(
         children: [
           Container(
@@ -428,7 +428,7 @@ class _EndlessCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  l10n.t('endless'),
+                  l10n.t('endless_home'),
                   style: const TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 17,

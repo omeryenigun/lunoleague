@@ -227,6 +227,14 @@ class RemoteGameServer implements GameServer {
   Future<GameSessionView> startEndless() async =>
       readSession(await _call('startEndless', {}));
 
+  @override
+  Future<MarathonSnapshot> marathonSnapshot() async => MarathonSnapshot.fromMap(
+        Map<String, dynamic>.from(await _call('marathonSnapshot', {}) as Map),
+      );
+
+  @override
+  Future<bool> endEndlessRun() async => await _call('endEndlessRun', {}) == true;
+
   MatchSnapshot _snap(Object? data) =>
       MatchSnapshot.fromMap(Map<String, dynamic>.from(data! as Map));
 

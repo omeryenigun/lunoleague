@@ -47,6 +47,9 @@ abstract class GameServer {
   Future<bool> prepareNextDaily();
   Future<GameSessionView> startDaily();
   Future<GameSessionView> startEndless();
+  Future<MarathonSnapshot> marathonSnapshot();
+  /// Clears a paused marathon run. A running run stays.
+  Future<bool> endEndlessRun();
   Future<MatchSnapshot> duelCreate();
   Future<MatchSnapshot> duelJoin(String code);
   Future<MatchSnapshot> duelPoll();

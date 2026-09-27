@@ -84,7 +84,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.byType(GameLogo), findsOneWidget);
     expect(find.text('GÜNLÜK OYNA'), findsOneWidget);
-    expect(find.text('MARATON'), findsOneWidget);
+    expect(find.text('KELİME MARATONU'), findsOneWidget);
     expect(find.text('Kayıtlı hesap gerekir'), findsNothing);
   });
 

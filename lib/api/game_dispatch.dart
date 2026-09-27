@@ -112,6 +112,10 @@ Future<Object?> dispatchGame(
       return wireSession(await game.startDaily());
     case 'startEndless':
       return wireSession(await game.startEndless());
+    case 'marathonSnapshot':
+      return (await game.marathonSnapshot()).toMap();
+    case 'endEndlessRun':
+      return game.endEndlessRun();
     case 'duelCreate':
       return (await game.duelCreate()).toMap();
     case 'duelJoin':

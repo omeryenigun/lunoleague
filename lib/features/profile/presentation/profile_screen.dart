@@ -771,7 +771,7 @@ class StatisticsScreen extends StatelessWidget {
                             ),
                             _RichStat(
                               icon: '♾️',
-                              label: 'En uzun Maraton',
+                              label: 'En uzun Kelime Maratonu',
                               value: '${u.endlessBest}',
                               valueColor: const Color(0xFF9B59B6),
                               iconColors: const [

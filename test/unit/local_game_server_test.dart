@@ -1311,9 +1311,9 @@ zurna,tr,İkinci,Tekrar.,zurna,müzik,,,
     expect(second.outcome!.coinEarned, 25);
     expect((await host.currentUser())!.coin, beforeSecond + 25);
     expect((await host.currentUser())!.endlessBest, 1);
-    expect(await root.getMeta('endless_finished_${player.id}_tr'), '1');
-    expect(await root.getMeta('endless_run_${player.id}_tr'), '1');
-    expect(await root.getMeta('endless_wins_${player.id}_tr'), '1');
+    expect(await root.getMeta('endless_finished_${player.id}_tr_bronze'), '1');
+    expect(await root.getMeta('endless_run_${player.id}_tr_bronze'), '1');
+    expect(await root.getMeta('endless_wins_${player.id}_tr_bronze'), '1');
 
     final listed = await host.adminDailyMap();
     final firstId = (await root.get('game_sessions', first.sessionId))!['wordId'];
@@ -1493,5 +1493,147 @@ zurna,tr,İkinci,Tekrar.,zurna,müzik,,,
     final stuck = await host.startDaily();
     expect(stuck.dailyIndex, AppConstants.maxDailySlots);
     expect(stuck.isFinished, isTrue);
+  });
+
+  Future<void> winRun(LocalGameServer host) async {
+    var session = await host.startEndless();
+    final secret = (await host.adminGetSession(session.sessionId))!.word;
+    session = await host.submitGuess(session.sessionId, secret);
+    expect(session.outcome!.won, isTrue);
+  }
+
+  Future<void> loseRun(LocalGameServer host) async {
+    var session = await host.startEndless();
+    final secret = (await host.adminGetSession(session.sessionId))!.word;
+    final wrong = (await host.adminListWords())
+        .where(
+          (word) =>
+              word.length == session.wordLength &&
+              word.playable &&
+              word.language == 'tr',
+        )
+        .map((word) => word.word)
+        .firstWhere((word) => !TurkishText.equals(word, secret));
+    for (var i = 0; i < session.maxAttempts; i++) {
+      session = await host.submitGuess(session.sessionId, wrong);
+    }
+    expect(session.outcome!.won, isFalse);
+  }
+
+  test('a running marathon continues without an ad and stays in its league', () async {
+    final root = MemoryKeyValueStore();
+    final host = LocalGameServer(SessionKv(root), random: Random(12));
+    await host.initialize();
+    final player = await host.signInWithGoogle(googleId: 'marathon-run', displayName: 'Ayse');
+    await root.putMeta('endless_run_${player.id}_tr', '3');
+    await root.putMeta('endless_best_${player.id}_tr', '3');
+
+    final migrated = await host.marathonSnapshot();
+    final bronze = migrated.leagues.firstWhere((row) => row.league == LeagueTier.bronze);
+    final silver = migrated.leagues.firstWhere((row) => row.league == LeagueTier.silver);
+    expect(bronze.state, MarathonRunState.running);
+    expect(bronze.series, 3);
+    expect(bronze.best, 3);
+    expect(bronze.current, isTrue);
+    expect(silver.state, MarathonRunState.none);
+    expect(silver.rank, isNull);
+    expect(await host.endEndlessRun(), isFalse);
+
+    await winRun(host);
+    final next = await host.marathonSnapshot();
+    final stillBronze = next.leagues.firstWhere((row) => row.league == LeagueTier.bronze);
+    expect(stillBronze.series, 4);
+    expect(stillBronze.best, 4);
+    expect(stillBronze.played, 1);
+    expect(stillBronze.weekRank, 1);
+    expect(stillBronze.weekBest, 4);
+    expect(stillBronze.monthRank, 1);
+    expect(stillBronze.monthBest, 4);
+    expect(stillBronze.yearRank, 1);
+    expect(stillBronze.yearBest, 4);
+    expect(stillBronze.rank, 1);
+    expect(
+      next.leagues.firstWhere((row) => row.league == LeagueTier.silver).series,
+      0,
+    );
+  });
+
+  test('a paused marathon resumes after the ad and ends only when asked', () async {
+    final host = LocalGameServer(SessionKv(MemoryKeyValueStore()), random: Random(13));
+    await host.initialize();
+    await host.signInWithGoogle(googleId: 'marathon-pause', displayName: 'Berk');
+    await winRun(host);
+    await loseRun(host);
+
+    final paused = await host.marathonSnapshot();
+    final bronze = paused.leagues.firstWhere((row) => row.league == LeagueTier.bronze);
+    expect(bronze.state, MarathonRunState.paused);
+    expect(bronze.series, 1);
+    expect(bronze.best, 1);
+    expect(bronze.played, 2);
+
+    await host.restoreEndlessRunAfterAd();
+    final resumed = await host.marathonSnapshot();
+    expect(
+      resumed.leagues.firstWhere((row) => row.league == LeagueTier.bronze).state,
+      MarathonRunState.running,
+    );
+    await winRun(host);
+    expect(
+      (await host.marathonSnapshot())
+          .leagues
+          .firstWhere((row) => row.league == LeagueTier.bronze)
+          .series,
+      2,
+    );
+
+    await loseRun(host);
+    expect(await host.endEndlessRun(), isTrue);
+    final ended = await host.marathonSnapshot();
+    final after = ended.leagues.firstWhere((row) => row.league == LeagueTier.bronze);
+    expect(after.state, MarathonRunState.none);
+    expect(after.series, 0);
+    expect(after.best, 2);
+    expect(await host.endEndlessRun(), isFalse);
+  });
+
+  test('marathon leagues keep separate runs and tied bests share a rank', () async {
+    final root = MemoryKeyValueStore();
+    final host = LocalGameServer(SessionKv(root), random: Random(14));
+    final guest = LocalGameServer(SessionKv(root), random: Random(15));
+    await host.initialize();
+    await host.signInWithGoogle(googleId: 'marathon-host', displayName: 'Ayse');
+    await guest.signInWithGoogle(googleId: 'marathon-guest', displayName: 'Berk');
+
+    await winRun(host);
+    await winRun(guest);
+    final tied = await host.marathonSnapshot();
+    final guestView = await guest.marathonSnapshot();
+    expect(
+      tied.leagues.firstWhere((row) => row.league == LeagueTier.bronze).rank,
+      1,
+    );
+    expect(
+      guestView.leagues.firstWhere((row) => row.league == LeagueTier.bronze).rank,
+      1,
+    );
+
+    await host.setLeague(LeagueTier.silver);
+    await winRun(host);
+    final split = await host.marathonSnapshot();
+    final hostBronze = split.leagues.firstWhere((row) => row.league == LeagueTier.bronze);
+    final hostSilver = split.leagues.firstWhere((row) => row.league == LeagueTier.silver);
+    expect(hostBronze.series, 1);
+    expect(hostBronze.current, isFalse);
+    expect(hostSilver.current, isTrue);
+    expect(hostSilver.series, 1);
+    expect(hostSilver.best, 1);
+    expect(
+      (await guest.marathonSnapshot())
+          .leagues
+          .firstWhere((row) => row.league == LeagueTier.silver)
+          .series,
+      0,
+    );
   });
 }

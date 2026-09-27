@@ -296,6 +296,96 @@ class SavedWord {
   final DateTime savedAt;
 }
 
+enum MarathonRunState { none, running, paused }
+
+class MarathonLeagueStatus {
+  const MarathonLeagueStatus({
+    required this.league,
+    required this.state,
+    required this.series,
+    required this.best,
+    required this.played,
+    required this.current,
+    this.rank,
+    this.weekBest = 0,
+    this.weekRank,
+    this.monthBest = 0,
+    this.monthRank,
+    this.yearBest = 0,
+    this.yearRank,
+  });
+
+  final LeagueTier league;
+  final MarathonRunState state;
+  final int series;
+  final int best;
+  final int played;
+  final bool current;
+  final int? rank;
+  final int weekBest;
+  final int? weekRank;
+  final int monthBest;
+  final int? monthRank;
+  final int yearBest;
+  final int? yearRank;
+
+  Map<String, dynamic> toMap() => {
+        'league': league.name,
+        'state': state.name,
+        'series': series,
+        'best': best,
+        'played': played,
+        'current': current,
+        'rank': rank,
+        'weekBest': weekBest,
+        'weekRank': weekRank,
+        'monthBest': monthBest,
+        'monthRank': monthRank,
+        'yearBest': yearBest,
+        'yearRank': yearRank,
+      };
+
+  factory MarathonLeagueStatus.fromMap(Map<String, dynamic> map) {
+    return MarathonLeagueStatus(
+      league: LeagueTier.values.byName(map['league'] as String? ?? 'bronze'),
+      state: MarathonRunState.values.byName(map['state'] as String? ?? 'none'),
+      series: map['series'] as int? ?? 0,
+      best: map['best'] as int? ?? 0,
+      played: map['played'] as int? ?? 0,
+      current: map['current'] == true,
+      rank: map['rank'] as int?,
+      weekBest: map['weekBest'] as int? ?? 0,
+      weekRank: map['weekRank'] as int?,
+      monthBest: map['monthBest'] as int? ?? 0,
+      monthRank: map['monthRank'] as int?,
+      yearBest: map['yearBest'] as int? ?? 0,
+      yearRank: map['yearRank'] as int?,
+    );
+  }
+}
+
+class MarathonSnapshot {
+  const MarathonSnapshot({required this.leagues});
+
+  final List<MarathonLeagueStatus> leagues;
+
+  Map<String, dynamic> toMap() => {
+        'leagues': leagues.map((league) => league.toMap()).toList(),
+      };
+
+  factory MarathonSnapshot.fromMap(Map<String, dynamic> map) {
+    return MarathonSnapshot(
+      leagues: (map['leagues'] as List? ?? const [])
+          .map(
+            (row) => MarathonLeagueStatus.fromMap(
+              Map<String, dynamic>.from(row as Map),
+            ),
+          )
+          .toList(),
+    );
+  }
+}
+
 class AchievementView {
   const AchievementView({
     required this.id,

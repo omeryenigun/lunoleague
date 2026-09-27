@@ -611,14 +611,123 @@ class LocalGameServer implements GameServer {
     return synced;
   }
 
-  String _runMetaKey(UserEntity user, String name) =>
-      '${name}_${user.id}_${user.locale}';
+  String _runMetaKey(UserEntity user, String name, {LeagueTier? league}) =>
+      '${name}_${user.id}_${user.locale}_${(league ?? user.currentLeague).name}';
 
-  Future<String?> _runMeta(UserEntity user, String name) async {
-    final keyed = await _store.getMeta(_runMetaKey(user, name));
-    if (keyed != null) return keyed;
-    if (user.locale == 'tr') return _store.getMeta('${name}_${user.id}');
-    return null;
+  Future<String?> _runMeta(UserEntity user, String name, {LeagueTier? league}) async {
+    await _migrateEndlessLeague(user);
+    return _store.getMeta(_runMetaKey(user, name, league: league));
+  }
+
+  /// Moves the old single run onto the player's current league once.
+  Future<void> _migrateEndlessLeague(UserEntity user) async {
+    final flag = 'endless_league_${user.id}_${user.locale}';
+    if (await _store.getMeta(flag) == '1') return;
+    final league = user.currentLeague;
+    Future<void> copy(String name, String? fallback) async {
+      final next = _runMetaKey(user, name, league: league);
+      if (await _store.getMeta(next) != null) return;
+      final legacy = await _store.getMeta('${name}_${user.id}_${user.locale}');
+      final older = legacy ??
+          (user.locale == 'tr' ? await _store.getMeta('${name}_${user.id}') : null);
+      final value = older ?? fallback;
+      if (value != null && value.isNotEmpty) {
+        await _store.putMeta(next, value);
+      }
+    }
+
+    await copy('endless_run', null);
+    await copy('endless_run_at_risk', null);
+    await copy('endless_wins', null);
+    await copy('endless_finished', null);
+    await copy('endless_best', user.endlessBest > 0 ? '${user.endlessBest}' : null);
+    await _store.putMeta(flag, '1');
+  }
+
+  Future<int> _leagueBest(UserEntity user, String locale, LeagueTier league) async {
+    final raw = await _store.getMeta(
+      'endless_best_${user.id}_${locale}_${league.name}',
+    );
+    if (raw != null) return int.tryParse(raw) ?? 0;
+    if (user.locale == locale && user.currentLeague == league) return user.endlessBest;
+    final progress = user.progressByLocale[locale];
+    if (progress != null && progress.league == league) return progress.endlessBest;
+    return 0;
+  }
+
+  String _periodBestKey(
+    String userId,
+    String locale,
+    LeagueTier league,
+    String period,
+    String periodId,
+  ) =>
+      'endless_${period}_${periodId}_${userId}_${locale}_${league.name}';
+
+  Future<void> _stampMarathonPeriods(UserEntity user, int run) async {
+    final stamps = [
+      ('week', DateKeys.weekId(_now)),
+      ('month', DateKeys.monthId(_now)),
+      ('year', DateKeys.yearId(_now)),
+    ];
+    for (final stamp in stamps) {
+      final key = _periodBestKey(
+        user.id,
+        user.locale,
+        user.currentLeague,
+        stamp.$1,
+        stamp.$2,
+      );
+      final previous = int.tryParse(await _store.getMeta(key) ?? '') ?? 0;
+      if (run > previous) await _store.putMeta(key, '$run');
+    }
+  }
+
+  Future<({int best, int? rank})> _periodStanding(
+    UserEntity user,
+    LeagueTier league,
+    String period,
+    String periodId,
+  ) async {
+    final best = int.tryParse(
+          await _store.getMeta(
+                _periodBestKey(user.id, user.locale, league, period, periodId),
+              ) ??
+              '',
+        ) ??
+        0;
+    if (best <= 0) return (best: 0, rank: null);
+    var better = 0;
+    for (final raw in await _store.values('users')) {
+      final other = UserEntity.fromMap(raw);
+      if (other.id == user.id) continue;
+      final otherBest = int.tryParse(
+            await _store.getMeta(
+                  _periodBestKey(other.id, user.locale, league, period, periodId),
+                ) ??
+                '',
+          ) ??
+          0;
+      if (otherBest > best) better++;
+    }
+    return (best: best, rank: better + 1);
+  }
+
+  Future<int?> _marathonRank(
+    UserEntity user,
+    LeagueTier league,
+    int best,
+    int played,
+  ) async {
+    if (best <= 0 && played <= 0) return null;
+    var better = 0;
+    for (final raw in await _store.values('users')) {
+      final other = UserEntity.fromMap(raw);
+      if (other.id == user.id) continue;
+      final otherBest = await _leagueBest(other, user.locale, league);
+      if (otherBest > best) better++;
+    }
+    return better + 1;
   }
 
   Future<UserEntity> _newUser({
@@ -973,7 +1082,12 @@ class LocalGameServer implements GameServer {
   @override
   Future<UserEntity> setLeague(LeagueTier league) async {
     final user = await _requireUser();
-    return _saveUser(user.copyWith(currentLeague: league));
+    await _migrateEndlessLeague(user);
+    final best = int.tryParse(
+          await _store.getMeta(_runMetaKey(user, 'endless_best', league: league)) ?? '',
+        ) ??
+        0;
+    return _saveUser(user.copyWith(currentLeague: league, endlessBest: best));
   }
 
   Future<UserEntity> _applyMissedStreak(UserEntity user) async {
@@ -1589,6 +1703,7 @@ class LocalGameServer implements GameServer {
   @override
   Future<GameSessionView> startEndless() async {
     final user = await _requireUser();
+    await _migrateEndlessLeague(user);
     final existing = await _findActive(user.id, GameType.endless, language: user.locale);
     if (existing != null && _sessionStillOpen(existing)) {
       return _sessionToView(existing);
@@ -2336,14 +2451,21 @@ class LocalGameServer implements GameServer {
       if (won) {
         xp = _progression.endlessXp(config);
         coins = _progression.endlessCoins(config);
+        await _migrateEndlessLeague(user);
         final run = (raw['endlessStreak'] as int? ?? 0) + 1;
         raw['endlessStreak'] = run;
+        final previousBest = int.tryParse(
+              await _store.getMeta(_runMetaKey(user, 'endless_best')) ?? '',
+            ) ??
+            0;
+        final best = run > previousBest ? run : previousBest;
         await _store.putMeta(_runMetaKey(user, 'endless_run'), '$run');
         await _store.putMeta(_runMetaKey(user, 'endless_run_at_risk'), '');
-        next = user.copyWith(
-          endlessBest: run > user.endlessBest ? run : user.endlessBest,
-        );
+        await _store.putMeta(_runMetaKey(user, 'endless_best'), '$best');
+        await _stampMarathonPeriods(user, run);
+        next = user.copyWith(endlessBest: best);
       } else {
+        await _migrateEndlessLeague(user);
         final prev = int.tryParse(await _runMeta(user, 'endless_run') ?? '0') ?? 0;
         if (prev > 0) {
           await _store.putMeta(_runMetaKey(user, 'endless_run_at_risk'), '$prev');
@@ -2613,12 +2735,68 @@ class LocalGameServer implements GameServer {
   @override
   Future<void> restoreEndlessRunAfterAd() async {
     final user = await _requireUser();
-    await watchRewardedAd();
+    await _migrateEndlessLeague(user);
+    try {
+      await watchRewardedAd();
+    } on AppFailure {
+      // A signed ad may already have granted coins. The run still resumes.
+    }
     final atRisk = int.tryParse(await _runMeta(user, 'endless_run_at_risk') ?? '') ?? 0;
     if (atRisk > 0) {
       await _store.putMeta(_runMetaKey(user, 'endless_run'), '$atRisk');
     }
     await _store.putMeta(_runMetaKey(user, 'endless_run_at_risk'), '');
+  }
+
+  @override
+  Future<bool> endEndlessRun() async {
+    final user = await _requireUser();
+    await _migrateEndlessLeague(user);
+    final atRisk = int.tryParse(await _runMeta(user, 'endless_run_at_risk') ?? '') ?? 0;
+    if (atRisk <= 0) return false;
+    await _store.putMeta(_runMetaKey(user, 'endless_run_at_risk'), '');
+    return true;
+  }
+
+  @override
+  Future<MarathonSnapshot> marathonSnapshot() async {
+    final user = await _requireUser();
+    await _migrateEndlessLeague(user);
+    final leagues = <MarathonLeagueStatus>[];
+    for (final league in LeagueTier.values) {
+      final run = int.tryParse(await _runMeta(user, 'endless_run', league: league) ?? '') ?? 0;
+      final atRisk =
+          int.tryParse(await _runMeta(user, 'endless_run_at_risk', league: league) ?? '') ?? 0;
+      final played =
+          int.tryParse(await _runMeta(user, 'endless_finished', league: league) ?? '') ?? 0;
+      final best = await _leagueBest(user, user.locale, league);
+      final week = await _periodStanding(user, league, 'week', DateKeys.weekId(_now));
+      final month = await _periodStanding(user, league, 'month', DateKeys.monthId(_now));
+      final year = await _periodStanding(user, league, 'year', DateKeys.yearId(_now));
+      final state = run > 0
+          ? MarathonRunState.running
+          : atRisk > 0
+              ? MarathonRunState.paused
+              : MarathonRunState.none;
+      leagues.add(
+        MarathonLeagueStatus(
+          league: league,
+          state: state,
+          series: run > 0 ? run : atRisk,
+          best: best,
+          played: played,
+          current: league == user.currentLeague,
+          rank: await _marathonRank(user, league, best, played),
+          weekBest: week.best,
+          weekRank: week.rank,
+          monthBest: month.best,
+          monthRank: month.rank,
+          yearBest: year.best,
+          yearRank: year.rank,
+        ),
+      );
+    }
+    return MarathonSnapshot(leagues: leagues);
   }
 
   @override
@@ -3322,12 +3500,11 @@ class LocalGameServer implements GameServer {
   }
 
   Future<List<ResultPlace>> _endlessBoard(UserEntity user) async {
+    await _migrateEndlessLeague(user);
     final scored = <({String id, String name, int best})>[];
     for (final raw in await _store.values('users')) {
       final other = UserEntity.fromMap(raw);
-      final best = other.locale == user.locale
-          ? other.endlessBest
-          : other.progressByLocale[user.locale]?.endlessBest ?? 0;
+      final best = await _leagueBest(other, user.locale, user.currentLeague);
       if (best <= 0 && other.id != user.id) continue;
       scored.add((id: other.id, name: other.displayName, best: best));
     }

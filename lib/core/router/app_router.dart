@@ -17,6 +17,7 @@ import 'package:kelimelig/games/luno_grid/grid_home_screen.dart';
 import 'package:kelimelig/features/match/presentation/duel_screen.dart';
 import 'package:kelimelig/features/match/presentation/room_screen.dart';
 import 'package:kelimelig/features/home/presentation/home_screen.dart';
+import 'package:kelimelig/features/home/presentation/marathon_screen.dart';
 import 'package:kelimelig/features/league/presentation/league_screen.dart';
 import 'package:kelimelig/features/profile/presentation/achievements_screen.dart';
 import 'package:kelimelig/features/profile/presentation/profile_screen.dart';
@@ -95,6 +96,7 @@ class _AppViewState extends State<_AppView> {
             GoRoute(path: '/settings', builder: (_, _) => const SettingsScreen()),
           ],
         ),
+        GoRoute(path: '/marathon', builder: (_, _) => const MarathonScreen()),
         GoRoute(path: '/duel', builder: (_, _) => const DuelScreen()),
         GoRoute(path: '/room', builder: (_, _) => const RoomScreen()),
         GoRoute(
