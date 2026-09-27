@@ -7,6 +7,7 @@ class AppConstants {
   static const leagueGroupSize = 50;
   static const adminPassword = 'admin';
   static const sessionTimeoutMinutes = 60;
+  static const maxDailySlots = 30;
   static const endlessBreakAdEvery = 3;
   static const turkishAlphabet =
       'ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ';

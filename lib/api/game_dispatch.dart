@@ -106,6 +106,8 @@ Future<Object?> dispatchGame(
       return (await game.setLeague(LeagueTier.values.byName(args['league'] as String))).toMap();
     case 'homeSnapshot':
       return wireHome(await game.homeSnapshot());
+    case 'prepareNextDaily':
+      return game.prepareNextDaily();
     case 'startDaily':
       return wireSession(await game.startDaily());
     case 'startEndless':

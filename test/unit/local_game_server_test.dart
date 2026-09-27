@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kelimelig/core/constants/app_constants.dart';
 import 'package:kelimelig/core/constants/enums.dart';
 import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/domain/entities/cosmetics.dart';
@@ -421,6 +422,8 @@ magnet,en,A piece of metal that attracts iron.,,,object,1,5,active
     expect(board.last.isCurrentUser, isTrue);
     expect(board.last.rank, 2);
     expect(board.last.score, '2');
+    expect(board.last.firstSolved, 1);
+    expect(board.last.secondSolved, 1);
     expect(resultBoardLines(board).rankOnly, isNull);
   });
 
@@ -1355,5 +1358,140 @@ zurna,tr,İkinci,Tekrar.,zurna,müzik,,,
     expect(next.dailyIndex, 2);
     expect(next.isFinished, isFalse);
     expect(next.sessionId, isNot(session.sessionId));
+  });
+
+  test('a stored extra daily still needs each player to watch an ad', () async {
+    final root = MemoryKeyValueStore();
+    final host = LocalGameServer(SessionKv(root), random: Random(5));
+    final guest = LocalGameServer(SessionKv(root), random: Random(6));
+    await host.initialize();
+    final player = await host.signInWithGoogle(googleId: 'host-permit', displayName: 'Ayse');
+    final other = await guest.signInWithGoogle(googleId: 'guest-permit', displayName: 'Berk');
+
+    var first = await host.startDaily();
+    final secret = (await host.adminGetSession(first.sessionId))!.word;
+    first = await host.submitGuess(first.sessionId, secret);
+    var guestFirst = await guest.startDaily();
+    guestFirst = await guest.submitGuess(guestFirst.sessionId, secret);
+
+    final day = DateKeys.dayKey(DateTime.now());
+    expect(await host.prepareNextDaily(), isTrue);
+    expect(await root.get('daily_games', '${day}_tr_bronze_2'), isNotNull);
+    expect((await host.startDaily()).sessionId, first.sessionId);
+    expect(await guest.prepareNextDaily(), isTrue);
+    expect(await root.get('daily_games', '${day}_tr_bronze_3'), isNull);
+    expect((await guest.startDaily()).sessionId, guestFirst.sessionId);
+
+    final coins = (await host.currentUser())!.coin;
+    expect(
+      await host.grantDailyNextProof(userId: player.id, transactionId: 'host-only'),
+      isTrue,
+    );
+    expect((await host.currentUser())!.coin, coins);
+    expect((await host.homeSnapshot()).dailyNeedsAd, isFalse);
+    expect((await guest.homeSnapshot()).dailyNeedsAd, isTrue);
+    final second = await host.startDaily();
+    expect(second.dailyIndex, 2);
+    expect((await guest.startDaily()).sessionId, guestFirst.sessionId);
+
+    expect(
+      await guest.grantDailyNextProof(userId: other.id, transactionId: 'guest-own'),
+      isTrue,
+    );
+    final guestSecond = await guest.startDaily();
+    expect(guestSecond.dailyIndex, 2);
+    expect(
+      (await guest.adminGetSession(guestSecond.sessionId))!.word,
+      (await host.adminGetSession(second.sessionId))!.word,
+    );
+  });
+
+  test('starting a daily queues the next shared word', () async {
+    final root = MemoryKeyValueStore();
+    final host = LocalGameServer(SessionKv(root), random: Random(7));
+    final guest = LocalGameServer(SessionKv(root), random: Random(8));
+    await host.initialize();
+    final player = await host.signInWithGoogle(googleId: 'queue-host', displayName: 'Ayse');
+    await guest.signInWithGoogle(googleId: 'queue-guest', displayName: 'Berk');
+    final day = DateKeys.dayKey(DateTime.now());
+
+    var session = await host.startDaily();
+    expect(session.dailyIndex, 1);
+    final firstSlot = await root.get('daily_games', '${day}_tr_bronze');
+    final secondSlot = await root.get('daily_games', '${day}_tr_bronze_2');
+    expect(firstSlot, isNotNull);
+    expect(secondSlot, isNotNull);
+    expect(secondSlot!['wordId'], isNot(firstSlot!['wordId']));
+    expect(await root.get('daily_games', '${day}_tr_bronze_3'), isNull);
+    expect(
+      (await host.adminDailyMap())['${day}_tr_bronze_2'],
+      secondSlot['wordId'],
+    );
+
+    var guestSession = await guest.startDaily();
+    expect(
+      (await guest.adminGetSession(guestSession.sessionId))!.word,
+      (await host.adminGetSession(session.sessionId))!.word,
+    );
+    expect(
+      (await root.get('daily_games', '${day}_tr_bronze_2'))!['wordId'],
+      secondSlot['wordId'],
+    );
+
+    final secret = (await host.adminGetSession(session.sessionId))!.word;
+    session = await host.submitGuess(session.sessionId, secret);
+    expect((await host.startDaily()).sessionId, session.sessionId);
+    guestSession = await guest.submitGuess(guestSession.sessionId, secret);
+    expect((await guest.startDaily()).sessionId, guestSession.sessionId);
+
+    expect(
+      await host.grantDailyNextProof(userId: player.id, transactionId: 'queue-host'),
+      isTrue,
+    );
+    final second = await host.startDaily();
+    expect(second.dailyIndex, 2);
+    expect(await root.get('daily_games', '${day}_tr_bronze_3'), isNotNull);
+    expect((await guest.startDaily()).sessionId, guestSession.sessionId);
+  });
+
+  test('daily sequence stops after 30', () async {
+    final root = MemoryKeyValueStore();
+    final host = LocalGameServer(SessionKv(root), random: Random(11));
+    await host.initialize();
+    final player = await host.signInWithGoogle(googleId: 'cap-daily', displayName: 'Sinir');
+    final day = DateKeys.dayKey(DateTime.now());
+
+    for (var index = 1; index <= AppConstants.maxDailySlots; index++) {
+      var session = await host.startDaily();
+      expect(session.dailyIndex, index, reason: 'index $index');
+      expect(session.isFinished, isFalse);
+      if (index < AppConstants.maxDailySlots) {
+        expect(
+          await root.get('daily_games', '${day}_tr_bronze_${index + 1}'),
+          isNotNull,
+        );
+      }
+      expect(await root.get('daily_games', '${day}_tr_bronze_31'), isNull);
+      final secret = (await host.adminGetSession(session.sessionId))!.word;
+      session = await host.submitGuess(session.sessionId, secret);
+      expect(session.outcome!.won, isTrue);
+      if (index < AppConstants.maxDailySlots) {
+        expect(
+          await host.grantDailyNextProof(
+            userId: player.id,
+            transactionId: 'cap-$index',
+          ),
+          isTrue,
+        );
+      }
+    }
+
+    expect(
+      await host.grantDailyNextProof(userId: player.id, transactionId: 'cap-past'),
+      isFalse,
+    );
+    final stuck = await host.startDaily();
+    expect(stuck.dailyIndex, AppConstants.maxDailySlots);
+    expect(stuck.isFinished, isTrue);
   });
 }

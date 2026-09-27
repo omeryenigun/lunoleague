@@ -21,6 +21,7 @@ import 'package:kelimelig/data/local/scoped_store.dart';
 import 'package:kelimelig/domain/game/game_ids.dart';
 import 'package:kelimelig/domain/game/game_server.dart';
 import 'package:kelimelig/games/luno_fall/luno_fall_server.dart';
+import 'package:kelimelig/games/luno_grid/luno_grid_server.dart';
 
 final sl = GetIt.instance;
 
@@ -43,6 +44,10 @@ Future<void> configureDependencies({
   }
   final fall = LunoFallServer(ScopedKeyValueStore(root, GameIds.lunoFall));
   await fall.initialize();
+  final grid = LunoGridServer(
+    ScopedKeyValueStore(root, GameIds.lunoGrid),
+    words: () => gridDictionary(ScopedKeyValueStore(root, GameIds.lunoLeague)),
+  );
 
   final GameServer server;
   if (remote) {
@@ -61,6 +66,7 @@ Future<void> configureDependencies({
   sl.registerSingleton<KeyValueStore>(root);
   sl.registerSingleton<GameServer>(server);
   sl.registerSingleton<LunoFallServer>(fall);
+  sl.registerSingleton<LunoGridServer>(grid);
   sl.registerSingleton<L10n>(L10n());
   sl.registerSingleton<Appearance>(Appearance());
   sl.registerSingleton<LoggerService>(LoggerService());

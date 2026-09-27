@@ -43,6 +43,8 @@ abstract class GameServer {
   Future<UserEntity> setLeague(LeagueTier league);
 
   Future<HomeSnapshot> homeSnapshot();
+  /// Stores the next shared daily word. Does not start the player's game.
+  Future<bool> prepareNextDaily();
   Future<GameSessionView> startDaily();
   Future<GameSessionView> startEndless();
   Future<MatchSnapshot> duelCreate();

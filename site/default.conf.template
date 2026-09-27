@@ -1,0 +1,49 @@
+server {
+    listen ${PORT};
+    server_name _;
+    absolute_redirect off;
+    root /usr/share/nginx/html;
+    index index.html;
+    location /oyun/ {
+        try_files /oyun.html =404;
+    }
+    location = /admin {
+        return 301 /admin/;
+    }
+    location /admin/ {
+        resolver 1.1.1.1 8.8.8.8 valid=30s ipv6=off;
+        set $admin_upstream https://api-production-bf3c9.up.railway.app;
+        proxy_pass $admin_upstream;
+        proxy_ssl_server_name on;
+        proxy_ssl_name api-production-bf3c9.up.railway.app;
+        proxy_set_header Host api-production-bf3c9.up.railway.app;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+    }
+    location = /privacy {
+        resolver 1.1.1.1 8.8.8.8 valid=30s ipv6=off;
+        set $privacy_upstream https://api-production-bf3c9.up.railway.app;
+        proxy_pass $privacy_upstream;
+        proxy_ssl_server_name on;
+        proxy_ssl_name api-production-bf3c9.up.railway.app;
+        proxy_set_header Host api-production-bf3c9.up.railway.app;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+    }
+    location = /privacy/ {
+        resolver 1.1.1.1 8.8.8.8 valid=30s ipv6=off;
+        set $privacy_slash_upstream https://api-production-bf3c9.up.railway.app;
+        proxy_pass $privacy_slash_upstream;
+        proxy_ssl_server_name on;
+        proxy_ssl_name api-production-bf3c9.up.railway.app;
+        proxy_set_header Host api-production-bf3c9.up.railway.app;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+    }
+    location / {
+        try_files $uri $uri.html $uri/ /index.html;
+    }
+}

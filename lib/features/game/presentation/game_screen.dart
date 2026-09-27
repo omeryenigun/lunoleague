@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:kelimelig/core/constants/app_constants.dart';
 import 'package:kelimelig/core/constants/enums.dart';
 import 'package:kelimelig/core/constants/user_messages.dart';
 import 'package:kelimelig/core/l10n/l10n.dart';
@@ -25,6 +26,18 @@ import 'package:kelimelig/features/match/presentation/rival_notice_host.dart';
 import 'package:kelimelig/features/game/presentation/widgets/turkish_keyboard.dart';
 import 'package:kelimelig/features/word_book/presentation/word_card_screen.dart';
 import 'package:kelimelig/injection.dart';
+
+Future<void> _openNewDaily(BuildContext context) async {
+  final player = await sl<GameServer>().currentUser();
+  if (player == null || !context.mounted) return;
+  final opened = await confirmAndOpenNextDaily(
+    context: context,
+    server: sl<GameServer>(),
+    userId: player.id,
+  );
+  if (!context.mounted || !opened) return;
+  context.read<GameCubit>().start();
+}
 
 class GameScreen extends StatelessWidget {
   const GameScreen({super.key, required this.type});
@@ -100,22 +113,10 @@ class GameView extends StatelessWidget {
             onReplay: () {
               if (context.mounted) context.read<GameCubit>().start();
             },
-            onOpenNextDaily: () async {
-              final player = await sl<GameServer>().currentUser();
-              if (player == null || !context.mounted) return;
-              final opened = await openNextDailyWithAd(
-                server: sl<GameServer>(),
-                userId: player.id,
-              );
-              if (!context.mounted) return;
-              if (opened) {
-                context.read<GameCubit>().start();
-                return;
-              }
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(sl<L10n>().t('daily_next_wait'))),
-              );
-            },
+            dailyIndex: session.dailyIndex,
+            onOpenNextDaily: session.dailyIndex < AppConstants.maxDailySlots
+                ? () => _openNewDaily(context)
+                : null,
             onReviveWithAd: null,
             onEndAd: null,
           );
@@ -193,12 +194,19 @@ class GameView extends StatelessWidget {
                             ],
                           ),
                         ),
-                        if (session.isFinished)
+                        if (session.isFinished) ...[
                           _FinishedSummary(
                             won: session.solved == true,
                             lost: session.solved == false,
                             answer: session.answer,
                           ),
+                          if (type == GameType.daily &&
+                              session.dailyIndex < AppConstants.maxDailySlots)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                              child: const _ContinueDailyButton(),
+                            ),
+                        ],
                         if (session.definitionHint != null)
                           Padding(
                             padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
@@ -472,6 +480,68 @@ class _FinishedSummary extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _ContinueDailyButton extends StatefulWidget {
+  const _ContinueDailyButton();
+
+  @override
+  State<_ContinueDailyButton> createState() => _ContinueDailyButtonState();
+}
+
+class _ContinueDailyButtonState extends State<_ContinueDailyButton> {
+  var _busy = false;
+
+  Future<void> _press() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await _openNewDaily(context);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(28),
+          gradient: const LinearGradient(
+            colors: [Color(0xFFD7B8FF), Color(0xFFB794F6)],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFC4A1FF).withValues(alpha: 0.45),
+              blurRadius: 18,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: _busy ? null : _press,
+            borderRadius: BorderRadius.circular(28),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              child: Text(
+                sl<L10n>().t('daily_continue_ad'),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Color(0xFF1A1028),
+                  fontWeight: FontWeight.w900,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

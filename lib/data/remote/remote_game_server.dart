@@ -216,6 +216,10 @@ class RemoteGameServer implements GameServer {
       readHome(await _call('homeSnapshot', {}));
 
   @override
+  Future<bool> prepareNextDaily() async =>
+      await _call('prepareNextDaily', {}) == true;
+
+  @override
   Future<GameSessionView> startDaily() async =>
       readSession(await _call('startDaily', {}));
 

@@ -28,11 +28,11 @@ class _WordsScreenState extends State<WordsScreen> {
   var _page = 0;
   String? _scope;
 
-  Future<List<WordEntity>> _load(String locale, LeagueTier league) async {
+  Future<List<WordEntity>> _load(String locale, int length) async {
     final all = await adminServer(context).adminListWords();
     return all.where((w) {
       if (w.language != locale) return false;
-      if (w.length != league.wordLength) return false;
+      if (w.length != length) return false;
       if (_status != null && w.status != _status) return false;
       if (_playable != null && w.playable != _playable) return false;
       return true;
@@ -65,8 +65,8 @@ class _WordsScreenState extends State<WordsScreen> {
   @override
   Widget build(BuildContext context) {
     final locale = AdminLocaleScope.of(context);
-    final league = AdminLocaleScope.leagueOf(context);
-    final scope = '$locale-${league.name}';
+    final length = AdminLocaleScope.wordLengthOf(context);
+    final scope = '$locale-$length';
     if (_scope != scope) {
       _scope = scope;
       _page = 0;
@@ -155,9 +155,9 @@ class _WordsScreenState extends State<WordsScreen> {
         Expanded(
           child: AdminBody(
             key: ValueKey(
-              '$_reloadToken-$locale-${league.name}-$_status-$_playable',
+              '$_reloadToken-$locale-$length-$_status-$_playable',
             ),
-            future: _load(locale, league),
+            future: _load(locale, length),
             builder: (context, words) {
               final visible = _visible(words, locale);
               if (visible.isEmpty) {

@@ -11,6 +11,7 @@ enum AdminSection {
   league,
   shop,
   settings,
+  scenes,
 }
 
 class AdminSectionInfo {
@@ -66,6 +67,11 @@ const adminSectionInfo = <AdminSection, AdminSectionInfo>{
     icon: Icons.tune_outlined,
     selectedIcon: Icons.tune,
   ),
+  AdminSection.scenes: AdminSectionInfo(
+    label: 'Sahneler',
+    icon: Icons.grid_view_outlined,
+    selectedIcon: Icons.grid_view,
+  ),
 };
 
 /// One isolated game in the shared admin. Adding a game means a new
@@ -110,6 +116,21 @@ class AdminGameCatalog {
         AdminSection.daily,
         AdminSection.league,
         AdminSection.shop,
+        AdminSection.settings,
+      ],
+    ),
+    AdminGameDefinition(
+      id: GameIds.lunoGrid,
+      name: 'Luno Grid',
+      summary: 'Harf çemberi',
+      icon: Icons.grid_on,
+      sections: [
+        AdminSection.overview,
+        AdminSection.users,
+        AdminSection.games,
+        AdminSection.words,
+        AdminSection.daily,
+        AdminSection.scenes,
         AdminSection.settings,
       ],
     ),

@@ -1,6 +1,10 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:kelimelig/core/errors/failures.dart';
+import 'package:kelimelig/core/l10n/l10n.dart';
 import 'package:kelimelig/core/services/ad_service.dart';
 import 'package:kelimelig/domain/game/game_server.dart';
+import 'package:kelimelig/injection.dart';
 
 /// Shows a rewarded ad, then reads the balance the server wrote after Google
 /// confirms the view. Returns the coins added, or 0 when nothing was granted.
@@ -25,12 +29,37 @@ Future<int> collectRewardedAdCoins({
 
 const dailyNextAdData = 'daily_next';
 
-/// Shows a rewarded ad that opens the next shared daily. Coins stay unchanged.
-/// Returns true when that daily number is stored and can be played.
+/// Stores the next shared daily after a rewarded ad.
+/// Returns true when this player may start that game.
+Future<bool> confirmAndOpenNextDaily({
+  required BuildContext context,
+  required GameServer server,
+  required String userId,
+}) async {
+  final l10n = sl<L10n>();
+  if (kIsWeb) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(l10n.t('daily_new_web'))),
+    );
+    return false;
+  }
+  final opened = await openNextDailyWithAd(server: server, userId: userId);
+  if (!opened && context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(l10n.t('daily_new_failed'))),
+    );
+  }
+  return opened;
+}
+
+/// Stores the next shared daily, then waits for this player's ad proof.
+/// Coins stay unchanged. Returns true when that player may start the game.
 Future<bool> openNextDailyWithAd({
   required GameServer server,
   required String userId,
 }) async {
+  final prepared = await server.prepareNextDaily();
+  if (!prepared) return false;
   final shown = await AdService().showRewarded(userId, customData: dailyNextAdData);
   if (!shown) return false;
   for (var i = 0; i < 20; i++) {

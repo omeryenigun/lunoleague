@@ -223,18 +223,24 @@ class ResultPlace {
     required this.displayName,
     required this.score,
     required this.isCurrentUser,
+    this.firstSolved,
+    this.secondSolved,
   });
 
   final int rank;
   final String displayName;
   final String score;
   final bool isCurrentUser;
+  final int? firstSolved;
+  final int? secondSolved;
 
   Map<String, dynamic> toMap() => {
         'rank': rank,
         'displayName': displayName,
         'score': score,
         'isCurrentUser': isCurrentUser,
+        if (firstSolved != null) 'firstSolved': firstSolved,
+        if (secondSolved != null) 'secondSolved': secondSolved,
       };
 
   factory ResultPlace.fromMap(Map<dynamic, dynamic> map) {
@@ -243,6 +249,8 @@ class ResultPlace {
       displayName: map['displayName'] as String? ?? '',
       score: map['score'] as String? ?? '',
       isCurrentUser: map['isCurrentUser'] as bool? ?? false,
+      firstSolved: map['firstSolved'] as int?,
+      secondSolved: map['secondSolved'] as int?,
     );
   }
 }

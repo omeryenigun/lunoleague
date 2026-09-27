@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:kelimelig/api/admob_ssv.dart';
 import 'package:kelimelig/api/app_ads_txt.dart';
 import 'package:kelimelig/api/admin_http.dart';
+import 'package:kelimelig/api/coming_soon_page.dart';
+import 'package:kelimelig/api/site_cards.dart';
 import 'package:kelimelig/api/game_http.dart';
 import 'package:kelimelig/api/privacy_page.dart';
 import 'package:kelimelig/core/constants/game_version.dart';
@@ -25,6 +27,11 @@ Future<void> main() async {
   final db = await _open(databaseUrl);
   await PostgresKv.migrate(db);
   await migrateAdmin(db);
+  await migrateSiteCards(db);
+  await seedSiteCards(db);
+  await seedSiteCardCopy(db);
+  await seedSiteCardSlogans(db);
+  await seedSiteCardShots(db);
   final scoped = ScopedKeyValueStore(PostgresKv(db), GameIds.lunoLeague);
   final rules = LocalGameServer(scoped);
   await rules.initialize();
@@ -83,12 +90,21 @@ Future<void> main() async {
   stdout.writeln(
     'it frequency words imported=${italian.imported} skipped=${italian.skipped} invalid=${italian.invalid}',
   );
+  final portuguese = await rules.importPortugueseFrequencyWords();
+  stdout.writeln(
+    'pt frequency words imported=${portuguese.imported} skipped=${portuguese.skipped} invalid=${portuguese.invalid}',
+  );
+  final russian = await rules.importRussianFrequencyWords();
+  stdout.writeln(
+    'ru frequency words imported=${russian.imported} skipped=${russian.skipped} invalid=${russian.invalid}',
+  );
   final adCoins = await rules.raiseAdCoinReward();
   stdout.writeln('ad coin reward=$adCoins');
   final dropped = await rules.dropNoiseEnglishWords();
   stdout.writeln('en noise words removed=$dropped');
 
   final router = Router()
+    ..get('/', comingSoonPage)
     ..get('/health', (_) => jsonResponse({'ok': true}))
     ..get(
       '/v1/version',
@@ -105,6 +121,7 @@ Future<void> main() async {
     ..get('/privacy/', privacyPolicyPage)
     ..get('/app-ads.txt', appAdsTxtPage);
   mountAdminApi(router, db);
+  mountSiteCards(router, db);
   _mountAdminWeb(router);
 
   final handler = const Pipeline().addMiddleware(_cors).addHandler(router.call);
@@ -143,7 +160,7 @@ Middleware get _cors => (Handler inner) {
 const _corsHeaders = {
   'access-control-allow-origin': '*',
   'access-control-allow-headers': 'content-type, authorization',
-  'access-control-allow-methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+  'access-control-allow-methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
 };
 
 Future<Connection> _open(String databaseUrl) async {

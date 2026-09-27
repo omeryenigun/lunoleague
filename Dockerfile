@@ -12,6 +12,10 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 COPY --from=api /api/server /server
 COPY admin_web /admin_web
+COPY assets/images/logo.png /seed/luno_league_icon.png
+COPY store/feature-graphic.png /seed/luno_league_gallery.png
+COPY assets/site/luno_play.png /seed/luno_shot_play.png
+COPY assets/site/luno_win.png /seed/luno_shot_win.png
 ENV PORT=8080
 ENV ADMIN_WEB_ROOT=/admin_web
 EXPOSE 8080

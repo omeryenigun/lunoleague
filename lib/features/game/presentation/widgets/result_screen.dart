@@ -1,7 +1,6 @@
 import 'dart:math';
 import 'dart:ui';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:kelimelig/core/constants/app_constants.dart';
 import 'package:kelimelig/core/constants/enums.dart';
@@ -130,6 +129,7 @@ class ResultScreen extends StatefulWidget {
     this.onReviveWithAd,
     this.onEndAd,
     this.onOpenNextDaily,
+    this.dailyIndex = 1,
   });
 
   final GameOutcome outcome;
@@ -142,6 +142,7 @@ class ResultScreen extends StatefulWidget {
   final VoidCallback? onReviveWithAd;
   final Future<bool> Function()? onEndAd;
   final Future<void> Function()? onOpenNextDaily;
+  final int dailyIndex;
 
   @override
   State<ResultScreen> createState() => _ResultScreenState();
@@ -163,28 +164,11 @@ class _ResultScreenState extends State<ResultScreen>
   var _endAdClaimed = false;
   var _endAdBusy = false;
   var _nextBusy = false;
-  HomeSnapshot? _nextDaily;
+  var _boardReady = false;
   List<ResultPlace> _board = const [];
 
   GameOutcome get outcome => widget.outcome;
   bool get won => outcome.won;
-
-  bool get _needsAd => widget.isDaily && (_nextDaily?.dailyNeedsAd ?? false);
-
-  bool get _canPlayNext =>
-      widget.isDaily &&
-      _nextDaily != null &&
-      !_nextDaily!.dailyNeedsAd &&
-      _nextDaily!.dailyStatus == DailyStatus.available;
-
-  Future<void> _loadNextDaily() async {
-    if (!widget.isDaily) return;
-    try {
-      final home = await sl<GameServer>().homeSnapshot();
-      if (!mounted) return;
-      setState(() => _nextDaily = home);
-    } catch (_) {}
-  }
 
   Future<void> _loadBoard() async {
     try {
@@ -193,8 +177,13 @@ class _ResultScreenState extends State<ResultScreen>
         wordId: outcome.wordId,
       );
       if (!mounted) return;
-      setState(() => _board = rows);
-    } catch (_) {}
+      setState(() {
+        _board = rows;
+        _boardReady = true;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _boardReady = true);
+    }
   }
 
   Future<void> _offerEndAd() async {
@@ -210,7 +199,6 @@ class _ResultScreenState extends State<ResultScreen>
   void initState() {
     super.initState();
     _loadBoard();
-    _loadNextDaily();
     _enter = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 720),
@@ -313,17 +301,6 @@ class _ResultScreenState extends State<ResultScreen>
   }
 
   String _primaryLabel(L10n l10n) {
-    if (_needsAd) {
-      if (kIsWeb) return l10n.t('daily_next_wait');
-      return l10n
-          .t('daily_next_ad')
-          .replaceAll('{n}', '${_nextDaily!.dailyIndex}');
-    }
-    if (_canPlayNext) {
-      return l10n
-          .t('daily_next_play')
-          .replaceAll('{n}', '${_nextDaily!.dailyIndex}');
-    }
     if (widget.isDaily) return l10n.t('home');
     if (won) return l10n.t('result_next');
     return widget.onReviveWithAd != null
@@ -332,8 +309,6 @@ class _ResultScreenState extends State<ResultScreen>
   }
 
   VoidCallback get _primaryAction {
-    if (_needsAd && !kIsWeb && widget.onOpenNextDaily != null) return _openNextDaily;
-    if (_canPlayNext) return widget.onReplay;
     if (widget.isDaily) return widget.onHome;
     return widget.onReplay;
   }
@@ -341,9 +316,9 @@ class _ResultScreenState extends State<ResultScreen>
   void _openNextDaily() {
     final open = widget.onOpenNextDaily;
     if (open == null || _nextBusy) return;
-    _nextBusy = true;
+    setState(() => _nextBusy = true);
     open().whenComplete(() {
-      _nextBusy = false;
+      if (mounted) setState(() => _nextBusy = false);
     });
   }
 
@@ -420,8 +395,11 @@ class _ResultScreenState extends State<ResultScreen>
                 ),
               ),
               SafeArea(
-                child: Center(
-                  child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: Center(
+                        child: SingleChildScrollView(
                     padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
                     child: FadeTransition(
                       opacity: _fade,
@@ -619,6 +597,23 @@ class _ResultScreenState extends State<ResultScreen>
                               const SizedBox(height: 10),
                               Row(
                                 children: [
+                                  if (widget.isDaily &&
+                                      widget.onOpenNextDaily != null &&
+                                      widget.dailyIndex <
+                                          AppConstants.maxDailySlots) ...[
+                                    Expanded(
+                                      child: _ActionButton(
+                                        label: l10n.t('daily_continue_ad'),
+                                        primary: true,
+                                        accent: const Color(0xFFD7B8FF),
+                                        accentEnd: const Color(0xFFB794F6),
+                                        darkLabel: true,
+                                        onPressed:
+                                            _nextBusy ? null : _openNextDaily,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                  ],
                                   Expanded(
                                     child: _ActionButton(
                                       label: l10n.t('result_share'),
@@ -638,6 +633,8 @@ class _ResultScreenState extends State<ResultScreen>
                                   ],
                                 ],
                               ),
+                              if (widget.isDaily && _boardReady)
+                                _DailySolveStats(board: _board),
                               _ResultBoard(
                                 lines: resultBoardLines(_board),
                                 youLabel: l10n.t('result_board_you'),
@@ -649,12 +646,87 @@ class _ResultScreenState extends State<ResultScreen>
                       ),
                     ),
                   ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _DailySolveStats extends StatelessWidget {
+  const _DailySolveStats({required this.board});
+
+  final List<ResultPlace> board;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = sl<L10n>();
+    final stamped = board.where((row) => row.firstSolved != null).firstOrNull;
+    final first = stamped?.firstSolved ??
+        board.where((row) => row.score == '1').length;
+    final second = stamped?.secondSolved ??
+        board.where((row) => row.score == '2').length;
+    final mine = board.where((row) => row.isCurrentUser).firstOrNull;
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(
+        children: [
+          _StatLine(label: l10n.t('daily_stat_first'), value: '$first'),
+          const SizedBox(height: 6),
+          _StatLine(label: l10n.t('daily_stat_second'), value: '$second'),
+          const SizedBox(height: 6),
+          _StatLine(
+            label: l10n.t('daily_stat_rank'),
+            value: mine == null ? '—' : '${mine.rank}',
+            highlight: true,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatLine extends StatelessWidget {
+  const _StatLine({
+    required this.label,
+    required this.value,
+    this.highlight = false,
+  });
+
+  final String label;
+  final String value;
+  final bool highlight;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = highlight ? AppColors.cosmicGold : AppColors.cosmicGreen;
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF94A3B8),
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            color: color,
+            fontWeight: FontWeight.w900,
+            fontSize: 15,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1059,20 +1131,24 @@ class _ActionButton extends StatelessWidget {
     required this.primary,
     required this.onPressed,
     this.accent,
+    this.accentEnd,
     this.danger = false,
+    this.darkLabel = false,
   });
 
   final String label;
   final bool primary;
   final VoidCallback? onPressed;
   final Color? accent;
+  final Color? accentEnd;
   final bool danger;
+  final bool darkLabel;
 
   @override
   Widget build(BuildContext context) {
     if (primary) {
       final colors = accent != null
-          ? [accent!, const Color(0xFFE67E22)]
+          ? [accent!, accentEnd ?? const Color(0xFFE67E22)]
           : danger
               ? const [AppColors.cosmicRed, Color(0xFFC0392B)]
               : const [AppColors.cosmicGreen, AppColors.cosmicTeal];
@@ -1100,9 +1176,11 @@ class _ActionButton extends StatelessWidget {
                 label,
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: danger || accent != null
-                      ? Colors.white
-                      : const Color(0xFF0A0E1A),
+                  color: darkLabel
+                      ? const Color(0xFF1A1028)
+                      : danger || accent != null
+                          ? Colors.white
+                          : const Color(0xFF0A0E1A),
                   fontWeight: FontWeight.w900,
                   fontSize: 14,
                 ),

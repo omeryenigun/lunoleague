@@ -13,6 +13,7 @@ import 'package:kelimelig/features/auth/presentation/register_screen.dart';
 import 'package:kelimelig/features/auth/presentation/onboarding_screen.dart';
 import 'package:kelimelig/features/auth/presentation/splash_screen.dart';
 import 'package:kelimelig/features/game/presentation/game_screen.dart';
+import 'package:kelimelig/games/luno_grid/grid_home_screen.dart';
 import 'package:kelimelig/features/match/presentation/duel_screen.dart';
 import 'package:kelimelig/features/match/presentation/room_screen.dart';
 import 'package:kelimelig/features/home/presentation/home_screen.dart';
@@ -83,6 +84,7 @@ class _AppViewState extends State<_AppView> {
         GoRoute(path: '/fall/shop', redirect: (_, _) => '/home'),
         GoRoute(path: '/fall/profile', redirect: (_, _) => '/home'),
         GoRoute(path: '/fall/play', redirect: (_, _) => '/home'),
+        GoRoute(path: '/grid', builder: (_, _) => const GridHomeScreen()),
         ShellRoute(
           builder: (context, state, child) => MainShell(child: child),
           routes: [

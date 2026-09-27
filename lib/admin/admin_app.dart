@@ -7,6 +7,7 @@ import 'package:kelimelig/admin/admin_locale.dart';
 import 'package:kelimelig/core/config/api_config.dart';
 import 'package:kelimelig/admin/game_catalog.dart';
 import 'package:kelimelig/admin/screens/fall_admin_screen.dart';
+import 'package:kelimelig/admin/screens/grid_admin_screen.dart';
 import 'package:kelimelig/admin/game_scope.dart';
 import 'package:kelimelig/admin/screens/config_screen.dart';
 import 'package:kelimelig/admin/screens/daily_screen.dart';
@@ -14,6 +15,7 @@ import 'package:kelimelig/admin/screens/games_screen.dart';
 import 'package:kelimelig/admin/screens/league_screen.dart';
 import 'package:kelimelig/admin/screens/overview_screen.dart';
 import 'package:kelimelig/admin/screens/shop_admin_screen.dart';
+import 'package:kelimelig/admin/screens/site_cards_screen.dart';
 import 'package:kelimelig/admin/screens/users_screen.dart';
 import 'package:kelimelig/admin/screens/words_screen.dart';
 import 'package:kelimelig/core/constants/enums.dart';
@@ -313,6 +315,14 @@ class GamePicker extends StatelessWidget {
           TextButton(
             onPressed: () {
               Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SiteCardsScreen()),
+              );
+            },
+            child: const Text('Oyun kartları'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const AdminAccountsScreen()),
               );
             },
@@ -419,10 +429,15 @@ class _AdminShellState extends State<AdminShell> {
   var _index = 0;
   var _locale = GameLocale.tr.id;
   var _league = LeagueTier.bronze;
+  int? _listLength;
 
   Widget _page(AdminSection section) {
-    if (AdminGameScope.gameOf(context).id == GameIds.lunoFall) {
+    final gameId = AdminGameScope.gameOf(context).id;
+    if (gameId == GameIds.lunoFall) {
       return FallAdminScreen(section: section);
+    }
+    if (gameId == GameIds.lunoGrid) {
+      return GridAdminScreen(section: section);
     }
     return switch (section) {
         AdminSection.overview => const OverviewScreen(),
@@ -433,6 +448,7 @@ class _AdminShellState extends State<AdminShell> {
         AdminSection.league => const LeagueScreen(),
         AdminSection.shop => const ShopAdminScreen(),
         AdminSection.settings => const ConfigScreen(),
+        AdminSection.scenes => const SizedBox.shrink(),
       };
   }
 
@@ -445,6 +461,7 @@ class _AdminShellState extends State<AdminShell> {
     return AdminLocaleScope(
       locale: _locale,
       league: _league,
+      listLength: _listLength,
       child: Scaffold(
         appBar: AppBar(
           title: Column(
@@ -464,18 +481,37 @@ class _AdminShellState extends State<AdminShell> {
             if (game.leagueFilter)
               Padding(
                 padding: const EdgeInsets.only(right: 8),
-                child: SegmentedButton<LeagueTier>(
+                child: SegmentedButton<int>(
                   segments: [
+                    for (final length in const [3, 4])
+                      ButtonSegment(
+                        value: length,
+                        label: Text('$length'),
+                        tooltip: '$length harf',
+                      ),
                     for (final tier in LeagueTier.values)
                       ButtonSegment(
-                        value: tier,
+                        value: tier.wordLength,
                         label: Text(tier.label),
                         tooltip: '${tier.label} (${tier.wordLength} harf)',
                       ),
                   ],
-                  selected: {_league},
+                  selected: {_listLength ?? _league.wordLength},
                   onSelectionChanged: (next) {
-                    setState(() => _league = next.first);
+                    final length = next.first;
+                    setState(() {
+                      final tier = LeagueTier.values
+                          .where((item) => item.wordLength == length)
+                          .firstOrNull;
+                      if (tier == null) {
+                        _listLength = length;
+                        final words = sections.indexOf(AdminSection.words);
+                        if (words >= 0) _index = words;
+                      } else {
+                        _listLength = null;
+                        _league = tier;
+                      }
+                    });
                   },
                   style: const ButtonStyle(
                     visualDensity: VisualDensity.compact,

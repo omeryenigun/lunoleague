@@ -14,5 +14,7 @@ de.txt  Almanca. Ä, Ö, Ü ve ẞ durur.
 es.txt  İspanyolca. Aksanlar düz harfe iner, Ñ kalır.
 fr.txt  Fransızca. Aksanlar düz harfe iner (école -> ECOLE).
 it.txt  İtalyanca. Aksanlar düz harfe iner (città -> CITTA).
+pt.txt  Portekizce. Aksanlar ve ç düz harfe iner (ação -> ACAO).
+ru.txt  Rusça. Ё durur. Vurgu işaretleri silinir.
 
 Altyazı sözcükleri olduğu için arada kişi adı da kalabilir.

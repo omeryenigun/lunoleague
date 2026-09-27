@@ -1019,9 +1019,15 @@ class LocalGameServer implements GameServer {
       dailyIndex = 1;
       dailyNeedsAd = false;
     } else if (stored >= finished + 1) {
-      daily = DailyStatus.available;
+      daily = DailyStatus.completed;
       dailyIndex = finished + 1;
-      dailyNeedsAd = false;
+      dailyNeedsAd = !await _hasDailyPermit(
+        user.id,
+        today,
+        user.locale,
+        user.currentLeague,
+        finished + 1,
+      );
     } else {
       daily = DailyStatus.completed;
       dailyIndex = finished + 1;
@@ -1342,8 +1348,102 @@ class LocalGameServer implements GameServer {
     return WordEntity.fromMap(word);
   }
 
-  /// Creates the next shared daily after [user] has finished the latest one.
-  /// A second caller in the same moment reuses that word and does not add coins.
+  String _dailyPermitKey(
+    String userId,
+    String day,
+    String locale,
+    LeagueTier league,
+    int index,
+  ) =>
+      'daily_permit_${userId}_${day}_${locale}_${league.name}_$index';
+
+  Future<bool> _hasDailyPermit(
+    String userId,
+    String day,
+    String locale,
+    LeagueTier league,
+    int index,
+  ) async =>
+      await _store.getMeta(_dailyPermitKey(userId, day, locale, league, index)) ==
+      '1';
+
+  /// Fills a missing shared word after a finish, when the start did not queue it.
+  /// Does not let that player start it. Never writes past [AppConstants.maxDailySlots].
+  Future<bool> _ensureNextDailySlot(UserEntity user) async {
+    final day = DateKeys.dayKey(_now);
+    final locale = user.locale;
+    final league = user.currentLeague;
+    return _lockedDaily('${day}_${locale}_${league.name}', () async {
+      final finished = await _maxFinishedDailyIndex(user, day);
+      final stored = await _storedDailyCount(day, locale, league);
+      if (finished < 1) return false;
+      if (finished < stored) return true;
+      if (stored >= AppConstants.maxDailySlots) return false;
+      return _putFreshDailySlot(
+        day: day,
+        locale: locale,
+        league: league,
+        index: stored + 1,
+        source: 'ad',
+      );
+    });
+  }
+
+  /// Writes the next shared word when [startedIndex] begins. A filled slot stays.
+  Future<void> _queueFollowingDailySlot({
+    required String day,
+    required String locale,
+    required LeagueTier league,
+    required int startedIndex,
+  }) async {
+    final following = startedIndex + 1;
+    if (following > AppConstants.maxDailySlots) return;
+    await _lockedDaily('${day}_${locale}_${league.name}', () async {
+      await _putFreshDailySlot(
+        day: day,
+        locale: locale,
+        league: league,
+        index: following,
+        source: 'start',
+      );
+    });
+  }
+
+  Future<bool> _putFreshDailySlot({
+    required String day,
+    required String locale,
+    required LeagueTier league,
+    required int index,
+    required String source,
+  }) async {
+    if (index < 1 || index > AppConstants.maxDailySlots) return false;
+    if (await _readDailySlot(day, locale, league, index) != null) return true;
+    final avoid = await _usedDailyWordIds(day, locale, league);
+    final list = await _playable(league.wordLength, language: locale);
+    final pool = list.where((word) => !avoid.contains(word.id)).toList();
+    if (pool.isEmpty) return false;
+    final picked = pool[_random.nextInt(pool.length)];
+    await _store.put('daily_games', _dailySlotKey(day, locale, league, index), {
+      'date': day,
+      'league': league.name,
+      'language': locale,
+      'wordId': picked.id,
+      'index': index,
+      'isActive': true,
+      'source': source,
+      'createdAt': _now.toIso8601String(),
+    });
+    return true;
+  }
+
+  @override
+  Future<bool> prepareNextDaily() async {
+    final user = await _requireUser();
+    return _ensureNextDailySlot(user);
+  }
+
+  /// Creates the next shared daily when it is missing and lets this player start it.
+  /// Coins stay unchanged. Another player still needs their own proof.
   Future<bool> grantDailyNextProof({
     required String userId,
     required String transactionId,
@@ -1354,34 +1454,18 @@ class LocalGameServer implements GameServer {
     final map = await _store.get('users', userId);
     if (map == null) return false;
     final user = UserEntity.fromMap(map);
-    final day = DateKeys.dayKey(_now);
-    final locale = user.locale;
-    final league = user.currentLeague;
-    final created = await _lockedDaily('${day}_${locale}_${league.name}', () async {
-      final finished = await _maxFinishedDailyIndex(user, day);
-      final stored = await _storedDailyCount(day, locale, league);
-      if (finished < 1) return false;
-      if (finished < stored) return true;
-      if (await _readDailySlot(day, locale, league, stored + 1) != null) return true;
-      final avoid = await _usedDailyWordIds(day, locale, league);
-      final list = await _playable(league.wordLength, language: locale);
-      final pool = list.where((word) => !avoid.contains(word.id)).toList();
-      if (pool.isEmpty) return false;
-      final picked = pool[_random.nextInt(pool.length)];
-      final next = stored + 1;
-      await _store.put('daily_games', _dailySlotKey(day, locale, league, next), {
-        'date': day,
-        'league': league.name,
-        'language': locale,
-        'wordId': picked.id,
-        'index': next,
-        'isActive': true,
-        'source': 'ad',
-        'createdAt': _now.toIso8601String(),
-      });
-      return true;
-    });
+    final created = await _ensureNextDailySlot(user);
     if (!created) return false;
+    final day = DateKeys.dayKey(_now);
+    final next = await _maxFinishedDailyIndex(user, day) + 1;
+    if (next > AppConstants.maxDailySlots) return false;
+    if (await _readDailySlot(day, user.locale, user.currentLeague, next) == null) {
+      return false;
+    }
+    await _store.putMeta(
+      _dailyPermitKey(userId, day, user.locale, user.currentLeague, next),
+      '1',
+    );
     await _store.putMeta(seen, '1');
     return true;
   }
@@ -1454,6 +1538,11 @@ class LocalGameServer implements GameServer {
     final next = finished + 1;
     final league = user.currentLeague;
     final locale = user.locale;
+    if (next > AppConstants.maxDailySlots) {
+      final last = await _finishedDailySession(user, today, finished);
+      if (last != null) return _sessionToView(last);
+      throw AppFailure(UserMessages.dailyCompleted, code: 'DAILY_DONE');
+    }
     var slot = await _readDailySlot(today, locale, league, next);
     if (slot == null && next == 1) {
       final word = await _lockedDaily(
@@ -1466,9 +1555,17 @@ class LocalGameServer implements GameServer {
         word: word,
         dailyIndex: 1,
       );
+      await _queueFollowingDailySlot(
+        day: today,
+        locale: locale,
+        league: league,
+        startedIndex: 1,
+      );
       return _sessionToView(session);
     }
-    if (slot == null) {
+    if (slot == null ||
+        (next > 1 &&
+            !await _hasDailyPermit(user.id, today, locale, league, next))) {
       final last = await _finishedDailySession(user, today, finished);
       if (last != null) return _sessionToView(last);
       throw AppFailure(UserMessages.dailyCompleted, code: 'DAILY_DONE');
@@ -1479,6 +1576,12 @@ class LocalGameServer implements GameServer {
       type: GameType.daily,
       word: word,
       dailyIndex: next,
+    );
+    await _queueFollowingDailySlot(
+      day: today,
+      locale: locale,
+      league: league,
+      startedIndex: next,
     );
     return _sessionToView(session);
   }
@@ -3173,15 +3276,30 @@ class LocalGameServer implements GameServer {
     }
     final ranked = best.entries.toList()
       ..sort((a, b) => _dailyOrder(a.value, b.value));
+    final firstSolved = ranked
+        .where(
+          (entry) =>
+              entry.value['won'] == true && (entry.value['guesses'] as int? ?? 0) == 1,
+        )
+        .length;
+    final secondSolved = ranked
+        .where(
+          (entry) =>
+              entry.value['won'] == true && (entry.value['guesses'] as int? ?? 0) == 2,
+        )
+        .length;
     final places = <ResultPlace>[];
     for (var i = 0; i < ranked.length; i++) {
       final row = ranked[i].value;
       final won = row['won'] == true;
+      final mine = ranked[i].key == user.id;
       places.add(ResultPlace(
         rank: i + 1,
         displayName: await _boardName(ranked[i].key),
         score: won ? '${row['guesses'] ?? ''}' : '—',
-        isCurrentUser: ranked[i].key == user.id,
+        isCurrentUser: mine,
+        firstSolved: mine ? firstSolved : null,
+        secondSolved: mine ? secondSolved : null,
       ));
     }
     return _capBoard(places);
@@ -3353,7 +3471,7 @@ class LocalGameServer implements GameServer {
     final locale = GameLocale.resolve(language);
     if (!locale.isAllowedWord(word)) return null;
     final length = locale.letterCount(word);
-    if (length < 5 || length > 7) return null;
+    if (length < 3 || length > 7) return null;
     final difficulty = _csvScale(cells[6], fallback: 2);
     final frequency = _csvScale(cells[7], fallback: 3);
     final status = _csvStatus(cells[8]);

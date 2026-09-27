@@ -64,6 +64,20 @@ class _DailyScreenState extends State<DailyScreen> {
     return (words: words, map: map);
   }
 
+  static final _dayActionStyle = TextButton.styleFrom(
+    visualDensity: VisualDensity.compact,
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    minimumSize: const Size(48, 32),
+    padding: const EdgeInsets.symmetric(horizontal: 8),
+  );
+
+  Widget _cell(Widget child) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: child,
+    );
+  }
+
   String? _wordIdFor(
     Map<String, String> map,
     String day,
@@ -332,100 +346,130 @@ class _DailyScreenState extends State<DailyScreen> {
                         constraints: BoxConstraints(
                           minWidth: constraints.maxWidth,
                         ),
-                        child: DataTable(
-                          headingRowColor:
-                              WidgetStateProperty.all(AppColors.surface),
-                          dataRowMinHeight: 48,
-                          dataRowMaxHeight: 180,
-                          columnSpacing: 24,
-                          columns: const [
-                            DataColumn(label: Text('Tarih')),
-                            DataColumn(label: Text('Kelime')),
-                            DataColumn(label: Text('Açılan daily')),
-                            DataColumn(label: Text('Açıklama')),
-                            DataColumn(label: Text('İşlem')),
-                          ],
-                          rows: [
-                            for (final day in _daysInMonth)
-                              () {
-                                final wordId = _wordIdFor(
-                                  data.map,
-                                  day,
-                                  language,
-                                  league,
-                                );
-                                final word =
-                                    wordId == null ? null : wordsById[wordId];
-                                final opened = _openedLines(
-                                  data.map,
-                                  wordsById,
-                                  day,
-                                  language,
-                                  league,
-                                );
-                                final date = DateKeys.parseDay(day);
-                                final busy = _dayBusy == day;
-                                final isToday =
-                                    day == DateKeys.dayKey(DateTime.now());
-                                return DataRow(
-                                  color: isToday
-                                      ? WidgetStateProperty.all(
-                                          AppColors.cosmicGreen
-                                              .withValues(alpha: 0.14),
-                                        )
-                                      : null,
-                                  cells: [
-                                    DataCell(
-                                      Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Text(
-                                            '${date.day} ${_weekdays[date.weekday - 1]}',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.w800,
-                                              color: isToday
-                                                  ? AppColors.cosmicGreen
-                                                  : word == null
-                                                      ? AppColors.danger
-                                                      : AppColors.textPrimary,
-                                            ),
-                                          ),
-                                          if (isToday) ...[
-                                            const SizedBox(width: 8),
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                horizontal: 7,
-                                                vertical: 2,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                color: AppColors.cosmicGreen
-                                                    .withValues(alpha: 0.22),
-                                                borderRadius:
-                                                    BorderRadius.circular(8),
-                                                border: Border.all(
-                                                  color: AppColors.cosmicGreen
-                                                      .withValues(alpha: 0.45),
-                                                ),
-                                              ),
-                                              child: const Text(
-                                                'BUGÜN',
-                                                style: TextStyle(
-                                                  color: AppColors.cosmicGreen,
-                                                  fontWeight: FontWeight.w900,
-                                                  fontSize: 10,
-                                                  letterSpacing: 0.4,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ],
+                        child: SizedBox(
+                          width: max(constraints.maxWidth, 960),
+                          child: Table(
+                            columnWidths: const {
+                              0: IntrinsicColumnWidth(),
+                              1: FlexColumnWidth(1.2),
+                              2: FlexColumnWidth(2.2),
+                              3: FlexColumnWidth(2.4),
+                              4: IntrinsicColumnWidth(),
+                            },
+                            defaultVerticalAlignment:
+                                TableCellVerticalAlignment.middle,
+                            border: const TableBorder(
+                              horizontalInside:
+                                  BorderSide(color: AppColors.border),
+                            ),
+                            children: [
+                              TableRow(
+                                decoration: const BoxDecoration(
+                                  color: AppColors.surface,
+                                ),
+                                children: [
+                                  for (final label in const [
+                                    'Tarih',
+                                    'Kelime',
+                                    'Açılan daily',
+                                    'Açıklama',
+                                    'İşlem',
+                                  ])
+                                    _cell(
+                                      Text(
+                                        label,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
                                       ),
                                     ),
-                                    DataCell(
-                                      SizedBox(
-                                        width: 140,
-                                        child: Text(
+                                ],
+                              ),
+                              for (final day in _daysInMonth)
+                                () {
+                                  final wordId = _wordIdFor(
+                                    data.map,
+                                    day,
+                                    language,
+                                    league,
+                                  );
+                                  final word = wordId == null
+                                      ? null
+                                      : wordsById[wordId];
+                                  final opened = _openedLines(
+                                    data.map,
+                                    wordsById,
+                                    day,
+                                    language,
+                                    league,
+                                  );
+                                  final date = DateKeys.parseDay(day);
+                                  final busy = _dayBusy == day;
+                                  final isToday =
+                                      day == DateKeys.dayKey(DateTime.now());
+                                  return TableRow(
+                                    decoration: BoxDecoration(
+                                      color: isToday
+                                          ? AppColors.cosmicGreen.withValues(
+                                              alpha: 0.14,
+                                            )
+                                          : null,
+                                    ),
+                                    children: [
+                                      _cell(
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              '${date.day} ${_weekdays[date.weekday - 1]}',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w800,
+                                                color: isToday
+                                                    ? AppColors.cosmicGreen
+                                                    : word == null
+                                                        ? AppColors.danger
+                                                        : AppColors
+                                                            .textPrimary,
+                                              ),
+                                            ),
+                                            if (isToday) ...[
+                                              const SizedBox(width: 8),
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                  horizontal: 7,
+                                                  vertical: 2,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: AppColors.cosmicGreen
+                                                      .withValues(alpha: 0.22),
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                  border: Border.all(
+                                                    color: AppColors
+                                                        .cosmicGreen
+                                                        .withValues(
+                                                      alpha: 0.45,
+                                                    ),
+                                                  ),
+                                                ),
+                                                child: const Text(
+                                                  'BUGÜN',
+                                                  style: TextStyle(
+                                                    color:
+                                                        AppColors.cosmicGreen,
+                                                    fontWeight: FontWeight.w900,
+                                                    fontSize: 10,
+                                                    letterSpacing: 0.4,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
+                                      _cell(
+                                        Text(
                                           word?.displayWord ?? '— atanmamış —',
                                           style: TextStyle(
                                             fontWeight: FontWeight.w800,
@@ -435,15 +479,13 @@ class _DailyScreenState extends State<DailyScreen> {
                                           ),
                                         ),
                                       ),
-                                    ),
-                                    DataCell(
-                                      SizedBox(
-                                        width: 280,
-                                        child: opened.isEmpty
+                                      _cell(
+                                        opened.isEmpty
                                             ? const Text(
                                                 '—',
                                                 style: TextStyle(
-                                                  color: AppColors.textSecondary,
+                                                  color:
+                                                      AppColors.textSecondary,
                                                 ),
                                               )
                                             : Column(
@@ -455,8 +497,8 @@ class _DailyScreenState extends State<DailyScreen> {
                                                     Text(
                                                       line,
                                                       maxLines: 1,
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
+                                                      overflow: TextOverflow
+                                                          .ellipsis,
                                                       style: const TextStyle(
                                                         fontWeight:
                                                             FontWeight.w700,
@@ -467,11 +509,8 @@ class _DailyScreenState extends State<DailyScreen> {
                                                 ],
                                               ),
                                       ),
-                                    ),
-                                    DataCell(
-                                      SizedBox(
-                                        width: 320,
-                                        child: Text(
+                                      _cell(
+                                        Text(
                                           word?.definition.isNotEmpty == true
                                               ? word!.definition
                                               : '—',
@@ -482,20 +521,21 @@ class _DailyScreenState extends State<DailyScreen> {
                                           ),
                                         ),
                                       ),
-                                    ),
-                                    DataCell(
-                                      busy
-                                          ? const SizedBox(
-                                              width: 20,
-                                              height: 20,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                              ),
-                                            )
-                                          : Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
+                                      _cell(
+                                        busy
+                                            ? const SizedBox(
+                                                width: 20,
+                                                height: 20,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                ),
+                                              )
+                                            : Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
                                                 TextButton(
+                                                  style: _dayActionStyle,
                                                   onPressed: () => _autoDay(
                                                     day: day,
                                                     language: language,
@@ -506,7 +546,9 @@ class _DailyScreenState extends State<DailyScreen> {
                                                   child: const Text('Oto'),
                                                 ),
                                                 TextButton(
-                                                  onPressed: () => _manualDay(
+                                                  style: _dayActionStyle,
+                                                  onPressed: () =>
+                                                      _manualDay(
                                                     day: day,
                                                     language: language,
                                                     league: league,
@@ -516,13 +558,14 @@ class _DailyScreenState extends State<DailyScreen> {
                                                   ),
                                                   child: const Text('Manuel'),
                                                 ),
-                                              ],
-                                            ),
-                                    ),
-                                  ],
-                                );
-                              }(),
-                          ],
+                                                ],
+                                              ),
+                                      ),
+                                    ],
+                                  );
+                                }(),
+                            ],
+                          ),
                         ),
                       ),
                     ),
