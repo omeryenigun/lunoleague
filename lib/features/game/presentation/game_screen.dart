@@ -126,7 +126,7 @@ class GameView extends StatelessWidget {
         final l10n = sl<L10n>();
         final finishedDaily = type == GameType.daily && session?.isFinished == true;
         final title = switch (type) {
-          GameType.daily => l10n.t('daily_mode'),
+          GameType.daily => l10n.t('daily_header'),
           GameType.endless => l10n.t('endless'),
           GameType.duel => l10n.t('duel_title'),
           GameType.room => l10n.t('room_title'),

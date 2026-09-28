@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:kelimelig/admin/admin_app.dart';
 import 'package:kelimelig/admin/admin_directory.dart';
+import 'package:kelimelig/core/constants/game_version.dart';
 import 'package:kelimelig/core/services/audio_manager.dart';
 import 'package:kelimelig/core/services/haptic_manager.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
@@ -41,19 +42,24 @@ void main() {
     await tester.tap(find.text('Giriş'));
     await tester.pumpAndSettle();
 
+    expect(find.text('Luno Ekosistemi'), findsOneWidget);
+    expect(find.text(GameVersion.parse(gameVersionCode).label), findsWidgets);
     expect(find.text('Luno League'), findsOneWidget);
-    expect(find.textContaining('luno_league__'), findsOneWidget);
-    expect(find.text('Kelimeler'), findsOneWidget);
+    expect(find.textContaining('luno_league'), findsWidgets);
+    expect(find.text('Yöneticiler'), findsWidgets);
+    expect(find.text('Kelimeler'), findsNothing);
 
     await tester.tap(find.text('Yönet').first);
     await tester.pumpAndSettle();
 
     expect(find.text('Özet'), findsWidgets);
     expect(find.text('Daily'), findsWidgets);
+    expect(find.text('Yöneticiler'), findsWidgets);
 
     await tester.tap(find.byTooltip('Oyunlara dön'));
     await tester.pumpAndSettle();
 
-    expect(find.text('İzole depo: luno_league__*'), findsOneWidget);
+    expect(find.text('İzole depo:'), findsWidgets);
+    expect(find.textContaining('luno_league'), findsWidgets);
   });
 }

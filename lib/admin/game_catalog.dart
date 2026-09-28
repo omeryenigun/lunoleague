@@ -12,6 +12,7 @@ enum AdminSection {
   shop,
   settings,
   scenes,
+  staff,
 }
 
 class AdminSectionInfo {
@@ -72,6 +73,11 @@ const adminSectionInfo = <AdminSection, AdminSectionInfo>{
     icon: Icons.grid_view_outlined,
     selectedIcon: Icons.grid_view,
   ),
+  AdminSection.staff: AdminSectionInfo(
+    label: 'Yöneticiler',
+    icon: Icons.admin_panel_settings_outlined,
+    selectedIcon: Icons.admin_panel_settings,
+  ),
 };
 
 /// One isolated game in the shared admin. Adding a game means a new
@@ -97,6 +103,13 @@ class AdminGameDefinition {
 
   /// Hive box and meta prefix. Example: `luno_league__users`.
   String get storePrefix => '${id}__';
+
+  /// Game sections plus the shared staff page, so every catalog game
+  /// shows Yöneticiler on the same rail.
+  List<AdminSection> get menuSections {
+    if (sections.contains(AdminSection.staff)) return sections;
+    return [...sections, AdminSection.staff];
+  }
 }
 
 class AdminGameCatalog {
@@ -145,6 +158,13 @@ class AdminGameCatalog {
         AdminSection.shop,
         AdminSection.settings,
       ],
+    ),
+    AdminGameDefinition(
+      id: GameIds.lunoBilgi,
+      name: 'Luno Bilgi',
+      summary: 'Bilgi yarışması',
+      icon: Icons.quiz,
+      sections: [AdminSection.overview],
     ),
   ];
 

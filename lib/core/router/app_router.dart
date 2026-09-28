@@ -14,9 +14,11 @@ import 'package:kelimelig/features/auth/presentation/onboarding_screen.dart';
 import 'package:kelimelig/features/auth/presentation/splash_screen.dart';
 import 'package:kelimelig/features/game/presentation/game_screen.dart';
 import 'package:kelimelig/games/luno_grid/grid_home_screen.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_screen.dart';
 import 'package:kelimelig/features/match/presentation/duel_screen.dart';
 import 'package:kelimelig/features/match/presentation/room_screen.dart';
 import 'package:kelimelig/features/home/presentation/home_screen.dart';
+import 'package:kelimelig/features/home/presentation/daily_reward_screen.dart';
 import 'package:kelimelig/features/home/presentation/marathon_screen.dart';
 import 'package:kelimelig/features/league/presentation/league_screen.dart';
 import 'package:kelimelig/features/profile/presentation/achievements_screen.dart';
@@ -86,6 +88,7 @@ class _AppViewState extends State<_AppView> {
         GoRoute(path: '/fall/profile', redirect: (_, _) => '/home'),
         GoRoute(path: '/fall/play', redirect: (_, _) => '/home'),
         GoRoute(path: '/grid', builder: (_, _) => const GridHomeScreen()),
+        GoRoute(path: '/bilgi', builder: (_, _) => const BilgiScreen()),
         ShellRoute(
           builder: (context, state, child) => MainShell(child: child),
           routes: [
@@ -97,6 +100,7 @@ class _AppViewState extends State<_AppView> {
           ],
         ),
         GoRoute(path: '/marathon', builder: (_, _) => const MarathonScreen()),
+        GoRoute(path: '/rewards', builder: (_, _) => const DailyRewardScreen()),
         GoRoute(path: '/duel', builder: (_, _) => const DuelScreen()),
         GoRoute(path: '/room', builder: (_, _) => const RoomScreen()),
         GoRoute(

@@ -18,6 +18,7 @@ import 'package:kelimelig/features/game/presentation/game_screen.dart';
 import 'package:kelimelig/features/game/presentation/widgets/result_screen.dart';
 import 'package:kelimelig/features/game/presentation/widgets/turkish_keyboard.dart';
 import 'package:kelimelig/core/widgets/game_logo.dart';
+import 'package:kelimelig/features/home/presentation/daily_reward_screen.dart';
 import 'package:kelimelig/features/home/presentation/home_screen.dart';
 import 'package:kelimelig/features/profile/presentation/profile_screen.dart';
 import 'package:kelimelig/injection.dart';
@@ -95,8 +96,14 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.text('GÜNLÜK OYNA'), findsOneWidget);
+    expect(find.text('KELİME MARATONU'), findsOneWidget);
     expect(find.text('DÜELLO'), findsOneWidget);
+    expect(find.text('ÖZEL ODA'), findsOneWidget);
     expect(find.text('BRONZ LİG'), findsOneWidget);
+    expect(find.text('Diğer ligler için kaydır'), findsNothing);
+    expect(find.text('HAFTALIK LİG DURUMU'), findsNothing);
+    expect(find.byType(PageView), findsOneWidget);
+    expect(find.text('Günlük Ödül'), findsOneWidget);
     expect(find.text('Kayıt gerekir'), findsNothing);
     expect(find.text('Kayıtlı hesap gerekir'), findsNothing);
     expect(find.textContaining('Lig için kayıt gerekir'), findsNothing);
@@ -258,7 +265,11 @@ void main() {
     expect(find.text('Giriş Yap'), findsWidgets);
     expect(find.text('Test olarak gir'), findsNothing);
     expect(find.text('Apple ile giriş'), findsNothing);
-    expect(find.textContaining('e-posta gerekir'), findsOneWidget);
+    expect(find.text('Apple ile Giriş'), findsNothing);
+    expect(
+      find.text('Üyelik ek coin, kendi adın ve başka cihazdan devam kazandırır.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('shows Apple sign-in on iOS', (tester) async {
@@ -277,6 +288,39 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('Apple ile Giriş'), findsOneWidget);
-    expect(find.textContaining('Apple veya e-posta'), findsOneWidget);
+    expect(
+      find.text('Üyelik ek coin, kendi adın ve başka cihazdan devam kazandırır.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('daily reward page claims day one with a gather motion', (tester) async {
+    await sl<GameServer>().signInAnonymously();
+    await tester.pumpWidget(
+      BlocProvider(
+        create: (_) => AuthCubit(sl()),
+        child: const MaterialApp(home: DailyRewardScreen()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(find.text('ÖDÜLÜ AL'), findsOneWidget);
+    expect(find.text('Bugünün ödülü'), findsOneWidget);
+    expect(find.text('10'), findsOneWidget);
+    expect(find.text('JETON'), findsOneWidget);
+    expect(find.text('Reklam İzle, Coin Kazan!'), findsOneWidget);
+    expect(find.byIcon(Icons.check_rounded), findsNothing);
+
+    await tester.tap(find.text('ÖDÜLÜ AL'));
+    await tester.pump();
+    expect(find.byIcon(Icons.attach_money_rounded), findsWidgets);
+    await tester.pump(const Duration(milliseconds: 1200));
+    await tester.pump(const Duration(milliseconds: 1000));
+
+    expect(find.text('BUGÜN ALINDI'), findsOneWidget);
+    expect(find.text('Yarının ödülü'), findsOneWidget);
+    expect(find.text('Bugünün ödülü'), findsNothing);
+    expect(find.byIcon(Icons.check_rounded), findsOneWidget);
   });
 }

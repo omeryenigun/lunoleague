@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:kelimelig/admin/admin_accounts_screen.dart';
+import 'package:kelimelig/admin/admin_hub.dart';
 import 'package:kelimelig/admin/admin_session.dart';
+import 'package:kelimelig/admin/admin_shell_chrome.dart';
 import 'package:kelimelig/data/remote/api_session.dart';
 import 'package:kelimelig/admin/admin_directory.dart';
 import 'package:kelimelig/admin/admin_locale.dart';
@@ -8,6 +10,7 @@ import 'package:kelimelig/core/config/api_config.dart';
 import 'package:kelimelig/admin/game_catalog.dart';
 import 'package:kelimelig/admin/screens/fall_admin_screen.dart';
 import 'package:kelimelig/admin/screens/grid_admin_screen.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_admin.dart';
 import 'package:kelimelig/admin/game_scope.dart';
 import 'package:kelimelig/admin/screens/config_screen.dart';
 import 'package:kelimelig/admin/screens/daily_screen.dart';
@@ -41,18 +44,50 @@ class _AdminAppState extends State<AdminApp> {
       ? sl<AdminDirectory>()
       : RemoteAdminDirectory(ApiConfig.baseUrl);
   var _authed = false;
+  var _booting = true;
   String? _token;
   String? _gameId;
+  AdminAccount? _account;
 
   @override
   void initState() {
     super.initState();
+    _restore();
+  }
+
+  Future<void> _restore() async {
     final saved = readAdminToken();
     if (saved != null && saved.isNotEmpty) {
-      _token = saved;
-      _authed = true;
-      _remember(saved);
+      try {
+        final account = await _directory.me(saved);
+        if (!mounted) return;
+        _remember(saved);
+        setState(() {
+          _token = saved;
+          _account = account;
+          _authed = true;
+          _booting = false;
+        });
+        return;
+      } catch (_) {
+        _remember(null);
+      }
     }
+    if (mounted) setState(() => _booting = false);
+  }
+
+  Future<void> _onAuthed(String token) async {
+    _remember(token);
+    AdminAccount? account;
+    try {
+      account = await _directory.me(token);
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _token = token;
+      _account = account;
+      _authed = true;
+    });
   }
 
   void _remember(String? token) {
@@ -70,6 +105,7 @@ class _AdminAppState extends State<AdminApp> {
 
   void _openGame(String id) {
     AdminGameCatalog.byId(id);
+    if (_account != null && !_account!.canEditGame(id)) return;
     setState(() => _gameId = id);
   }
 
@@ -85,6 +121,7 @@ class _AdminAppState extends State<AdminApp> {
       _gameId = null;
       _authed = false;
       _token = null;
+      _account = null;
     });
   }
 
@@ -95,15 +132,10 @@ class _AdminAppState extends State<AdminApp> {
       authed: _authed,
       directory: _directory,
       token: _token,
+      account: _account,
       game: game,
       server: _server,
-      onAuthed: (token) {
-        _remember(token);
-        setState(() {
-          _token = token;
-          _authed = true;
-        });
-      },
+      onAuthed: _onAuthed,
       onOpenGame: _openGame,
       onLeaveGame: _closeGame,
       onSignOut: _signOut,
@@ -112,7 +144,12 @@ class _AdminAppState extends State<AdminApp> {
         title: 'Game Server Admin',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.dark(),
-        home: const AdminEntry(),
+        home: _booting
+            ? const Scaffold(
+                backgroundColor: AdminHubColors.bg,
+                body: Center(child: CircularProgressIndicator()),
+              )
+            : const AdminEntry(),
       ),
     );
   }
@@ -125,10 +162,7 @@ class AdminEntry extends StatelessWidget {
   Widget build(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<AdminGameScope>()!;
     if (!scope.authed) {
-      return AdminGate(
-        directory: scope.directory,
-        onSuccess: scope.onAuthed,
-      );
+      return AdminGate(directory: scope.directory, onSuccess: scope.onAuthed);
     }
     final game = scope.game;
     if (game == null) {
@@ -205,7 +239,10 @@ class _AdminGateState extends State<AdminGate> {
                   children: [
                     const Text(
                       'Game Server',
-                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -242,7 +279,10 @@ class _AdminGateState extends State<AdminGate> {
                     ],
                     if (_error != null) ...[
                       const SizedBox(height: 12),
-                      Text(_error!, style: const TextStyle(color: AppColors.danger)),
+                      Text(
+                        _error!,
+                        style: const TextStyle(color: AppColors.danger),
+                      ),
                     ],
                     const SizedBox(height: 12),
                     ElevatedButton(
@@ -299,50 +339,84 @@ class GamePicker extends StatelessWidget {
   final ValueChanged<String> onOpen;
   final VoidCallback onSignOut;
 
+  void _openStaff(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const AdminAccountsScreen(hub: true)),
+    );
+  }
+
+  void _tryOpen(BuildContext context, String id) {
+    final account = AdminGameScope.maybeOf(context)?.account;
+    if (account != null && !account.canEditGame(id)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bu oyunu yönetme yetkin yok.')),
+      );
+      return;
+    }
+    onOpen(id);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Oyunlar'),
-            GameVersionLabel(),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SiteCardsScreen()),
-              );
-            },
-            child: const Text('Oyun kartları'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AdminAccountsScreen()),
-              );
-            },
-            child: const Text('Yöneticiler'),
-          ),
-          TextButton(onPressed: onSignOut, child: const Text('Çıkış')),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(24),
+      backgroundColor: AdminHubColors.bg,
+      body: Column(
         children: [
-          const Text(
-            'Her oyun kendi deposunu kullanır. Kullanıcı, kelime, lig ve mağaza kayıtları birbirine karışmaz.',
-            style: TextStyle(color: AppColors.textSecondary),
+          AdminHubBar(
+            active: AdminHubNav.games,
+            onGames: () {},
+            onStaff: () => _openStaff(context),
+            onSignOut: onSignOut,
           ),
-          const SizedBox(height: 16),
-          for (final game in AdminGameCatalog.games) ...[
-            _GameCard(game: game, onOpen: () => onOpen(game.id)),
-            const SizedBox(height: 12),
-          ],
+          Expanded(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1200),
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(40, 40, 40, 40),
+                  children: [
+                    const Text(
+                      'Oyunlar',
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Her oyun kendi deposunu kullanır. Kullanıcı, kelime, lig ve mağaza kayıtları birbirine karışmaz.',
+                      style: TextStyle(color: AdminHubColors.muted),
+                    ),
+                    const SizedBox(height: 24),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        const gap = 24.0;
+                        final wide = constraints.maxWidth >= 480 * 2 + gap;
+                        final cardWidth = wide
+                            ? (constraints.maxWidth - gap) / 2
+                            : constraints.maxWidth;
+                        return Wrap(
+                          spacing: gap,
+                          runSpacing: gap,
+                          children: [
+                            for (final game in AdminGameCatalog.games)
+                              SizedBox(
+                                width: cardWidth,
+                                child: _GameCard(
+                                  game: game,
+                                  onOpen: () => _tryOpen(context, game.id),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -357,78 +431,131 @@ class _GameCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 720),
-      padding: const EdgeInsets.all(16),
+    final bilgi = game.id == GameIds.lunoBilgi;
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
+        color: AdminHubColors.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: bilgi ? AdminHubColors.primary : const Color(0x14FFFFFF),
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(game.icon, color: AppColors.accent),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      game.name,
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: const Color(0x1A6C3CE9),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: SizedBox(
+                    width: 52,
+                    height: 52,
+                    child: Center(
+                      child: game.id == GameIds.lunoLeague
+                          ? const Text('🔤', style: TextStyle(fontSize: 24))
+                          : Icon(game.icon, color: AdminHubColors.teal),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        game.name,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        game.summary,
+                        style: const TextStyle(color: AdminHubColors.muted),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: AdminHubColors.teal,
+                  foregroundColor: const Color(0xFF042F2A),
+                  minimumSize: const Size(0, 44),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: onOpen,
+                child: const Text('Yönet'),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                const Text(
+                  'İzole depo:',
+                  style: TextStyle(
+                    color: AdminHubColors.muted,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: AdminHubColors.bg,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    child: Text(
+                      game.storePrefix,
                       style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                        color: AdminHubColors.teal,
                       ),
                     ),
-                    Text(
-                      game.summary,
-                      style: const TextStyle(color: AppColors.textSecondary),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  FilledButton(onPressed: onOpen, child: const Text('Yönet')),
-                  const SizedBox(height: 8),
-                  OutlinedButton(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => SiteCardForm(cardId: game.id),
-                        ),
-                      );
-                    },
-                    child: const Text('Vitrini Düzenle'),
                   ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'İzole depo: ${game.storePrefix}*',
-            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final section in game.sections)
-                Chip(
-                  label: Text(adminSectionInfo[section]!.label),
-                  visualDensity: VisualDensity.compact,
                 ),
-            ],
-          ),
-        ],
+              ],
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: const BorderSide(color: Color(0x33FFFFFF)),
+                  minimumSize: const Size(0, 44),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => SiteCardForm(cardId: game.id),
+                    ),
+                  );
+                },
+                child: const Text('Vitrini Düzenle'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -444,179 +571,127 @@ class AdminShell extends StatefulWidget {
 }
 
 class _AdminShellState extends State<AdminShell> {
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
   var _index = 0;
   var _locale = GameLocale.tr.id;
   var _league = LeagueTier.bronze;
   int? _listLength;
 
   Widget _page(AdminSection section) {
-    final gameId = AdminGameScope.gameOf(context).id;
-    if (gameId == GameIds.lunoFall) {
+    final game = AdminGameScope.gameOf(context);
+    final account = AdminGameScope.maybeOf(context)?.account;
+    if (section == AdminSection.staff) {
+      return const AdminAccountsScreen();
+    }
+    if (account != null && !account.canEditGame(game.id)) {
+      return const Center(
+        child: Text(
+          'Bu oyunu yönetme yetkin yok.',
+          style: TextStyle(color: AdminHubColors.muted),
+        ),
+      );
+    }
+    if (game.id == GameIds.lunoFall) {
       return FallAdminScreen(section: section);
     }
-    if (gameId == GameIds.lunoGrid) {
+    if (game.id == GameIds.lunoGrid) {
       return GridAdminScreen(section: section);
     }
     return switch (section) {
-        AdminSection.overview => const OverviewScreen(),
-        AdminSection.users => const UsersScreen(),
-        AdminSection.games => const GamesScreen(),
-        AdminSection.words => const WordsScreen(),
-        AdminSection.daily => const DailyScreen(),
-        AdminSection.league => const LeagueScreen(),
-        AdminSection.shop => const ShopAdminScreen(),
-        AdminSection.settings => const ConfigScreen(),
-        AdminSection.scenes => const SizedBox.shrink(),
-      };
+      AdminSection.overview => const OverviewScreen(),
+      AdminSection.users => const UsersScreen(),
+      AdminSection.games => const GamesScreen(),
+      AdminSection.words => const WordsScreen(),
+      AdminSection.daily => const DailyScreen(),
+      AdminSection.league => const LeagueScreen(),
+      AdminSection.shop => const ShopAdminScreen(),
+      AdminSection.settings => const ConfigScreen(),
+      AdminSection.scenes => const SizedBox.shrink(),
+      AdminSection.staff => const AdminAccountsScreen(),
+    };
   }
 
   @override
   Widget build(BuildContext context) {
+    final scope = AdminGameScope.maybeOf(context)!;
     final game = AdminGameScope.gameOf(context);
-    final sections = game.sections;
+    if (game.id == GameIds.lunoBilgi) {
+      return BilgiAdminScreen(onLeave: widget.onLeave);
+    }
+    final sections = game.menuSections;
     final index = _index.clamp(0, sections.length - 1);
     final wide = MediaQuery.sizeOf(context).width >= 900;
+    final sidebar = AdminGameSidebar(
+      game: game,
+      sections: sections,
+      selected: index,
+      account: scope.account,
+      onLeave: widget.onLeave,
+      onSelect: (i) {
+        setState(() => _index = i);
+        _scaffoldKey.currentState?.closeDrawer();
+      },
+    );
     return AdminLocaleScope(
       locale: _locale,
       league: _league,
       listLength: _listLength,
       child: Scaffold(
-        appBar: AppBar(
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(game.name),
-              const GameVersionLabel(),
-            ],
-          ),
-          leading: IconButton(
-            tooltip: 'Oyunlara dön',
-            icon: const Icon(Icons.arrow_back),
-            onPressed: widget.onLeave,
-          ),
-          actions: [
-            if (game.leagueFilter)
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: SegmentedButton<int>(
-                  segments: [
-                    for (final length in const [3, 4])
-                      ButtonSegment(
-                        value: length,
-                        label: Text('$length'),
-                        tooltip: '$length harf',
-                      ),
-                    for (final tier in LeagueTier.values)
-                      ButtonSegment(
-                        value: tier.wordLength,
-                        label: Text(tier.label),
-                        tooltip: '${tier.label} (${tier.wordLength} harf)',
-                      ),
-                  ],
-                  selected: {_listLength ?? _league.wordLength},
-                  onSelectionChanged: (next) {
-                    final length = next.first;
-                    setState(() {
-                      final tier = LeagueTier.values
-                          .where((item) => item.wordLength == length)
-                          .firstOrNull;
-                      if (tier == null) {
-                        _listLength = length;
-                        final words = sections.indexOf(AdminSection.words);
-                        if (words >= 0) _index = words;
-                      } else {
-                        _listLength = null;
-                        _league = tier;
-                      }
-                    });
-                  },
-                  style: const ButtonStyle(
-                    visualDensity: VisualDensity.compact,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                ),
-              ),
-            if (game.localeFilter)
-              Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: DropdownButton<String>(
-                  value: _locale,
-                  underline: const SizedBox.shrink(),
-                  items: [
-                    for (final loc in GameLocale.all)
-                      DropdownMenuItem(
-                        value: loc.id,
-                        child: Text('${loc.id.toUpperCase()}  ${loc.nativeName}'),
-                      ),
-                  ],
-                  onChanged: (next) {
-                    if (next == null) return;
-                    setState(() => _locale = next);
-                  },
-                ),
-              ),
-          ],
-        ),
+        key: _scaffoldKey,
+        backgroundColor: AdminHubColors.bg,
         drawer: wide
             ? null
             : Drawer(
-                child: ListView(
-                  children: [
-                    DrawerHeader(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Text(
-                            game.name,
-                            style: const TextStyle(fontWeight: FontWeight.w900),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Depo ${game.storePrefix}*',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    for (var i = 0; i < sections.length; i++)
-                      ListTile(
-                        leading: Icon(adminSectionInfo[sections[i]]!.icon),
-                        title: Text(adminSectionInfo[sections[i]]!.label),
-                        selected: index == i,
-                        onTap: () {
-                          setState(() => _index = i);
-                          Navigator.pop(context);
-                        },
-                      ),
-                  ],
-                ),
+                backgroundColor: AdminHubColors.bar,
+                child: sidebar,
               ),
         body: Row(
           children: [
-            if (wide)
-              NavigationRail(
-                selectedIndex: index,
-                onDestinationSelected: (i) => setState(() => _index = i),
-                labelType: NavigationRailLabelType.all,
-                backgroundColor: AppColors.surface,
-                destinations: [
-                  for (final section in sections)
-                    NavigationRailDestination(
-                      icon: Icon(adminSectionInfo[section]!.icon),
-                      selectedIcon: Icon(adminSectionInfo[section]!.selectedIcon),
-                      label: Text(adminSectionInfo[section]!.label),
-                    ),
-                ],
-              ),
+            if (wide) sidebar,
             Expanded(
-              child: KeyedSubtree(
-                key: ValueKey('${game.id}-$_locale-${_league.name}-$index'),
-                child: _page(sections[index]),
+              child: Column(
+                children: [
+                  AdminGameTopBar(
+                    game: game,
+                    onLeave: widget.onLeave,
+                    showMenu: wide
+                        ? null
+                        : () => _scaffoldKey.currentState?.openDrawer(),
+                    locale: game.localeFilter ? _locale : null,
+                    onLocale: game.localeFilter
+                        ? (next) => setState(() => _locale = next)
+                        : null,
+                    league: game.leagueFilter ? _league : null,
+                    listLength: _listLength,
+                    onLeagueLength: game.leagueFilter
+                        ? (length) {
+                            setState(() {
+                              final tier = LeagueTier.values
+                                  .where((item) => item.wordLength == length)
+                                  .firstOrNull;
+                              if (tier == null) {
+                                _listLength = length;
+                                final words = sections.indexOf(
+                                  AdminSection.words,
+                                );
+                                if (words >= 0) _index = words;
+                              } else {
+                                _listLength = null;
+                                _league = tier;
+                              }
+                            });
+                          }
+                        : null,
+                  ),
+                  Expanded(
+                    child: KeyedSubtree(
+                      key: ValueKey(
+                        '${game.id}-$_locale-${_league.name}-$index',
+                      ),
+                      child: _page(sections[index]),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

@@ -21,9 +21,13 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
-    await tester.scrollUntilVisible(find.text('DÜELLO'), 200);
+    final vertical = find.ancestor(
+      of: find.text('DÜELLO'),
+      matching: find.byType(Scrollable),
+    );
+    await tester.scrollUntilVisible(find.text('DÜELLO'), 200, scrollable: vertical);
     expect(find.text('DÜELLO'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('ÖZEL ODA'), 200);
+    await tester.scrollUntilVisible(find.text('ÖZEL ODA'), 200, scrollable: vertical);
     expect(find.text('ÖZEL ODA'), findsOneWidget);
 
     await tester.pumpWidget(const MaterialApp(home: DuelScreen()));

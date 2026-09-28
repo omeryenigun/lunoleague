@@ -157,7 +157,7 @@ class _MarathonScreenState extends State<MarathonScreen> {
             : Column(
                 children: [
                   _TopBar(
-                    title: l10n.t('endless'),
+                    title: l10n.t('marathon_header'),
                     continueLabel: _continueLabel(l10n, mine),
                     endLabel: l10n.t('marathon_end'),
                     stateLabel: switch (mine?.state) {

@@ -1,0 +1,14 @@
+---
+description: Luno League ana sayfası kalıcı paneldir; başka bir giriş ekranıyla değiştirilmez.
+alwaysApply: true
+---
+
+# Luno League ana sayfası
+
+Oyunun açılış paneli `lib/features/home/presentation/home_screen.dart` içindeki `HomeScreen`dir. `/home` buraya gider. Splash, giriş ve kayıt da buraya döner.
+
+Bu paneli koru: kaydırmalı lig seçimi (bronz, gümüş, altın), günlük oyna, kelime maratonu, günlük ödül, düello ve özel oda. Haftalık, aylık, sezon ve yıl durum şeridini ana sayfaya geri koyma. Lig seçimi kaydırmalı kalır.
+
+Bu ekranı `GameHubScreen`, `FallHomeScreen` veya yeni bir ana sayfa ile değiştirme. `/home` yönlendirmesini başka bir sayfaya alma.
+
+Luno Grid (`/grid`, `grid_home_screen.dart`) ve Luno Fall ekranlarına bu panel için dokunma. Onların kendi sayfaları durur.

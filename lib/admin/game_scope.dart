@@ -13,6 +13,7 @@ class AdminGameScope extends InheritedWidget {
     required this.game,
     required this.server,
     required this.token,
+    required this.account,
     required this.onAuthed,
     required this.onOpenGame,
     required this.onLeaveGame,
@@ -23,6 +24,7 @@ class AdminGameScope extends InheritedWidget {
   final bool authed;
   final AdminDirectory directory;
   final String? token;
+  final AdminAccount? account;
   final AdminGameDefinition? game;
   final GameServer? server;
   final ValueChanged<String> onAuthed;
@@ -30,9 +32,11 @@ class AdminGameScope extends InheritedWidget {
   final VoidCallback onLeaveGame;
   final VoidCallback onSignOut;
 
+  static AdminGameScope? maybeOf(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<AdminGameScope>();
+
   static GameServer serverOf(BuildContext context) {
-    final scope = context.getInheritedWidgetOfExactType<AdminGameScope>();
-    final server = scope?.server;
+    final server = maybeOf(context)?.server;
     if (server == null) {
       throw StateError('Oyun seçilmeden veri okunamaz.');
     }
@@ -40,8 +44,7 @@ class AdminGameScope extends InheritedWidget {
   }
 
   static AdminGameDefinition gameOf(BuildContext context) {
-    final scope = context.getInheritedWidgetOfExactType<AdminGameScope>();
-    final game = scope?.game;
+    final game = maybeOf(context)?.game;
     if (game == null) {
       throw StateError('Oyun seçilmeden panel açılmaz.');
     }
@@ -52,6 +55,8 @@ class AdminGameScope extends InheritedWidget {
   bool updateShouldNotify(AdminGameScope oldWidget) =>
       oldWidget.authed != authed ||
       oldWidget.token != token ||
+      oldWidget.account?.id != account?.id ||
+      oldWidget.account?.role != account?.role ||
       oldWidget.game?.id != game?.id ||
       oldWidget.server != server;
 }

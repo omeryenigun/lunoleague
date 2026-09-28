@@ -124,11 +124,6 @@ class SettingsScreen extends StatelessWidget {
               ),
               const SizedBox(height: 14),
               _SettingsSection(
-                label: l10n.t('how_play'),
-                child: const _HowPlayGuide(),
-              ),
-              const SizedBox(height: 14),
-              _SettingsSection(
                 label: l10n.t('settings_prefs'),
                 child: Column(
                   children: [
@@ -199,8 +194,20 @@ class SettingsScreen extends StatelessWidget {
                       color: AppColors.cosmicGreen,
                       onTap: () => context.go('/shop'),
                     ),
+                    _ActionRow(
+                      icon: '🧠',
+                      label: 'Luno Bilgi',
+                      trailing: '›',
+                      color: AppColors.cosmicGreen,
+                      onTap: () => context.push('/bilgi'),
+                    ),
                   ],
                 ),
+              ),
+              const SizedBox(height: 14),
+              _SettingsSection(
+                label: l10n.t('how_play'),
+                child: const _HowPlayGuide(),
               ),
               const SizedBox(height: 22),
               const Center(child: GameVersionLabel()),
@@ -636,6 +643,18 @@ class _DifficultyTabs extends StatelessWidget {
   }
 }
 
+List<Color> _leagueFill(LeagueTier tier) => switch (tier) {
+      LeagueTier.bronze => const [Color(0xFFE8A866), Color(0xFFCD7F32)],
+      LeagueTier.silver => const [Color(0xFFF3F4F6), Color(0xFFC0C4CC)],
+      LeagueTier.gold => const [Color(0xFFFFE58A), Color(0xFFFFD700)],
+    };
+
+Color _leagueInk(LeagueTier tier) => switch (tier) {
+      LeagueTier.bronze => const Color(0xFFE8A866),
+      LeagueTier.silver => const Color(0xFFD1D5DB),
+      LeagueTier.gold => const Color(0xFFFFD700),
+    };
+
 class _DiffTab extends StatelessWidget {
   const _DiffTab({
     required this.tier,
@@ -660,16 +679,16 @@ class _DiffTab extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
           decoration: BoxDecoration(
             gradient: active
-                ? const LinearGradient(
+                ? LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [AppColors.cosmicGreen, AppColors.cosmicTeal],
+                    colors: _leagueFill(tier),
                   )
                 : null,
             boxShadow: active
                 ? [
                     BoxShadow(
-                      color: AppColors.cosmicGreen.withValues(alpha: 0.35),
+                      color: _leagueFill(tier).first.withValues(alpha: 0.35),
                       blurRadius: 18,
                     ),
                   ]
@@ -688,9 +707,7 @@ class _DiffTab extends StatelessWidget {
                       tier.labelFor(locale),
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: active
-                            ? AppColors.cosmicBg
-                            : const Color(0xFF94A3B8),
+                        color: active ? AppColors.cosmicBg : _leagueInk(tier),
                         fontWeight: FontWeight.w800,
                         fontSize: 13,
                       ),

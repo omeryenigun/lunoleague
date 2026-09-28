@@ -399,7 +399,7 @@ void mountAdmin(Router router, Connection db) {
       }
       final rows = await db.execute(
         Sql.named(
-          'select id, password_hash, salt from admin_users where email = @email',
+          'select id, password_hash, salt, status from admin_users where email = @email',
         ),
         parameters: {'email': email},
       );
@@ -407,9 +407,18 @@ void mountAdmin(Router router, Connection db) {
       final id = rows.first[0] as String;
       final expected = rows.first[1] as String;
       final salt = rows.first[2] as String;
-      if (_hash(password, salt) != expected) {
+      final status = rows.first.toList().length > 3
+          ? rows.first[3] as String? ?? 'active'
+          : 'active';
+      if (status != 'active' || _hash(password, salt) != expected) {
         return _error(401, 'E-posta veya şifre hatalı.');
       }
+      try {
+        await db.execute(
+          Sql.named('update admin_users set last_login_at = now() where id = @id'),
+          parameters: {'id': id},
+        );
+      } catch (_) {}
       final token = await _session(db, id);
       return _json({'token': token, 'id': id, 'email': email});
     })
@@ -507,6 +516,21 @@ Future<void> migrateAdmin(Connection db) async {
       created_at timestamptz not null default now()
     )
   ''');
+  await db.execute(
+    "alter table admin_users add column if not exists display_name text not null default ''",
+  );
+  await db.execute(
+    "alter table admin_users add column if not exists role text not null default 'super_admin'",
+  );
+  await db.execute(
+    "alter table admin_users add column if not exists game_ids text not null default '[]'",
+  );
+  await db.execute(
+    "alter table admin_users add column if not exists status text not null default 'active'",
+  );
+  await db.execute(
+    'alter table admin_users add column if not exists last_login_at timestamptz',
+  );
   await db.execute('''
     create table if not exists admin_sessions (
       token_hash text primary key,
