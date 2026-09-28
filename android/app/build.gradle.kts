@@ -24,12 +24,31 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.lunoleague.game"
         minSdk = flutter.minSdkVersion
         multiDexEnabled = true
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+    }
+
+    flavorDimensions += "game"
+    productFlavors {
+        create("league") {
+            dimension = "game"
+            applicationId = "com.lunoleague.game"
+        }
+        create("fall") {
+            dimension = "game"
+            applicationId = "com.lunofall.game"
+        }
+        create("grid") {
+            dimension = "game"
+            applicationId = "com.lunogrid.game"
+        }
+        create("bilgi") {
+            dimension = "game"
+            applicationId = "com.lunobilgi.game"
+        }
     }
 
     signingConfigs {

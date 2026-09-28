@@ -194,13 +194,6 @@ class SettingsScreen extends StatelessWidget {
                       color: AppColors.cosmicGreen,
                       onTap: () => context.go('/shop'),
                     ),
-                    _ActionRow(
-                      icon: '🧠',
-                      label: 'Luno Bilgi',
-                      trailing: '›',
-                      color: AppColors.cosmicGreen,
-                      onTap: () => context.push('/bilgi'),
-                    ),
                   ],
                 ),
               ),

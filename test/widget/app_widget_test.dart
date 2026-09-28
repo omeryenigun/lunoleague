@@ -22,6 +22,7 @@ import 'package:kelimelig/features/home/presentation/daily_reward_screen.dart';
 import 'package:kelimelig/features/home/presentation/home_screen.dart';
 import 'package:kelimelig/features/profile/presentation/profile_screen.dart';
 import 'package:kelimelig/injection.dart';
+import 'package:kelimelig/league_injection.dart';
 
 void main() {
   setUpAll(() {
@@ -30,7 +31,9 @@ void main() {
 
   setUp(() async {
     await sl.reset();
-    await configureDependencies(store: MemoryKeyValueStore(), initHive: false);
+    final store = MemoryKeyValueStore();
+    await configureDependencies(store: store, initHive: false);
+    await registerLeagueServer(store: store, initHive: false);
     sl<AudioManager>().enabled = false;
     sl<HapticManager>().enabled = false;
   });

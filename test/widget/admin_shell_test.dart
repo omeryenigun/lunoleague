@@ -7,7 +7,11 @@ import 'package:kelimelig/core/constants/game_version.dart';
 import 'package:kelimelig/core/services/audio_manager.dart';
 import 'package:kelimelig/core/services/haptic_manager.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
+import 'package:kelimelig/games/luno_bilgi/register_bilgi_server.dart';
+import 'package:kelimelig/games/luno_fall/register_fall_server.dart';
+import 'package:kelimelig/games/luno_grid/register_grid_server.dart';
 import 'package:kelimelig/injection.dart';
+import 'package:kelimelig/league_injection.dart';
 
 void main() {
   setUpAll(() {
@@ -16,7 +20,12 @@ void main() {
 
   setUp(() async {
     await sl.reset();
-    await configureDependencies(store: MemoryKeyValueStore(), initHive: false);
+    final store = MemoryKeyValueStore();
+    await configureDependencies(store: store, initHive: false);
+    await registerLeagueServer(store: store, initHive: false);
+    await registerFallServer();
+    await registerGridServer();
+    await registerBilgiServer();
     sl<AudioManager>().enabled = false;
     sl<HapticManager>().enabled = false;
     sl.registerSingleton<AdminDirectory>(

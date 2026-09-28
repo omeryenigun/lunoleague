@@ -6,11 +6,14 @@ import 'package:kelimelig/features/home/presentation/home_screen.dart';
 import 'package:kelimelig/features/match/presentation/duel_screen.dart';
 import 'package:kelimelig/features/match/presentation/room_screen.dart';
 import 'package:kelimelig/injection.dart';
+import 'package:kelimelig/league_injection.dart';
 
 void main() {
   setUp(() async {
     await sl.reset();
-    await configureDependencies(store: MemoryKeyValueStore(), initHive: false);
+    final store = MemoryKeyValueStore();
+    await configureDependencies(store: store, initHive: false);
+    await registerLeagueServer(store: store, initHive: false);
   });
 
   testWidgets('duel and room cards and screens fit 320px', (tester) async {

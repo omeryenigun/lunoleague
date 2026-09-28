@@ -54,6 +54,7 @@ class BilgiQuestion {
   }
 
   BilgiQuestion copyWith({
+    String? categoryId,
     String? text,
     List<String>? options,
     int? correct,
@@ -65,7 +66,7 @@ class BilgiQuestion {
   }) {
     return BilgiQuestion(
       id: id,
-      categoryId: categoryId,
+      categoryId: categoryId ?? this.categoryId,
       text: text ?? this.text,
       options: options ?? this.options,
       correct: correct ?? this.correct,
@@ -74,6 +75,96 @@ class BilgiQuestion {
       status: status ?? this.status,
       tags: tags ?? this.tags,
       rejectReason: rejectReason ?? this.rejectReason,
+    );
+  }
+}
+
+bool sameStoredBilgiQuestion(BilgiQuestion saved, BilgiQuestion wanted) {
+  return saved.id == wanted.id &&
+      saved.categoryId == wanted.categoryId &&
+      saved.text == wanted.text &&
+      _sameStrings(saved.options, wanted.options) &&
+      saved.correct == wanted.correct &&
+      saved.difficulty == wanted.difficulty &&
+      saved.explanation == wanted.explanation &&
+      saved.status == wanted.status &&
+      _sameStrings(saved.tags, wanted.tags) &&
+      saved.rejectReason == wanted.rejectReason;
+}
+
+bool _sameStrings(List<String> a, List<String> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}
+
+/// Admin edit form snapshot: stored question fields mapped onto the editor.
+class BilgiQuestionFormData {
+  const BilgiQuestionFormData({
+    required this.id,
+    required this.text,
+    required this.options,
+    required this.correct,
+    required this.categoryId,
+    required this.subcategory,
+    required this.difficulty,
+    required this.explanation,
+    required this.tags,
+    required this.status,
+  });
+
+  final String id;
+  final String text;
+  final List<String> options;
+  final int correct;
+  final String categoryId;
+  final String subcategory;
+  final String difficulty;
+  final String explanation;
+  final List<String> tags;
+  final String status;
+
+  factory BilgiQuestionFormData.fromQuestion(
+    BilgiQuestion question, {
+    Iterable<String> categorySubs = const [],
+  }) {
+    var sub = '';
+    for (final tag in question.tags) {
+      if (categorySubs.contains(tag)) {
+        sub = tag;
+        break;
+      }
+    }
+    return BilgiQuestionFormData(
+      id: question.id,
+      text: question.text,
+      options: [
+        for (var i = 0; i < 4; i++) i < question.options.length ? question.options[i] : '',
+      ],
+      correct: question.correct.clamp(0, 3),
+      categoryId: question.categoryId,
+      subcategory: sub,
+      difficulty: question.difficulty,
+      explanation: question.explanation,
+      tags: [for (final tag in question.tags) if (tag.isNotEmpty && tag != sub) tag],
+      status: question.status,
+    );
+  }
+
+  BilgiQuestion toQuestion({required bool asDraft, String? rejectReason}) {
+    return BilgiQuestion(
+      id: id,
+      categoryId: categoryId,
+      text: text,
+      options: options,
+      correct: correct,
+      difficulty: difficulty,
+      explanation: explanation,
+      status: asDraft ? 'draft' : (status.isEmpty ? 'pending' : status),
+      tags: [if (subcategory.isNotEmpty) subcategory, ...tags],
+      rejectReason: rejectReason ?? '',
     );
   }
 }

@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:kelimelig/core/utils/turkish_text.dart';
-import 'package:kelimelig/features/auth/cubit/auth_cubit.dart';
 import 'package:kelimelig/games/luno_grid/grid_model.dart';
 import 'package:kelimelig/games/luno_grid/grid_play_screen.dart';
 import 'package:kelimelig/games/luno_grid/grid_rules.dart';
@@ -13,7 +11,7 @@ class GridHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = context.watch<AuthCubit>().state.user?.displayName ?? 'Oyuncu';
+    const name = 'Oyuncu';
     return Scaffold(
       backgroundColor: const Color(0xFF140F2A),
       appBar: AppBar(title: const Text('Luno Grid'), backgroundColor: Colors.transparent),

@@ -220,16 +220,6 @@ class LunoGridServer {
   int _generatorNext(int max) => DateTime.now().microsecond % max;
 }
 
-Future<List<String>> gridDictionary(KeyValueStore leagueStore) async {
-  final rows = await leagueStore.values('words');
-  final fromStore = <String>[];
-  for (final row in rows) {
-    final language = row['language'] as String? ?? '';
-    final active = row['isActive'] as bool? ?? true;
-    final word = row['word'] as String? ?? '';
-    final status = row['status'] as String? ?? 'active';
-    if (language == 'tr' && active && status == 'active' && word.isNotEmpty) fromStore.add(word);
-  }
-  if (fromStore.length >= 12) return fromStore;
+Future<List<String>> gridDictionary() async {
   return [for (final word in buildSeedWords()) word.word];
 }

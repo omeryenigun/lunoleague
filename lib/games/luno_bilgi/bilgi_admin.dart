@@ -2,17 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:kelimelig/admin/word_csv_pick.dart';
 import 'package:kelimelig/core/constants/game_version.dart';
 import 'package:kelimelig/core/utils/date_keys.dart';
+import 'package:kelimelig/core/mail/mail_template.dart';
+import 'package:kelimelig/data/remote/api_session.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_csv.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_mail.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_theme.dart';
 import 'package:kelimelig/injection.dart';
-
-const bilgiCsvExample = "Osmanlı'nın kurucusu?,Orhan,Osman,Murat,Bayezid,B,Osmanlı Tarihi,Kuruluş,kolay";
-
-const bilgiCsvTemplate = '''soru,a,b,c,d,dogru,kategori,altkategori,zorluk
-$bilgiCsvExample
-''';
 
 class BilgiAdminScreen extends StatefulWidget {
   const BilgiAdminScreen({super.key, required this.onLeave});
@@ -50,10 +48,22 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   var _bankDiff = '';
   var _bankStatus = '';
   var _bankPage = 0;
+  var _moveCat = '';
+  var _moveSub = '';
+  final _selectedIds = <String>{};
+  var _bulkBusy = false;
   var _formSerial = 0;
+  BilgiQuestion? _editing;
   var _csvName = '';
   final _csvText = TextEditingController();
   final _newSub = TextEditingController();
+  final _subSearch = TextEditingController();
+  final _bankSearch = TextEditingController();
+  final _mailSubject = TextEditingController();
+  final _mailHtml = TextEditingController();
+  final _mailText = TextEditingController();
+  final _mailTestTo = TextEditingController(text: 'omeryenigun@gmail.com');
+  var _mailLoaded = false;
   var _subCat = 'turk_tarihi';
 
   LunoBilgiServer get _server => sl<LunoBilgiServer>();
@@ -88,6 +98,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     (group: 'ANALİZ', emoji: '📈', label: 'İstatistikler'),
     (group: 'SİSTEM', emoji: '🔧', label: 'Ayarlar'),
     (group: 'SİSTEM', emoji: '🛡️', label: 'Yöneticiler'),
+    (group: 'SİSTEM', emoji: '✉️', label: 'E-posta'),
   ];
 
   @override
@@ -114,6 +125,12 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     _supportMail.dispose();
     _csvText.dispose();
     _newSub.dispose();
+    _subSearch.dispose();
+    _bankSearch.dispose();
+    _mailSubject.dispose();
+    _mailHtml.dispose();
+    _mailText.dispose();
+    _mailTestTo.dispose();
     super.dispose();
   }
 
@@ -137,6 +154,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     if (!mounted) return;
     setState(() {
       _questions = questions;
+      _selectedIds.removeWhere((id) => !questions.any((question) => question.id == id));
       _users = users;
       _config = config;
       _catalog = catalog;
@@ -184,13 +202,14 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   String get _title {
     return switch (_index) {
       0 => 'Dashboard',
-      2 => 'Yeni Soru Ekle',
+      2 => _editing == null ? 'Yeni Soru Ekle' : 'Soruyu Düzenle',
       3 => 'Onay Bekleyen Sorular',
       4 => 'Reddedilen Sorular',
       11 => 'Banlı Kullanıcılar',
       12 => 'Premium Kullanıcılar',
       17 => 'Ekonomi Ayarları',
       23 => 'Genel Ayarlar',
+      25 => 'E-posta şablonu',
       _ => _nav[_index].label,
     };
   }
@@ -199,7 +218,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     return switch (_index) {
       0 => 'Luno Bilgi genel bakış',
       1 => '${_questions.length} soru • $_pendingCount onay bekliyor',
-      2 => 'Soru bankasına yeni soru ekle',
+      2 => _editing == null ? 'Soru bankasına yeni soru ekle' : 'Kayıtlı soruyu güncelle',
       3 => '$_pendingCount soru onay bekliyor',
       4 => '${_questions.where((q) => q.status == 'rejected').length} soru reddedildi',
       5 => 'Yalnızca CSV ile toplu soru yükle',
@@ -330,7 +349,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => setState(() => _index = i),
+          onTap: () => i == 2 ? _openEditor() : setState(() => _index = i),
           hoverColor: const Color(0x146C3CE9),
           child: Container(
             decoration: BoxDecoration(
@@ -385,7 +404,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
             height: 40,
             child: TextField(
               controller: _topSearch,
-              onChanged: (_) => setState(() => _bankPage = 0),
+              onChanged: (_) => setState(() {}),
               style: const TextStyle(color: Colors.white, fontSize: 13),
               decoration: InputDecoration(
                 hintText: 'Ara: soru, kullanıcı, kategori...',
@@ -421,6 +440,71 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     );
   }
 
+  Future<void> _loadMail() async {
+    final token = sl<ApiSession>().adminToken;
+    if (token == null || token.isEmpty) {
+      if (mounted) setState(() => _note = 'E-posta şablonu için yönetici oturumu gerekli.');
+      return;
+    }
+    final template = await BilgiMailApi.load(token);
+    if (!mounted || template == null) {
+      if (mounted) setState(() => _note = 'E-posta şablonu alınamadı.');
+      return;
+    }
+    setState(() {
+      _mailSubject.text = template.subject;
+      _mailHtml.text = template.htmlBody;
+      _mailText.text = template.textBody;
+    });
+  }
+
+  Future<void> _saveMail() async {
+    final token = sl<ApiSession>().adminToken ?? '';
+    final error = await BilgiMailApi.save(
+      token,
+      MailTemplate(subject: _mailSubject.text, htmlBody: _mailHtml.text, textBody: _mailText.text),
+    );
+    if (!mounted) return;
+    setState(() => _note = error ?? 'E-posta şablonu kaydedildi.');
+  }
+
+  Future<void> _sendTestMail() async {
+    final token = sl<ApiSession>().adminToken ?? '';
+    final message = await BilgiMailApi.sendTest(token, _mailTestTo.text);
+    if (!mounted) return;
+    setState(() => _note = message);
+  }
+
+  Widget _mail() {
+    if (!_mailLoaded) {
+      _mailLoaded = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadMail());
+    }
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+      children: [
+        const Text('Yer tutucular: {{code}} ve {{email}}', style: TextStyle(color: BilgiColors.muted)),
+        const SizedBox(height: 12),
+        TextField(controller: _mailSubject, decoration: const InputDecoration(labelText: 'Konu')),
+        const SizedBox(height: 12),
+        TextField(controller: _mailHtml, maxLines: 8, decoration: const InputDecoration(labelText: 'HTML')),
+        const SizedBox(height: 12),
+        TextField(controller: _mailText, maxLines: 6, decoration: const InputDecoration(labelText: 'Düz metin')),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            _primary('Şablonu kaydet', () { _saveMail(); }),
+            SizedBox(width: 280, child: TextField(controller: _mailTestTo, decoration: const InputDecoration(labelText: 'Deneme adresi'))),
+            _ghost('Deneme maili gönder', () { _sendTestMail(); }),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _body() {
     return switch (_index) {
       0 => _summary(),
@@ -447,6 +531,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       21 => _eventEditor(),
       22 => _stats(),
       23 => _general(),
+      24 => _admins(),
+      25 => _mail(),
       _ => _admins(),
     };
   }
@@ -545,7 +631,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
               _dashPanel(
                 title: 'Hızlı İşlemler',
                 child: _quickGrid([
-                  _dashQuick('➕', 'Soru Ekle', () => setState(() => _index = 2)),
+                  _dashQuick('➕', 'Soru Ekle', _openEditor),
                   _dashQuick('📥', 'Toplu İçe Aktar', () => setState(() => _index = 5)),
                   _dashQuick('✅', 'Onay Bekleyenler', () => setState(() => _index = 3)),
                   _dashQuick('📢', 'Duyuru Gönder', () {}),
@@ -629,15 +715,93 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     return _bankTable();
   }
 
+  Future<void> _applyBulkCategory() async {
+    if (_bulkBusy) return;
+    if (_selectedIds.isEmpty) {
+      setState(() => _note = 'Önce soru seç.');
+      return;
+    }
+    if (_moveCat.isEmpty || _moveSub.isEmpty) {
+      setState(() => _note = 'Üst kategori ve alt kategori seç.');
+      return;
+    }
+    final category = _categories.where((item) => item.id == _moveCat).firstOrNull;
+    if (category == null || !category.subs.contains(_moveSub)) {
+      setState(() => _note = 'Alt kategori bu üst kategoriye ait değil.');
+      return;
+    }
+    final chosen = _questions.where((question) => _selectedIds.contains(question.id)).toList();
+    setState(() => _bulkBusy = true);
+    var saved = 0;
+    var failed = 0;
+    for (final question in chosen) {
+      final previous = _categories.where((item) => item.id == question.categoryId).firstOrNull;
+      final oldSubs = previous?.subs.toSet() ?? {};
+      try {
+        await _server.saveQuestion(
+          BilgiQuestion(
+            id: question.id,
+            categoryId: _moveCat,
+            text: question.text,
+            options: question.options,
+            correct: question.correct,
+            difficulty: question.difficulty,
+            explanation: question.explanation,
+            status: question.status,
+            tags: [
+              _moveSub,
+              ...question.tags.where((tag) => tag != _moveSub && !oldSubs.contains(tag)),
+            ],
+            rejectReason: question.rejectReason,
+          ),
+        );
+        saved += 1;
+      } catch (_) {
+        failed += 1;
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _bulkBusy = false;
+      _note = '$saved sorunun kategorisi değişti. $failed kaydedilemedi.';
+    });
+    await _load();
+  }
+
+  Future<void> _deleteSelected() async {
+    if (_bulkBusy || _selectedIds.isEmpty) {
+      if (_selectedIds.isEmpty) setState(() => _note = 'Önce soru seç.');
+      return;
+    }
+    final ids = _selectedIds.toList();
+    setState(() => _bulkBusy = true);
+    for (final id in ids) {
+      await _server.deleteQuestion(id);
+    }
+    if (!mounted) return;
+    setState(() {
+      _bulkBusy = false;
+      _selectedIds.removeAll(ids);
+      _note = '${ids.length} soru silindi.';
+    });
+    await _load();
+  }
+
   Widget _bankTable() {
-    final query = _topSearch.text.trim().toLowerCase();
+    final query = _bankSearch.text.trim();
+    final filtering = query.length >= 3;
+    final folded = _fold(query);
     final rows = _questions.where((q) {
       if (_bankCat.isNotEmpty && q.categoryId != _bankCat) return false;
       if (_bankSub.isNotEmpty && !q.tags.contains(_bankSub)) return false;
       if (_bankDiff.isNotEmpty && q.difficulty != _bankDiff) return false;
       if (_bankStatus.isNotEmpty && q.status != _bankStatus) return false;
-      if (query.isEmpty) return true;
-      return q.text.toLowerCase().contains(query) || q.id.toLowerCase().contains(query);
+      if (!filtering) return true;
+      if (_fold(q.text).contains(folded)) return true;
+      for (final option in q.options) {
+        if (_fold(option).contains(folded)) return true;
+      }
+      return false;
     }).toList();
     const pageSize = 12;
     final pages = rows.isEmpty ? 1 : (rows.length / pageSize).ceil();
@@ -652,30 +816,87 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
           padding: const EdgeInsets.all(16),
           margin: const EdgeInsets.only(bottom: 16),
           decoration: _cardDeco(),
-          child: Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            crossAxisAlignment: WrapCrossAlignment.center,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _SearchCombo(
-                hint: 'Ana kategori',
-                selected: _bankCat,
-                options: [for (final c in _categories) (c.id, '${c.emoji} ${c.name}')],
-                onChanged: (v) => setState(() { _bankCat = v; _bankSub = ''; _bankPage = 0; }),
+              const Text('Ara', style: TextStyle(color: BilgiColors.muted, fontSize: 12, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _bankSearch,
+                style: const TextStyle(color: Colors.white),
+                onChanged: (_) => setState(() => _bankPage = 0),
+                decoration: InputDecoration(
+                  hintText: 'En az 3 harf yaz',
+                  hintStyle: const TextStyle(color: BilgiColors.muted),
+                  helperText: query.isEmpty || filtering ? null : 'Arama 3 harfte başlar',
+                  helperStyle: const TextStyle(color: BilgiColors.muted, fontSize: 11),
+                ),
               ),
-              _SearchCombo(
-                hint: _bankCat.isEmpty ? 'Önce ana kategori' : 'Alt kategori',
-                selected: _bankSub,
-                enabled: _bankCat.isNotEmpty,
-                options: [
-                  for (final name in _categories.where((item) => item.id == _bankCat).firstOrNull?.subs ?? const <String>[]) (name, name),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _SearchCombo(
+                    hint: 'Ana kategori',
+                    selected: _bankCat,
+                    options: [for (final c in _categories) (c.id, '${c.emoji} ${c.name}')],
+                    onChanged: (v) => setState(() { _bankCat = v; _bankSub = ''; _bankPage = 0; }),
+                  ),
+                  _SearchCombo(
+                    hint: _bankCat.isEmpty ? 'Önce ana kategori' : 'Alt kategori',
+                    selected: _bankSub,
+                    enabled: _bankCat.isNotEmpty,
+                    options: [
+                      for (final name in _categories.where((item) => item.id == _bankCat).firstOrNull?.subs ?? const <String>[]) (name, name),
+                    ],
+                    onChanged: (v) => setState(() { _bankSub = v; _bankPage = 0; }),
+                  ),
+                  _select(_bankDiff, [('','Tüm Zorluklar'), ('kolay','Kolay'), ('orta','Orta'), ('zor','Zor'), ('efsane','Efsane')], (v) => setState(() { _bankDiff = v; _bankPage = 0; })),
+                  _select(_bankStatus, [('','Tüm Durumlar'), ('approved','Onaylı'), ('pending','Bekleyen'), ('draft','Taslak'), ('rejected','Reddedilen')], (v) => setState(() { _bankStatus = v; _bankPage = 0; })),
+                  _ghost('📥 İçe Aktar', () => setState(() => _index = 5)),
+                  _primary('➕ Yeni Soru', _openEditor),
                 ],
-                onChanged: (v) => setState(() { _bankSub = v; _bankPage = 0; }),
               ),
-              _select(_bankDiff, [('','Tüm Zorluklar'), ('kolay','Kolay'), ('orta','Orta'), ('zor','Zor'), ('efsane','Efsane')], (v) => setState(() { _bankDiff = v; _bankPage = 0; })),
-              _select(_bankStatus, [('','Tüm Durumlar'), ('approved','Onaylı'), ('pending','Bekleyen'), ('draft','Taslak'), ('rejected','Reddedilen')], (v) => setState(() { _bankStatus = v; _bankPage = 0; })),
-              _ghost('📥 İçe Aktar', () => setState(() => _index = 5)),
-              _primary('➕ Yeni Soru', () => setState(() => _index = 2)),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _ghost('Tümünü seç', () {
+                    if (rows.isEmpty || _bulkBusy) return;
+                    setState(() {
+                      for (final question in rows) {
+                        _selectedIds.add(question.id);
+                      }
+                    });
+                  }),
+                  _ghost('Seçimi temizle', () {
+                    if (_selectedIds.isEmpty || _bulkBusy) return;
+                    setState(_selectedIds.clear);
+                  }),
+                  Text('${_selectedIds.length} seçili', style: const TextStyle(color: BilgiColors.muted, fontSize: 12)),
+                  _SearchCombo(
+                    hint: 'Üst kategori',
+                    selected: _moveCat,
+                    options: [for (final c in _categories) (c.id, '${c.emoji} ${c.name}')],
+                    onChanged: (v) => setState(() { _moveCat = v; _moveSub = ''; }),
+                  ),
+                  _SearchCombo(
+                    hint: _moveCat.isEmpty ? 'Önce üst kategori' : 'Alt kategori',
+                    selected: _moveSub,
+                    enabled: _moveCat.isNotEmpty,
+                    options: [
+                      for (final name in _categories.where((item) => item.id == _moveCat).firstOrNull?.subs ?? const <String>[]) (name, name),
+                    ],
+                    onChanged: (v) => setState(() => _moveSub = v),
+                  ),
+                  _primary('Kategoriyi değiştir', () { _applyBulkCategory(); }),
+                  _solid('Seçimi sil', BilgiColors.error, Colors.white, () { _deleteSelected(); }),
+                ],
+              ),
             ],
           ),
         ),
@@ -684,6 +905,32 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
           child: Column(
             children: [
               _bankCells([
+                Checkbox(
+                  tristate: true,
+                  value: rows.isEmpty
+                      ? false
+                      : (rows.every((question) => _selectedIds.contains(question.id))
+                          ? true
+                          : (rows.any((question) => _selectedIds.contains(question.id)) ? null : false)),
+                  onChanged: rows.isEmpty || _bulkBusy
+                      ? null
+                      : (_) {
+                          final all = rows.every((question) => _selectedIds.contains(question.id));
+                          setState(() {
+                            if (all) {
+                              for (final question in rows) {
+                                _selectedIds.remove(question.id);
+                              }
+                            } else {
+                              for (final question in rows) {
+                                _selectedIds.add(question.id);
+                              }
+                            }
+                          });
+                        },
+                  activeColor: BilgiColors.secondary,
+                  side: const BorderSide(color: Colors.white54),
+                ),
                 for (final label in const ['ID', 'SORU', 'KATEGORİ', 'ALT KATEGORİ', 'ZORLUK', 'DURUM', 'İŞLEM'])
                   Text(label, style: const TextStyle(color: BilgiColors.muted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.6)),
               ], header: true),
@@ -710,7 +957,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     );
   }
 
-  static const _bankFlex = [2, 4, 2, 3, 2, 2, 2];
+  static const _bankFlex = [1, 2, 4, 2, 3, 2, 2, 2];
 
   Widget _bankCells(List<Widget> cells, {bool header = false}) {
     return Container(
@@ -733,6 +980,20 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   Widget _bankRow(BilgiQuestion question) {
     final pending = question.status == 'pending';
     return _bankCells([
+      Checkbox(
+        value: _selectedIds.contains(question.id),
+        onChanged: _bulkBusy
+            ? null
+            : (checked) => setState(() {
+                  if (checked ?? false) {
+                    _selectedIds.add(question.id);
+                  } else {
+                    _selectedIds.remove(question.id);
+                  }
+                }),
+        activeColor: BilgiColors.secondary,
+        side: const BorderSide(color: Colors.white54),
+      ),
       Text(question.id, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: BilgiColors.muted, fontSize: 12)),
       Text(question.text, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 13)),
       Text(_catLabel(question.categoryId), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13)),
@@ -743,7 +1004,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
         children: [
           if (pending) _iconBtn('✅', () => _setStatus(question, 'approved')),
           if (pending) _iconBtn('❌', () => _setStatus(question, 'rejected')),
-          if (!pending) _iconBtn('✏️', () => setState(() => _index = 2)),
+          _iconBtn('✏️', () => _openEditor(question)),
           if (!pending) _iconBtn('🗑️', () async { await _server.deleteQuestion(question.id); await _load(); }),
         ],
       ),
@@ -791,7 +1052,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    _ghost('✏️ Düzenle', () => setState(() => _index = 2)),
+                    _ghost('✏️ Düzenle', () => _openEditor(question)),
                     const SizedBox(width: 8),
                     _solid('Reddet', BilgiColors.error, Colors.white, () => _setStatus(question, 'rejected')),
                     const SizedBox(width: 8),
@@ -828,7 +1089,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                         Expanded(flex: 3, child: Text(question.text, maxLines: 1, overflow: TextOverflow.ellipsis)),
                         Expanded(flex: 2, child: Text(_catLabel(question.categoryId), maxLines: 1, overflow: TextOverflow.ellipsis)),
                         SizedBox(width: 120, child: _badge(question.rejectReason.isEmpty ? 'Reddedildi' : question.rejectReason, BilgiColors.error)),
-                        _iconBtn('✏️', () => setState(() => _index = 2)),
+                        _iconBtn('✏️', () => _openEditor(question)),
                         _iconBtn('✅', () => _setStatus(question, 'approved')),
                       ],
                     ),
@@ -845,34 +1106,68 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     await _load();
   }
 
+  void _openEditor([BilgiQuestion? question]) {
+    setState(() {
+      _editing = question;
+      _formSerial += 1;
+      _index = 2;
+    });
+  }
+
   Widget _editor() {
     final known = <String>{
       for (final question in _questions) ...question.tags.where((tag) => tag.isNotEmpty && bilgiCategoryById(tag) == null),
       ..._config.adminTags.where((tag) => tag.isNotEmpty),
     }.toList()
       ..sort();
+    final existing = _editing;
+    final category = existing == null
+        ? null
+        : _categories.where((item) => item.id == existing.categoryId).firstOrNull ?? bilgiCategoryById(existing.categoryId);
+    final initial = existing == null
+        ? null
+        : BilgiQuestionFormData.fromQuestion(existing, categorySubs: category?.subs ?? const []);
     return _QuestionForm(
-      key: ValueKey(_formSerial),
+      key: ValueKey('$_formSerial-${existing?.id ?? 'new'}'),
       categories: _categories,
       knownTags: known,
-      onCancel: () => setState(() => _index = 1),
+      initial: initial,
+      onCancel: () => setState(() {
+        _editing = null;
+        _index = 1;
+      }),
       onSave: (draft) async {
-        await _server.saveQuestion(
-          BilgiQuestion(
-            id: 'q${DateTime.now().microsecondsSinceEpoch}',
-            categoryId: draft.categoryId,
-            text: draft.text,
-            options: draft.options,
-            correct: draft.correct,
-            difficulty: draft.difficulty,
-            explanation: draft.explanation,
-            status: draft.asDraft ? 'draft' : 'pending',
-            tags: draft.tags,
-          ),
+        final id = existing?.id ?? 'q${DateTime.now().microsecondsSinceEpoch}';
+        final written = BilgiQuestion(
+          id: id,
+          categoryId: draft.categoryId,
+          text: draft.text,
+          options: draft.options,
+          correct: draft.correct,
+          difficulty: draft.difficulty,
+          explanation: draft.explanation,
+          status: draft.asDraft ? 'draft' : (existing == null ? 'pending' : draft.status),
+          tags: draft.tags,
+          rejectReason: existing?.rejectReason ?? '',
         );
+        try {
+          await _server.saveQuestion(written);
+          final kept = await _server.questions();
+          final stored = kept.where((question) => question.id == id).firstOrNull;
+          if (stored == null || !sameStoredBilgiQuestion(stored, written)) {
+            throw StateError('Soru kaydedilemedi.');
+          }
+        } catch (_) {
+          setState(() => _note = 'Soru kaydedilemedi.');
+          rethrow;
+        }
         setState(() {
           _formSerial += 1;
-          _note = draft.asDraft ? 'Taslak kaydedildi.' : 'Soru beklemeye alındı.';
+          _editing = null;
+          _note = existing == null
+              ? (draft.asDraft ? 'Taslak kaydedildi.' : 'Soru beklemeye alındı.')
+              : (draft.asDraft ? 'Taslak güncellendi.' : 'Soru güncellendi.');
+          if (existing != null) _index = 1;
         });
         await _load();
       },
@@ -929,7 +1224,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                     minLines: 8,
                     maxLines: 14,
                     style: const TextStyle(color: Colors.white, fontSize: 13, fontFamily: 'monospace'),
-                    decoration: _fieldDeco('soru,a,b,c,d,dogru,kategori,altkategori,zorluk'),
+                    decoration: _fieldDeco(bilgiCsvColumns.join(',')),
                   ),
                   const SizedBox(height: 12),
                   Align(alignment: Alignment.centerLeft, child: _primary('Kaydet', _saveCsvText)),
@@ -942,7 +1237,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                     spacing: 6,
                     runSpacing: 6,
                     children: [
-                      for (final name in const ['soru', 'a', 'b', 'c', 'd', 'dogru', 'kategori', 'altkategori', 'zorluk'])
+                      for (final name in bilgiCsvColumns)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(color: BilgiColors.bg, borderRadius: BorderRadius.circular(8)),
@@ -958,6 +1253,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                   const Text('Doğru cevap: A, B, C veya D.', style: TextStyle(color: Colors.white70, fontSize: 13)),
                   const SizedBox(height: 6),
                   const Text('Zorluk: kolay, orta, zor, efsane.', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                  const SizedBox(height: 6),
+                  const Text('Açıklama, soru cevaplandıktan sonra gösterilen doğru cevap metnidir. Virgül varsa tırnak içine alın.', style: TextStyle(color: Colors.white70, fontSize: 13)),
                   const SizedBox(height: 6),
                   const Text('Kategori ana kategori adıdır. Alt kategori zorunludur. Bilinmeyen satır atlanır. Yeni sorular onay bekler.', style: TextStyle(color: Colors.white70, fontSize: 13)),
                 ]),
@@ -984,7 +1281,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     if (!mounted) return;
     setState(() {
       _csvName = file.name;
-      _note = '${file.name}: ${added.$1} satır beklemeye alındı. ${added.$2} satır atlandı.';
+      _note = '${file.name}: ${added.$1} satır beklemeye alındı. ${added.$2} satır atlandı. ${added.$3} satır kaydedilemedi.';
     });
     await _load();
   }
@@ -1002,45 +1299,58 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     final added = await _importCsv(raw);
     if (!mounted) return;
     _csvText.clear();
-    setState(() => _note = '${added.$1} satır beklemeye alındı. ${added.$2} satır atlandı.');
+    setState(() => _note = '${added.$1} satır beklemeye alındı. ${added.$2} satır atlandı. ${added.$3} satır kaydedilemedi.');
     await _load();
   }
 
-  Future<(int, int)> _importCsv(String raw) async {
+  Future<(int, int, int)> _importCsv(String raw) async {
     var added = 0;
     var skipped = 0;
+    var failed = 0;
+    var seq = 0;
     final text = raw.replaceFirst('\uFEFF', '');
     for (final line in text.split(RegExp(r'\r?\n'))) {
-      if (line.trim().isEmpty) continue;
-      final parts = _csvRow(line);
-      if (parts.length < 9) {
+      final parsed = parseBilgiCsvLine(line);
+      if (parsed.kind == BilgiCsvKind.blank || parsed.kind == BilgiCsvKind.header) continue;
+      final fields = parsed.fields;
+      if (parsed.kind == BilgiCsvKind.invalid || fields == null) {
         skipped += 1;
         continue;
       }
-      if (_fold(parts[0].trim()) == 'soru') continue;
-      final category = _categoryId(parts[6]);
-      final subcategory = category == null ? null : _subName(category, parts[7]);
-      final difficulty = _fold(parts[8].trim());
-      if (category == null || subcategory == null || parts[0].trim().isEmpty || !const {'kolay', 'orta', 'zor', 'efsane'}.contains(difficulty)) {
+      final category = _categoryId(fields.category);
+      final subcategory = category == null ? null : _subName(category, fields.subcategory);
+      final difficulty = _fold(fields.difficulty);
+      if (category == null || subcategory == null || fields.text.isEmpty || !const {'kolay', 'orta', 'zor', 'efsane'}.contains(difficulty)) {
         skipped += 1;
         continue;
       }
-      added += 1;
-      await _server.saveQuestion(
-        BilgiQuestion(
-          id: 'imp${DateTime.now().microsecondsSinceEpoch}$added',
-          text: parts[0].trim(),
-          options: [parts[1].trim(), parts[2].trim(), parts[3].trim(), parts[4].trim()],
-          correct: _letterIndex(parts[5]),
-          categoryId: category,
-          difficulty: difficulty,
-          explanation: '',
-          status: 'pending',
-          tags: [subcategory],
-        ),
+      seq += 1;
+      final id = 'imp${DateTime.now().microsecondsSinceEpoch}$seq';
+      final question = BilgiQuestion(
+        id: id,
+        text: fields.text,
+        options: fields.options,
+        correct: _letterIndex(fields.correctLetter),
+        categoryId: category,
+        difficulty: difficulty,
+        explanation: fields.explanation,
+        status: 'pending',
+        tags: [subcategory],
       );
+      try {
+        await _server.saveQuestion(question);
+        final kept = await _server.questions();
+        final stored = kept.where((item) => item.id == id).firstOrNull;
+        if (stored == null || !sameStoredBilgiQuestion(stored, question)) {
+          failed += 1;
+          continue;
+        }
+        added += 1;
+      } catch (_) {
+        failed += 1;
+      }
     }
-    return (added, skipped);
+    return (added, skipped, failed);
   }
 
   String? _categoryId(String raw) {
@@ -1062,36 +1372,6 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       if (_fold(name) == folded) return name;
     }
     return null;
-  }
-
-  List<String> _csvRow(String line) {
-    final out = <String>[];
-    final buf = StringBuffer();
-    var quote = false;
-    for (var i = 0; i < line.length; i++) {
-      final ch = line[i];
-      if (quote) {
-        if (ch == '"') {
-          if (i + 1 < line.length && line[i + 1] == '"') {
-            buf.write('"');
-            i += 1;
-          } else {
-            quote = false;
-          }
-        } else {
-          buf.write(ch);
-        }
-      } else if (ch == '"') {
-        quote = true;
-      } else if (ch == ',') {
-        out.add(buf.toString());
-        buf.clear();
-      } else {
-        buf.write(ch);
-      }
-    }
-    out.add(buf.toString());
-    return out;
   }
 
   int _letterIndex(String raw) {
@@ -1335,6 +1615,12 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     }
     final selected = _categories.where((category) => category.id == _subCat).firstOrNull ?? _categories.first;
     final count = _questions.where((q) => q.categoryId == selected.id && q.status == 'approved').length;
+    final query = _subSearch.text.trim();
+    final filtering = query.length >= 3;
+    final folded = _fold(query);
+    final karmaTitle = '${selected.name} Karma';
+    final showKarma = !filtering || _fold(karmaTitle).contains(folded);
+    final visibleSubs = filtering ? [for (final sub in selected.subs) if (_fold(sub).contains(folded)) sub] : selected.subs;
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       children: [
@@ -1349,6 +1635,20 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
               const SizedBox(height: 8),
               _select(selected.id, [for (final c in _categories) (c.id, '${c.emoji} ${c.name}')], (v) => setState(() => _subCat = v)),
               const SizedBox(height: 16),
+              const Text('Ara', style: TextStyle(color: BilgiColors.muted, fontSize: 12, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _subSearch,
+                style: const TextStyle(color: Colors.white),
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: 'En az 3 harf yaz',
+                  hintStyle: const TextStyle(color: BilgiColors.muted),
+                  helperText: query.isEmpty || filtering ? null : 'Arama 3 harfte başlar',
+                  helperStyle: const TextStyle(color: BilgiColors.muted, fontSize: 11),
+                ),
+              ),
+              const SizedBox(height: 16),
               const Text('Yeni alt kategori', style: TextStyle(color: BilgiColors.muted, fontSize: 12, fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
               Row(
@@ -1361,11 +1661,13 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
             ],
           ),
         ),
-        _subRow('🎲', '${selected.name} Karma', 'Aynı soru havuzu • $count soru', gradient: true),
+        if (showKarma) _subRow('🎲', karmaTitle, 'Aynı soru havuzu • $count soru', gradient: true),
         if (selected.subs.isEmpty)
           const Padding(padding: EdgeInsets.only(top: 12), child: Text('Bu kategoride alt kategori yok.', style: TextStyle(color: BilgiColors.muted)))
+        else if (visibleSubs.isEmpty && !showKarma)
+          const Padding(padding: EdgeInsets.only(top: 12), child: Text('Sonuç yok.', style: TextStyle(color: BilgiColors.muted)))
         else
-          for (final sub in selected.subs)
+          for (final sub in visibleSubs)
             _subRow(
               _subIcon(sub),
               sub,
@@ -2442,6 +2744,7 @@ class _QuestionDraft {
     required this.explanation,
     required this.tags,
     required this.asDraft,
+    required this.status,
   });
 
   final String text;
@@ -2452,32 +2755,45 @@ class _QuestionDraft {
   final String explanation;
   final List<String> tags;
   final bool asDraft;
+  final String status;
 }
 
 class _QuestionForm extends StatefulWidget {
-  const _QuestionForm({super.key, required this.categories, required this.knownTags, required this.onSave, required this.onCancel});
+  const _QuestionForm({
+    super.key,
+    required this.categories,
+    required this.knownTags,
+    required this.onSave,
+    required this.onCancel,
+    this.initial,
+  });
 
   final List<BilgiCategory> categories;
   final List<String> knownTags;
   final Future<void> Function(_QuestionDraft draft) onSave;
   final VoidCallback onCancel;
+  final BilgiQuestionFormData? initial;
 
   @override
   State<_QuestionForm> createState() => _QuestionFormState();
 }
 
 class _QuestionFormState extends State<_QuestionForm> {
-  final _text = TextEditingController();
-  final _options = List.generate(4, (_) => TextEditingController());
-  final _explanation = TextEditingController();
+  late final _text = TextEditingController(text: widget.initial?.text ?? '');
+  late final _options = [
+    for (var i = 0; i < 4; i++)
+      TextEditingController(text: widget.initial != null && i < widget.initial!.options.length ? widget.initial!.options[i] : ''),
+  ];
+  late final _explanation = TextEditingController(text: widget.initial?.explanation ?? '');
   final _newTag = TextEditingController();
-  var _correct = -1;
-  var _category = '';
-  var _sub = '';
-  var _difficulty = 'kolay';
+  late var _correct = widget.initial?.correct ?? -1;
+  late var _category = widget.initial?.categoryId ?? '';
+  late var _sub = widget.initial?.subcategory ?? '';
+  late var _difficulty = widget.initial?.difficulty ?? 'kolay';
+  late var _status = widget.initial?.status ?? '';
   var _addingTag = false;
   var _busy = false;
-  final _picked = <String>{};
+  late final _picked = <String>{...?widget.initial?.tags};
 
   @override
   void dispose() {
@@ -2503,18 +2819,24 @@ class _QuestionFormState extends State<_QuestionForm> {
     if (category == null || !category.subs.contains(sub)) return;
     final tags = {..._picked, sub};
     setState(() => _busy = true);
-    await widget.onSave(
-      _QuestionDraft(
-        text: text,
-        options: options,
-        correct: _correct,
-        categoryId: _category,
-        difficulty: _difficulty,
-        explanation: _explanation.text.trim(),
-        tags: tags.toList(),
-        asDraft: draft,
-      ),
-    );
+    try {
+      await widget.onSave(
+        _QuestionDraft(
+          text: text,
+          options: options,
+          correct: _correct,
+          categoryId: _category,
+          difficulty: _difficulty,
+          explanation: _explanation.text.trim(),
+          tags: tags.toList(),
+          asDraft: draft,
+          status: draft ? 'draft' : (_status.isEmpty ? 'pending' : _status),
+        ),
+      );
+    } catch (_) {
+      if (mounted) setState(() => _busy = false);
+      return;
+    }
     if (mounted) setState(() => _busy = false);
   }
 
@@ -2561,6 +2883,10 @@ class _QuestionFormState extends State<_QuestionForm> {
                     children: [
                       Expanded(child: _drop('Zorluk', _difficulty, const [('kolay', 'Kolay'), ('orta', 'Orta'), ('zor', 'Zor'), ('efsane', 'Efsane')], (v) => setState(() => _difficulty = v))),
                       const SizedBox(width: 16),
+                      if (widget.initial != null) ...[
+                        Expanded(child: _drop('Durum', _status, const [('pending', 'Bekliyor'), ('approved', 'Onaylı'), ('draft', 'Taslak'), ('rejected', 'Reddedildi')], (v) => setState(() => _status = v))),
+                        const SizedBox(width: 16),
+                      ],
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,

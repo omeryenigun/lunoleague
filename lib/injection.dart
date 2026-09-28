@@ -12,66 +12,24 @@ import 'package:kelimelig/core/services/motion_manager.dart';
 import 'package:kelimelig/core/services/logger_service.dart';
 import 'package:kelimelig/core/services/notification_service.dart';
 import 'package:kelimelig/data/local/hive_store.dart';
-import 'package:kelimelig/core/config/api_config.dart';
 import 'package:kelimelig/data/remote/api_session.dart';
-import 'package:kelimelig/data/remote/league_remote_sync.dart';
-import 'package:kelimelig/data/remote/remote_game_server.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
-import 'package:kelimelig/data/local/local_game_server.dart';
-import 'package:kelimelig/data/local/scoped_store.dart';
-import 'package:kelimelig/domain/game/game_ids.dart';
-import 'package:kelimelig/domain/game/game_server.dart';
-import 'package:kelimelig/games/luno_fall/luno_fall_server.dart';
-import 'package:kelimelig/games/luno_grid/luno_grid_server.dart';
-import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
 
 final sl = GetIt.instance;
 
 Future<void> configureDependencies({
   KeyValueStore? store,
   bool initHive = true,
-  bool syncRemote = false,
 }) async {
-  if (sl.isRegistered<GameServer>()) return;
+  if (sl.isRegistered<KeyValueStore>()) return;
 
-  final session = ApiSession();
-  sl.registerSingleton<ApiSession>(session);
-  final remote = store == null && initHive;
+  sl.registerSingleton<ApiSession>(ApiSession());
   if (initHive && store == null) {
     await Hive.initFlutter();
   }
   final root = store ?? await HiveKeyValueStore.open();
-  if (root is HiveKeyValueStore) {
-    await root.adoptLegacyBoxes(GameIds.lunoLeague);
-  }
-  final fall = LunoFallServer(ScopedKeyValueStore(root, GameIds.lunoFall));
-  await fall.initialize();
-  final grid = LunoGridServer(
-    ScopedKeyValueStore(root, GameIds.lunoGrid),
-    words: () => gridDictionary(ScopedKeyValueStore(root, GameIds.lunoLeague)),
-  );
-  final bilgi = LunoBilgiServer(ScopedKeyValueStore(root, GameIds.lunoBilgi));
-  await bilgi.ensureSeed();
-
-  final GameServer server;
-  if (remote) {
-    await restorePlayerToken(session);
-    server = RemoteGameServer(ApiConfig.baseUrl, session);
-  } else {
-    final kv = ScopedKeyValueStore(root, GameIds.lunoLeague);
-    final local = LocalGameServer(kv);
-    await local.initialize();
-    if (syncRemote) {
-      await syncLunoLeagueContent(kv);
-    }
-    server = local;
-  }
 
   sl.registerSingleton<KeyValueStore>(root);
-  sl.registerSingleton<GameServer>(server);
-  sl.registerSingleton<LunoFallServer>(fall);
-  sl.registerSingleton<LunoGridServer>(grid);
-  sl.registerSingleton<LunoBilgiServer>(bilgi);
   sl.registerSingleton<DeviceLink>(DeviceLink());
   sl.registerSingleton<L10n>(L10n());
   sl.registerSingleton<Appearance>(Appearance());

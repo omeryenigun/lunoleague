@@ -5,6 +5,7 @@ import 'package:kelimelig/core/services/ad_service.dart';
 import 'package:kelimelig/core/services/google_auth.dart';
 import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_mail.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
 
@@ -679,7 +680,30 @@ class BilgiController extends ChangeNotifier {
 
   Future<void> requestReset(String email) async {
     final result = await server.requestPasswordReset(email);
-    notice = result.message;
+    if (!result.ok) {
+      notice = result.message;
+      notifyListeners();
+      return;
+    }
+    notice = await BilgiMailApi.sendReset(email);
+    notifyListeners();
+  }
+
+  Future<void> confirmReset(String email, String code, String password) async {
+    final local = await server.requestPasswordReset(email);
+    if (!local.ok) {
+      notice = local.message;
+      notifyListeners();
+      return;
+    }
+    final error = await BilgiMailApi.confirm(email, code);
+    if (error != null) {
+      notice = error;
+      notifyListeners();
+      return;
+    }
+    final result = await server.resetPassword(email: email, password: password);
+    notice = result.ok ? 'Şifre güncellendi.' : result.message;
     notifyListeners();
   }
 

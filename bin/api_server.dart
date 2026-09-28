@@ -6,6 +6,7 @@ import 'package:kelimelig/api/admin_http.dart';
 import 'package:kelimelig/api/coming_soon_page.dart';
 import 'package:kelimelig/api/site_cards.dart';
 import 'package:kelimelig/api/game_http.dart';
+import 'package:kelimelig/api/mail_http.dart';
 import 'package:kelimelig/api/privacy_page.dart';
 import 'package:kelimelig/core/constants/game_version.dart';
 import 'package:kelimelig/data/local/local_game_server.dart';
@@ -26,6 +27,7 @@ Future<void> main() async {
   }
   final db = await _open(databaseUrl);
   await PostgresKv.migrate(db);
+  await migrateMail(db);
   await migrateAdmin(db);
   await migrateSiteCards(db);
   await seedSiteCards(db);
@@ -123,6 +125,7 @@ Future<void> main() async {
     ..get('/privacy/', privacyPolicyPage)
     ..get('/app-ads.txt', appAdsTxtPage);
   mountAdminApi(router, db);
+  mountMailApi(router, db);
   mountSiteCards(router, db);
   _mountAdminWeb(router);
 

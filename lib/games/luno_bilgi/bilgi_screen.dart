@@ -1589,13 +1589,15 @@ class _BilgiScreenState extends State<BilgiScreen> {
         if (_game.notice != null) _note(_game.notice!),
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 20),
-          child: Text('Şifre yalnızca bu cihazdaki hesap için güncellenir.'),
+          child: Text('Kod e-postana gelir. Şifre bu cihazdaki hesapta güncellenir.'),
         ),
         _FormCard(
-          title: 'Yeni şifre',
-          fields: const ['E-posta', 'Yeni şifre'],
-          submit: 'Güncelle',
-          onSubmit: (values) => _game.resetPassword(values[0], values[1]),
+          title: 'Şifre sıfırlama',
+          fields: const ['E-posta', 'Kod', 'Yeni şifre'],
+          submit: 'Şifreyi güncelle',
+          secondaryLabel: 'Kod gönder',
+          onSecondary: (values) => _game.requestReset(values[0]),
+          onSubmit: (values) => _game.confirmReset(values[0], values[1], values[2]),
         ),
       ],
     );
@@ -2456,6 +2458,8 @@ class _FormCard extends StatefulWidget {
     required this.submit,
     required this.onSubmit,
     this.initial = const [],
+    this.secondaryLabel,
+    this.onSecondary,
   });
 
   final String title;
@@ -2463,6 +2467,8 @@ class _FormCard extends StatefulWidget {
   final String submit;
   final void Function(List<String> values) onSubmit;
   final List<String> initial;
+  final String? secondaryLabel;
+  final void Function(List<String> values)? onSecondary;
 
   @override
   State<_FormCard> createState() => _FormCardState();
@@ -2502,6 +2508,11 @@ class _FormCardState extends State<_FormCard> {
             label: widget.submit,
             onTap: () => widget.onSubmit([for (final field in _fields) field.text]),
           ),
+          if (widget.onSecondary != null && widget.secondaryLabel != null)
+            TextButton(
+              onPressed: () => widget.onSecondary!([for (final field in _fields) field.text]),
+              child: Text(widget.secondaryLabel!),
+            ),
         ],
       ),
     );

@@ -63,9 +63,7 @@ class LunoBilgiServer {
       }
     }
     for (final question in bilgiTrialQuestions) {
-      if (await _store.get(_questions, question.id) == null) {
-        await _store.put(_questions, question.id, question.toMap());
-      }
+      await _store.delete(_questions, question.id);
     }
     if (await _store.get(_config, 'main') == null) {
       await _store.put(_config, 'main', const BilgiConfig().toMap());
@@ -76,6 +74,25 @@ class LunoBilgiServer {
       await _save(guest);
       await _store.putMeta(_active, guest.id);
     }
+  }
+
+  /// Drops every stored Bilgi question so a leftover browser Hive bank is empty.
+  Future<int> clearQuestionBank() async {
+    final rows = await _store.values(_questions);
+    for (final row in rows) {
+      final id = '${row['id'] ?? ''}';
+      if (id.isEmpty) continue;
+      await _store.delete(_questions, id);
+    }
+    return rows.length;
+  }
+
+  /// Clears the bank a single time. Later admin opens keep questions added after that.
+  Future<int> clearQuestionBankOnce() async {
+    if (await _store.getMeta('questionsClearedOnce') == '1') return 0;
+    final removed = await clearQuestionBank();
+    await _store.putMeta('questionsClearedOnce', '1');
+    return removed;
   }
 
   Future<BilgiConfig> config() async {
@@ -797,6 +814,10 @@ class LunoBilgiServer {
 
   Future<BilgiResult> saveQuestion(BilgiQuestion question) async {
     await _store.put(_questions, question.id, question.toMap());
+    final raw = await _store.get(_questions, question.id);
+    if (raw == null || !sameStoredBilgiQuestion(BilgiQuestion.fromMap(raw), question)) {
+      throw StateError('Soru kaydedilemedi.');
+    }
     return const BilgiResult();
   }
 
@@ -1045,9 +1066,9 @@ class LunoBilgiServer {
     final all = await users();
     final match = all.where((u) => u.email.toLowerCase() == email.trim().toLowerCase());
     if (match.isEmpty) {
-      return const BilgiResult(message: '⚠️ Bir şeyler ters gitti. Tekrar dene.');
+      return const BilgiResult(message: 'Bu e-posta bu cihazda kayıtlı değil.');
     }
-    return const BilgiResult(message: 'Sıfırlama bağlantısı henüz gönderilemiyor.');
+    return const BilgiResult();
   }
 
   Future<BilgiResult> resetPassword({required String email, required String password}) async {
@@ -1085,13 +1106,7 @@ class LunoBilgiServer {
     await _store.putMeta('notifyOn', enabled ? '1' : '0');
   }
 
-  Future<BilgiResult> requestReset(String email) async {
-    final all = await users();
-    if (!all.any((u) => u.email.trim().toLowerCase() == email.trim().toLowerCase())) {
-      return const BilgiResult(message: '⚠️ Bir şeyler ters gitti. Tekrar dene.');
-    }
-    return const BilgiResult(message: 'Sıfırlama bağlantısı henüz gönderilemiyor.');
-  }
+  Future<BilgiResult> requestReset(String email) => requestPasswordReset(email);
 
   Future<List<Map<String, dynamic>>> events() async {
     final rows = await _store.values('events');

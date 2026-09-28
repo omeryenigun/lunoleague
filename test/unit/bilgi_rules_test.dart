@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_csv.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_questions.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_rules.dart';
@@ -50,12 +51,59 @@ void main() {
     expect(DateKeys.dayKey(clock), '2026-09-28');
   });
 
+  test('ensureSeed removes leftover trial questions and does not put them back', () async {
+    final store = MemoryKeyValueStore();
+    await store.put('questions', 'tr_din_01', {
+      'id': 'tr_din_01',
+      'categoryId': 'din',
+      'text': 'leftover',
+      'options': ['A', 'B', 'C', 'D'],
+      'correct': 0,
+      'difficulty': 'kolay',
+      'explanation': '',
+      'status': 'approved',
+      'tags': <String>[],
+    });
+    await store.put('questions', 'custom_keep', {
+      'id': 'custom_keep',
+      'categoryId': 'genel',
+      'text': 'keep',
+      'options': ['A', 'B', 'C', 'D'],
+      'correct': 0,
+      'difficulty': 'kolay',
+      'explanation': '',
+      'status': 'approved',
+      'tags': <String>['Atasözleri'],
+    });
+    final server = LunoBilgiServer(store);
+    await server.ensureSeed();
+    final rows = await server.questions();
+    expect(rows.map((question) => question.id), ['custom_keep']);
+    expect(await server.clearQuestionBankOnce(), 1);
+    expect(await server.questions(), isEmpty);
+    await server.saveQuestion(
+      const BilgiQuestion(
+        id: 'kept_after_clear',
+        categoryId: 'genel',
+        text: 'kalır',
+        options: ['A', 'B', 'C', 'D'],
+        correct: 0,
+        difficulty: 'kolay',
+        explanation: '',
+        status: 'approved',
+        tags: ['Atasözleri'],
+      ),
+    );
+    expect(await server.clearQuestionBankOnce(), 0);
+    expect((await server.questions()).map((question) => question.id), ['kept_after_clear']);
+  });
+
   test('a category round uses the real pool and efsane stays empty', () async {
     final server = LunoBilgiServer(MemoryKeyValueStore(), clock: () => DateTime(2026, 9, 28));
     expect(await server.questionCount('genel'), 0);
-    expect(await server.questionCount(tumuKarmaId), 15);
-    expect(await server.questionCount('felsefe'), 15);
-    expect(await server.questionCount('felsefe', subcategory: 'Antik Yunan Felsefesi'), 3);
+    expect(await server.questionCount(tumuKarmaId), 0);
+    expect(await server.questionCount('felsefe'), 0);
+    expect(await server.questionCount('felsefe', subcategory: 'Antik Yunan Felsefesi'), 0);
     final empty = await server.startRound(modeId: 'hizli', categoryId: 'genel', difficulty: 'kolay');
     expect(empty.message, '❓ Bu kategoride yeterli soru yok.');
     await server.saveQuestion(
@@ -108,4 +156,137 @@ void main() {
     expect(await server.hideCategory('afet'), isNull);
     expect(resolveBilgiCategories(await server.catalog()).where((category) => category.id == 'afet'), isEmpty);
   });
+
+  test('stored question fields round-trip into the edit model', () async {
+    const question = BilgiQuestion(
+      id: 'imp123',
+      categoryId: 'osmanli',
+      text: "Osmanlı'nın kurucusu?",
+      options: ['Orhan', 'Osman', 'Murat', 'Bayezid'],
+      correct: 1,
+      difficulty: 'kolay',
+      explanation: 'Osman Bey kurmuştur.',
+      status: 'pending',
+      tags: ['Kuruluş', 'tarih'],
+    );
+    final category = bilgiCategoryById('osmanli')!;
+    final edit = BilgiQuestionFormData.fromQuestion(question, categorySubs: category.subs);
+    expect(edit.id, 'imp123');
+    expect(edit.text, question.text);
+    expect(edit.options, question.options);
+    expect(edit.correct, 1);
+    expect(edit.categoryId, 'osmanli');
+    expect(edit.subcategory, 'Kuruluş');
+    expect(edit.difficulty, 'kolay');
+    expect(edit.explanation, 'Osman Bey kurmuştur.');
+    expect(edit.status, 'pending');
+    expect(edit.tags, ['tarih']);
+    final saved = edit.toQuestion(asDraft: false);
+    expect(saved.id, question.id);
+    expect(saved.text, question.text);
+    expect(saved.options, question.options);
+    expect(saved.correct, question.correct);
+    expect(saved.categoryId, question.categoryId);
+    expect(saved.difficulty, question.difficulty);
+    expect(saved.explanation, question.explanation);
+    expect(saved.status, 'pending');
+    expect(saved.tags, containsAll(['Kuruluş', 'tarih']));
+
+    final store = MemoryKeyValueStore();
+    final server = LunoBilgiServer(store);
+    await server.saveQuestion(question);
+    await server.saveQuestion(saved.copyWith(text: "Osmanlı'nın kurucusu kimdir?"));
+    final rows = await server.questions();
+    expect(rows, hasLength(1));
+    expect(rows.single.id, 'imp123');
+    expect(rows.single.text, "Osmanlı'nın kurucusu kimdir?");
+    expect(rows.single.categoryId, 'osmanli');
+    expect(rows.single.tags, contains('Kuruluş'));
+    expect(rows.single.status, 'pending');
+
+    await server.saveQuestion(
+      const BilgiQuestion(
+        id: 'imp124',
+        categoryId: 'osmanli',
+        text: 'İkinci soru',
+        options: ['A', 'B', 'C', 'D'],
+        correct: 0,
+        difficulty: 'kolay',
+        explanation: '',
+        status: 'pending',
+        tags: ['Kuruluş'],
+      ),
+    );
+    final both = await server.questions();
+    expect(both.map((question) => question.id), containsAll(['imp123', 'imp124']));
+  });
+
+  test('csv explanation and every question field survive the save', () async {
+    const raw =
+        'soru,a,b,c,d,dogru,kategori,altkategori,zorluk,aciklama\n'
+        'Osmanlı\'nın kurucusu?,Orhan,Osman,Murat,Bayezid,B,Osmanlı Tarihi,Kuruluş,kolay,"Osman Bey, 1299\'da kurmuştur."\n'
+        'Eski satır?,A,B,C,D,A,Osmanlı Tarihi,Kuruluş,orta\n';
+    final lines = raw.split('\n').map(parseBilgiCsvLine).toList();
+    expect(lines[0].kind, BilgiCsvKind.header);
+    expect(lines[1].kind, BilgiCsvKind.row);
+    expect(lines[1].fields!.explanation, "Osman Bey, 1299'da kurmuştur.");
+    expect(lines[2].fields!.explanation, isEmpty);
+
+    final fields = lines[1].fields!;
+    final question = BilgiQuestion(
+      id: 'impcsv1',
+      categoryId: 'osmanli',
+      text: fields.text,
+      options: fields.options,
+      correct: 1,
+      difficulty: 'kolay',
+      explanation: fields.explanation,
+      status: 'pending',
+      tags: const ['Kuruluş'],
+    );
+    final store = MemoryKeyValueStore();
+    final server = LunoBilgiServer(store);
+    await server.saveQuestion(question);
+    final stored = (await server.questions()).single;
+    expect(sameStoredBilgiQuestion(stored, question), isTrue);
+    expect(stored.explanation, "Osman Bey, 1299'da kurmuştur.");
+    expect(stored.options, ['Orhan', 'Osman', 'Murat', 'Bayezid']);
+    expect(stored.correct, 1);
+    expect(stored.categoryId, 'osmanli');
+    expect(stored.difficulty, 'kolay');
+    expect(stored.status, 'pending');
+    expect(stored.tags, ['Kuruluş']);
+
+    final dropping = LunoBilgiServer(_DropFieldStore(MemoryKeyValueStore(), 'explanation'));
+    expect(dropping.saveQuestion(question), throwsStateError);
+  });
+}
+
+class _DropFieldStore implements KeyValueStore {
+  _DropFieldStore(this._inner, this._field);
+
+  final MemoryKeyValueStore _inner;
+  final String _field;
+
+  @override
+  Future<void> put(String box, String key, Map<String, dynamic> value) {
+    final copy = Map<String, dynamic>.from(value);
+    if (copy.containsKey(_field)) copy[_field] = '';
+    return _inner.put(box, key, copy);
+  }
+
+  @override
+  Future<Map<String, dynamic>?> get(String box, String key) => _inner.get(box, key);
+
+  @override
+  Future<void> delete(String box, String key) => _inner.delete(box, key);
+
+  @override
+  Future<List<Map<String, dynamic>>> values(String box) => _inner.values(box);
+
+  @override
+  Future<void> putMeta(String key, String value) => _inner.putMeta(key, value);
+
+  @override
+  Future<String?> getMeta(String key) => _inner.getMeta(key);
 }
