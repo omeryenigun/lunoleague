@@ -26,6 +26,7 @@ import 'package:kelimelig/data/local/en_flow_words.dart';
 import 'package:kelimelig/data/local/en_wave_words.dart';
 import 'package:kelimelig/data/local/en_more_words.dart';
 import 'package:kelimelig/data/local/en_starter_words.dart';
+import 'package:kelimelig/data/local/nl_profanity_words.dart';
 import 'package:kelimelig/data/local/tr_profanity.dart';
 import 'package:kelimelig/data/local/word_csv.dart';
 import 'package:kelimelig/data/local/seed_words_en.dart';
@@ -102,6 +103,7 @@ class LocalGameServer implements GameServer {
   static const _itFrequencyKey = 'it_frequency_words_v1';
   static const _ptFrequencyKey = 'pt_frequency_words_v1';
   static const _ruFrequencyKey = 'ru_frequency_words_v1';
+  static const _nlProfanityKey = 'nl_profanity_words_v1';
   static const _adCoin15Key = 'ad_coin_reward_15_v1';
   static const _noiseEnglishWords = {
     'thehun',
@@ -336,6 +338,16 @@ class LocalGameServer implements GameServer {
     }
     final result = await adminImportWords(ptFrequencyWordsCsv);
     await _store.putMeta(_ptFrequencyKey, '1');
+    return result;
+  }
+
+  /// Adds Dutch swear words of 5, 6 and 7 letters once.
+  Future<WordImportResult> importDutchProfanityWords() async {
+    if (await _store.getMeta(_nlProfanityKey) == '1') {
+      return const WordImportResult(imported: 0, skipped: 0, invalid: 0);
+    }
+    final result = await adminImportWords(nlProfanityWordsCsv);
+    await _store.putMeta(_nlProfanityKey, '1');
     return result;
   }
 

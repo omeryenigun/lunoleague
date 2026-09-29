@@ -1,0 +1,70 @@
+/// Dutch swear words of 5, 6 and 7 letters from the LDNOOBW nl list.
+/// Phrases, names and other lengths are left out. Glosses are short and original.
+const nlProfanityGlosses = <String, String>{
+  'ASBAK': 'Een bakje voor as. Ook als scheldwoord.',
+  'BALEN': 'Ergens flink de pest over in hebben.',
+  'BEURT': 'Een keer seks. Plat gezegd.',
+  'DOMBO': 'Een dom persoon.',
+  'EIKEL': 'Een domme of vervelende man.',
+  'GRIET': 'Een meisje. Vaak plat gezegd.',
+  'KANEN': 'Hard en slordig eten.',
+  'KLOJO': 'Een sukkel of vervelend persoon.',
+  'MATJE': 'Een vloerkleedje. Ook plat voor schaamhaar.',
+  'NAAKT': 'Zonder kleren.',
+  'NICHT': 'Scheldwoord voor een homoseksuele man.',
+  'PALEN': 'Plat voor seks hebben.',
+  'WATJE': 'Een bangerik.',
+  'BEFFEN': 'Orale seks bij een vrouw.',
+  'BEKKEN': 'Een gezicht trekken of zeuren.',
+  'ENGERD': 'Een enge of vieze persoon.',
+  'GALBAK': 'Een vervelende of luie persoon.',
+  'HOERIG': 'Zich als een hoer gedragen.',
+  'HUFTER': 'Een onbeleefde lompe man.',
+  'KLOTEN': 'Teelballen. Ook als vloek.',
+  'LUMMEL': 'Een slome of sullige jongen.',
+  'NAAIEN': 'Plat voor seks hebben.',
+  'NEUKEN': 'Plat voor seks hebben.',
+  'OETLUL': 'Een grote sukkel.',
+  'PENOZE': 'De onderwereld.',
+  'PIESEN': 'Plassen.',
+  'PIJPEN': 'Orale seks bij een man.',
+  'POEPEN': 'Ontlasting doen.',
+  'ROTZAK': 'Een rot persoon.',
+  'RUKKEN': 'Zichzelf bevredigen.',
+  'SCHIJT': 'Ontlasting. Ook als vloek.',
+  'SCHOFT': 'Een gemeen persoon.',
+  'STRONT': 'Ontlasting.',
+  'TOETER': 'Scheldwoord voor een onaantrekkelijk iemand.',
+  'WIPPEN': 'Seks hebben.',
+  'WUFTJE': 'Een verwijfd persoon.',
+  'ZAADJE': 'Een beetje sperma.',
+  'ZEIKEN': 'Plassen of zeuren.',
+  'ZEIKER': 'Iemand die steeds zeurt.',
+  'ZUIGEN': 'Zuigen. Ook plat voor orale seks.',
+  'AFBEREN': 'Schaamhaar wegscheren.',
+  'FLAMOES': 'Een slappe of slome persoon.',
+  'FLIKKEN': 'Een streek uithalen.',
+  'FLIKKER': 'Scheldwoord voor een homoseksuele man.',
+  'GRAFTAK': 'Een brutaal of vervelend persoon.',
+  'KLOOIEN': 'Prutsen of treuzelen.',
+  'KWAKKIE': 'Een klodder sperma.',
+  'ROTHOER': 'Een grof scheldwoord voor een vrouw.',
+  'RUKHOND': 'Scheldwoord voor iemand die veel masturbeert.',
+  'SCHATJE': 'Een liefkozend woord. Soms spottend.',
+  'SLEMPEN': 'Overdadig eten en drinken.',
+  'SPUITEN': 'Klaarkomen. Plat gezegd.',
+  'STANDJE': 'Een houding bij seks.',
+  'STOOTJE': 'Een aantrekkelijk persoon. Plat gezegd.',
+  'SUFFERD': 'Een dom of sloom persoon.',
+  'TEMEIER': 'Een prostituee. Ook als scheldwoord.',
+  'ZUIPLAP': 'Iemand die veel drinkt.',
+};
+
+String get nlProfanityWordsCsv {
+  final rows = StringBuffer('word,language,definition,example,english,category,difficulty,frequency,status')
+    ..writeln();
+  for (final entry in nlProfanityGlosses.entries) {
+    rows.writeln('${entry.key},nl,${entry.value},,,algemeen,2,3,active');
+  }
+  return rows.toString();
+}
