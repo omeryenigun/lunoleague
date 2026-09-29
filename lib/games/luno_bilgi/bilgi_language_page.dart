@@ -81,11 +81,15 @@ class _BilgiLanguagePageState extends State<BilgiLanguagePage>
                       children: [
                         const SizedBox(height: 4),
                         Center(
-                          child: Image.asset(
-                            'assets/images/luno_bilgi_logo.jpg',
-                            width: 72,
-                            height: 72,
-                            fit: BoxFit.contain,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: Image.asset(
+                              'assets/images/luno_bilgi_logo.jpg',
+                              width: 72,
+                              height: 72,
+                              fit: BoxFit.cover,
+                              semanticLabel: 'Luno Bilgi',
+                            ),
                           ),
                         ),
                         const SizedBox(height: 8),

@@ -91,7 +91,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
   }
 
   Widget _page(BilgiProfile? user) {
-    if (user == null && _game.page != 'maintenance') {
+    if (user == null && _game.page != 'maintenance' && _game.page != 'language') {
       return Center(child: Text('📚 ${_game.t('loading')}'));
     }
     return switch (_game.page) {

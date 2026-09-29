@@ -103,6 +103,7 @@ void main() {
     final server = LunoBilgiServer(MemoryKeyValueStore(), clock: () => DateTime(2026, 9, 28));
     final before = await server.profile();
     expect(before.locale, 'tr');
+    expect(before.localeChosen, isFalse);
     expect(before.weekScore, 0);
     final next = await server.setLocale('de');
     expect(next.locale, 'de');
