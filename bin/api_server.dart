@@ -112,10 +112,8 @@ Future<void> main() async {
   stdout.writeln(
     'ru frequency words imported=${russian.imported} skipped=${russian.skipped} invalid=${russian.invalid}',
   );
-  final dutchProfanity = await rules.importDutchProfanityWords();
-  stdout.writeln(
-    'nl profanity words imported=${dutchProfanity.imported} skipped=${dutchProfanity.skipped} invalid=${dutchProfanity.invalid}',
-  );
+  final droppedProfanity = await rules.dropListedProfanity();
+  stdout.writeln('profanity words removed=$droppedProfanity');
   final adCoins = await rules.raiseAdCoinReward();
   stdout.writeln('ad coin reward=$adCoins');
   final dropped = await rules.dropNoiseEnglishWords();

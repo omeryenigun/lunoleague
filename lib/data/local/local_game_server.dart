@@ -103,7 +103,7 @@ class LocalGameServer implements GameServer {
   static const _itFrequencyKey = 'it_frequency_words_v1';
   static const _ptFrequencyKey = 'pt_frequency_words_v1';
   static const _ruFrequencyKey = 'ru_frequency_words_v1';
-  static const _nlProfanityKey = 'nl_profanity_words_v1';
+  static const _profanityDropKey = 'profanity_drop_v1';
   static const _adCoin15Key = 'ad_coin_reward_15_v1';
   static const _noiseEnglishWords = {
     'thehun',
@@ -341,14 +341,21 @@ class LocalGameServer implements GameServer {
     return result;
   }
 
-  /// Adds Dutch swear words of 5, 6 and 7 letters once.
-  Future<WordImportResult> importDutchProfanityWords() async {
-    if (await _store.getMeta(_nlProfanityKey) == '1') {
-      return const WordImportResult(imported: 0, skipped: 0, invalid: 0);
+  /// Deletes listed Dutch and Turkish swear words once. Other words stay.
+  Future<int> dropListedProfanity() async {
+    if (await _store.getMeta(_profanityDropKey) == '1') return 0;
+    final dutch = GameLocale.nl;
+    var removed = 0;
+    for (final raw in await _store.values('words')) {
+      final word = WordEntity.fromMap(raw);
+      final hit = (word.language == 'nl' && nlProfanity.contains(dutch.toUpper(word.word))) ||
+          (word.language == 'tr' && isTurkishProfanity(word.word));
+      if (!hit) continue;
+      await _store.delete('words', word.id);
+      removed++;
     }
-    final result = await adminImportWords(nlProfanityWordsCsv);
-    await _store.putMeta(_nlProfanityKey, '1');
-    return result;
+    await _store.putMeta(_profanityDropKey, '1');
+    return removed;
   }
 
   /// Adds Russian words that have a real gloss. Yo stays yo.
