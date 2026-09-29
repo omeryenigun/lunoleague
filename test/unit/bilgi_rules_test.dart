@@ -131,27 +131,23 @@ void main() {
 
   test('first boot page is language until the player confirms a locale', () {
     expect(
-      bilgiBootPage(maintenance: true, localeChosen: false, seenIntro: false, seenNotify: false),
+      bilgiBootPage(maintenance: true, localeChosen: false, seenIntro: false),
       'maintenance',
     );
     expect(
-      bilgiBootPage(maintenance: false, localeChosen: false, seenIntro: false, seenNotify: false),
+      bilgiBootPage(maintenance: false, localeChosen: false, seenIntro: false),
       'language',
     );
     expect(
-      bilgiBootPage(maintenance: false, localeChosen: false, seenIntro: true, seenNotify: true),
+      bilgiBootPage(maintenance: false, localeChosen: false, seenIntro: true),
       'language',
     );
     expect(
-      bilgiBootPage(maintenance: false, localeChosen: true, seenIntro: false, seenNotify: false),
+      bilgiBootPage(maintenance: false, localeChosen: true, seenIntro: false),
       'intro',
     );
     expect(
-      bilgiBootPage(maintenance: false, localeChosen: true, seenIntro: true, seenNotify: false),
-      'notify',
-    );
-    expect(
-      bilgiBootPage(maintenance: false, localeChosen: true, seenIntro: true, seenNotify: true),
+      bilgiBootPage(maintenance: false, localeChosen: true, seenIntro: true),
       'home',
     );
   });
@@ -446,6 +442,17 @@ void main() {
         id: const BilgiTranslation(text: 'Q', options: ['A', 'B', 'C', 'D'], explanation: 'Because'),
     });
     expect(bilgiQuestionLanguagesReady(full), isTrue);
+    expect(bilgiPendingApprovalReady(bare), isFalse);
+    expect(bilgiPendingApprovalReady(full), isTrue);
+    final approved = bilgiQuestionWithReviewStatus(full, 'approved');
+    expect(approved.status, 'approved');
+    expect(approved.rejectReason, '');
+    final rejected = bilgiQuestionWithReviewStatus(
+      full.copyWith(rejectReason: ''),
+      'rejected',
+    );
+    expect(rejected.status, 'rejected');
+    expect(rejected.rejectReason, 'Reddedildi');
     expect(bilgiNamesReady(const {}, 'category', 'genel'), isFalse);
     expect(
       bilgiNamesReady(

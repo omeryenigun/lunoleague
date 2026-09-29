@@ -1,3 +1,27 @@
+const bilgiReportStatusBekliyor = 'bekliyor';
+const bilgiReportStatusDikkateAlindi = 'dikkate_alindi';
+const bilgiReportStatusDikkateAlinmadi = 'dikkate_alinmadi';
+
+const bilgiReportStatuses = <String>{
+  bilgiReportStatusBekliyor,
+  bilgiReportStatusDikkateAlindi,
+  bilgiReportStatusDikkateAlinmadi,
+};
+
+String normalizeBilgiReportStatus(Object? raw) {
+  final value = '$raw'.trim();
+  if (bilgiReportStatuses.contains(value)) return value;
+  return bilgiReportStatusBekliyor;
+}
+
+String bilgiReportStatusLabel(String status) {
+  return switch (normalizeBilgiReportStatus(status)) {
+    bilgiReportStatusDikkateAlindi => 'Dikkate alındı',
+    bilgiReportStatusDikkateAlinmadi => 'Dikkate alınmadı',
+    _ => 'Bekliyor',
+  };
+}
+
 class BilgiQuestionReport {
   const BilgiQuestionReport({
     required this.id,
@@ -9,6 +33,7 @@ class BilgiQuestionReport {
     required this.difficulty,
     required this.note,
     required this.createdAt,
+    this.status = bilgiReportStatusBekliyor,
   });
 
   final String id;
@@ -20,8 +45,24 @@ class BilgiQuestionReport {
   final String difficulty;
   final String note;
   final String createdAt;
+  final String status;
 
   String get correctLetter => ['A', 'B', 'C', 'D'][correct.clamp(0, 3)];
+
+  BilgiQuestionReport copyWith({String? status}) {
+    return BilgiQuestionReport(
+      id: id,
+      questionId: questionId,
+      questionText: questionText,
+      options: options,
+      correct: correct,
+      categoryId: categoryId,
+      difficulty: difficulty,
+      note: note,
+      createdAt: createdAt,
+      status: status == null ? this.status : normalizeBilgiReportStatus(status),
+    );
+  }
 
   factory BilgiQuestionReport.fromJson(Map<String, dynamic> map) {
     return BilgiQuestionReport(
@@ -34,6 +75,7 @@ class BilgiQuestionReport {
       difficulty: '${map['difficulty'] ?? ''}',
       note: '${map['note'] ?? ''}',
       createdAt: '${map['createdAt'] ?? ''}',
+      status: normalizeBilgiReportStatus(map['status']),
     );
   }
 }

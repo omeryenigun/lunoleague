@@ -168,6 +168,7 @@ class BilgiBottomNav extends StatelessWidget {
     this.home = 'Ana Sayfa',
     this.play = 'Oyna',
     this.league = 'Lig',
+    this.settings = 'Ayarlar',
     this.profile = 'Profil',
     this.shop = 'Mağaza',
   });
@@ -177,6 +178,7 @@ class BilgiBottomNav extends StatelessWidget {
   final String home;
   final String play;
   final String league;
+  final String settings;
   final String profile;
   final String shop;
 
@@ -194,6 +196,7 @@ class BilgiBottomNav extends StatelessWidget {
           _Nav('home', '🏠', home, current, onSelect),
           _Nav('play', '🎮', play, current, onSelect),
           _Nav('league', '🏆', league, current, onSelect),
+          _Nav('settings', '⚙️', settings, current, onSelect),
           _Nav('profile', '👤', profile, current, onSelect),
           _Nav('shop', '🛒', shop, current, onSelect),
         ],

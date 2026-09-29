@@ -12,6 +12,11 @@ class AudioManager {
 
   Future<void> play(String id) {
     if (!enabled) return Future<void>.value();
+    return playCue(id);
+  }
+
+  /// Plays regardless of [enabled]; caller must gate by its own preference.
+  Future<void> playCue(String id) {
     final next = _queue.then((_) => _play(_effects, id));
     _queue = next.then((_) {}, onError: (_) {});
     return next;

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:kelimelig/core/l10n/game_locale.dart';
 import 'package:kelimelig/core/services/ad_service.dart';
+import 'package:kelimelig/core/services/audio_manager.dart';
 import 'package:kelimelig/core/services/google_auth.dart';
 import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
@@ -14,6 +15,7 @@ import 'package:kelimelig/games/luno_bilgi/bilgi_room.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_report_api.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_rules.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
+import 'package:kelimelig/injection.dart';
 
 class BilgiController extends ChangeNotifier {
   BilgiController(this.server, {this.ads});
@@ -85,6 +87,7 @@ class BilgiController extends ChangeNotifier {
         'detail',
         'setup',
         'league',
+        'settings',
         'profile',
         'shop',
         'group',
@@ -106,7 +109,6 @@ class BilgiController extends ChangeNotifier {
           maintenance: config.maintenance,
           localeChosen: profile?.localeChosen == true,
           seenIntro: await server.seenIntro(),
-          seenNotify: await server.seenNotify(),
         ),
       );
     await loadLabels();
@@ -143,7 +145,6 @@ class BilgiController extends ChangeNotifier {
           maintenance: config.maintenance,
           localeChosen: true,
           seenIntro: await server.seenIntro(),
-          seenNotify: await server.seenNotify(),
         ),
       );
     notifyListeners();
@@ -465,6 +466,12 @@ class BilgiController extends ChangeNotifier {
     });
   }
 
+  void _playAnswerSound(bool right) {
+    if (!soundOn || !sl.isRegistered<AudioManager>()) return;
+    final audio = sl<AudioManager>();
+    unawaited(right ? audio.playCue('correct') : audio.playCue('absent'));
+  }
+
   Future<void> pick(int option) async {
     final live = round;
     if (live == null || live.finished || picked) return;
@@ -472,6 +479,7 @@ class BilgiController extends ChangeNotifier {
     final question = live.current;
     if (question == null) return;
     final beforeBadges = [...?profile?.badges];
+    final right = option == question.correct;
     picked = true;
     lastPick = option;
     revealCorrect = question.correct;
@@ -482,6 +490,7 @@ class BilgiController extends ChangeNotifier {
     revealNumber = live.index + 1;
     _badgesBeforePick = beforeBadges;
     revealing = true;
+    _playAnswerSound(right);
     notifyListeners();
     final result = await server.answer(
       roundId: live.id,
@@ -657,6 +666,7 @@ class BilgiController extends ChangeNotifier {
   Future<void> watchFor(String kind) async {
     final user = profile;
     if (user == null) return;
+    final goldBefore = user.gold;
     final played = await (ads?.showRewarded(user.id) ?? Future.value(false));
     if (!played) {
       notice = kIsWeb
@@ -668,6 +678,12 @@ class BilgiController extends ChangeNotifier {
     final result = await server.grantAd(kind: kind);
     profile = result.profile ?? profile;
     notice = result.message;
+    if (kind == 'gold' && result.message == null) {
+      final added = (profile?.gold ?? goldBefore) - goldBefore;
+      if (added > 0) {
+        notice = t('ad_loaded').replaceAll('{n}', '$added');
+      }
+    }
     notifyListeners();
   }
 
@@ -973,19 +989,6 @@ class BilgiController extends ChangeNotifier {
 
   Future<void> finishIntro() async {
     await server.markIntro();
-    if (!await server.seenNotify()) {
-      stack
-        ..clear()
-        ..add('notify');
-      notifyListeners();
-      return;
-    }
-    tab('home');
-  }
-
-  Future<void> answerNotify(bool enabled) async {
-    notifyOn = enabled;
-    await server.markNotify(enabled: enabled);
     tab('home');
   }
 

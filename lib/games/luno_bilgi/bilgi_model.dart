@@ -20,6 +20,18 @@ bool bilgiQuestionLanguagesReady(BilgiQuestion question) {
   return true;
 }
 
+/// Onay Bekleyenler: yalnızca bekleyen ve tercümesi tamamlanmış sorular.
+bool bilgiPendingApprovalReady(BilgiQuestion question) =>
+    question.status == 'pending' && bilgiQuestionLanguagesReady(question);
+
+/// Admin list approve/reject: persist `approved` or `rejected` (and clear reject reason on approve).
+BilgiQuestion bilgiQuestionWithReviewStatus(BilgiQuestion question, String status) {
+  return question.copyWith(
+    status: status,
+    rejectReason: status == 'rejected' ? 'Reddedildi' : '',
+  );
+}
+
 /// Türkçe ad kaydın kendisidir. Diğer dokuz dilin görünen adı dolu olmalıdır.
 bool bilgiNamesReady(Map<String, String> labels, String scope, String key) {
   for (final locale in GameLocale.all) {

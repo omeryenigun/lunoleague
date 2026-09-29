@@ -59,6 +59,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   final _selectedIds = <String>{};
   var _bulkBusy = false;
   var _formSerial = 0;
+  String? _translatingId;
   BilgiQuestion? _editing;
   var _csvName = '';
   final _csvText = TextEditingController();
@@ -73,11 +74,14 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   var _reportsLoaded = false;
   List<BilgiQuestionReport> _reports = const [];
   var _reportsError = '';
+  final _reportEditMisses = <String, String>{};
+  final _reportStatusErrors = <String, String>{};
+  final _reportStatusBusy = <String>{};
   var _subCat = 'turk_tarihi';
 
   LunoBilgiServer get _server => sl<LunoBilgiServer>();
 
-  int get _pendingCount => _questions.where((q) => q.status == 'pending').length;
+  int get _pendingCount => _questions.where(bilgiPendingApprovalReady).length;
   int get _bannedCount => _users.where((u) => u.banned).length;
   int get _bankBadge => _questions.where((q) => q.status == 'approved' || q.status == 'pending').length;
 
@@ -147,6 +151,9 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   Future<void> _saveRemote(List<BilgiQuestion> questions) async {
     final error = await BilgiQuestionApi.save(sl<ApiSession>().adminToken ?? '', questions);
     if (error != null) throw StateError(error);
+    for (final question in questions) {
+      await _server.saveQuestion(question);
+    }
   }
 
   Future<void> _deleteRemote(String id) async {
@@ -175,6 +182,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     final remote = await BilgiQuestionApi.loadAll(token);
     if (remote == null) return _server.questions();
     await _server.replaceQuestionBank(remote);
+    // loadAll already replaced Hive; never re-PUT that stale bank over newer API writes.
+    await _server.writeMeta('questionsPushedToApi', '1');
     return remote;
   }
 
@@ -569,7 +578,100 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     setState(() {
       _reports = rows ?? const [];
       _reportsError = rows == null ? 'Bildirimler alınamadı.' : '';
+      _reportEditMisses.clear();
+      _reportStatusErrors.clear();
+      _reportStatusBusy.clear();
     });
+  }
+
+  BilgiQuestion? _questionForReport(BilgiQuestionReport report) {
+    final id = report.questionId.trim();
+    if (id.isNotEmpty) {
+      final byId = _questions.where((question) => question.id == id).firstOrNull;
+      if (byId != null) return byId;
+    }
+    final text = report.questionText.trim();
+    if (text.isEmpty) return null;
+    return _questions.where((question) => question.text == text).firstOrNull;
+  }
+
+  void _openReportEditor(BilgiQuestionReport report) {
+    final question = _questionForReport(report);
+    if (question == null) {
+      setState(() => _reportEditMisses[report.id] = 'Soru bankasında bulunamadı.');
+      return;
+    }
+    setState(() => _reportEditMisses.remove(report.id));
+    _openEditor(question);
+  }
+
+  Future<void> _setReportStatus(BilgiQuestionReport report, String status) async {
+    final next = normalizeBilgiReportStatus(status);
+    if (report.status == next || _reportStatusBusy.contains(report.id)) return;
+    final token = sl<ApiSession>().adminToken ?? '';
+    if (token.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _reportStatusErrors[report.id] = 'Bildirimler için yönetici oturumu gerekli.';
+          _note = 'Bildirimler için yönetici oturumu gerekli.';
+        });
+      }
+      return;
+    }
+    setState(() {
+      _reportStatusBusy.add(report.id);
+      _reportStatusErrors.remove(report.id);
+    });
+    final error = await BilgiReportApi.setStatus(token: token, reportId: report.id, status: next);
+    if (!mounted) return;
+    setState(() {
+      _reportStatusBusy.remove(report.id);
+      if (error != null) {
+        _reportStatusErrors[report.id] = error;
+        _note = error;
+      } else {
+        _reports = [
+          for (final row in _reports)
+            if (row.id == report.id) row.copyWith(status: next) else row,
+        ];
+        _note = 'Bildirim durumu: ${bilgiReportStatusLabel(next)}';
+      }
+    });
+  }
+
+  Color _reportStatusColor(String status) {
+    return switch (normalizeBilgiReportStatus(status)) {
+      bilgiReportStatusDikkateAlindi => BilgiColors.secondary,
+      bilgiReportStatusDikkateAlinmadi => BilgiColors.error,
+      _ => BilgiColors.warning,
+    };
+  }
+
+  Widget _reportStatusChip(BilgiQuestionReport report, String status, String label) {
+    final active = normalizeBilgiReportStatus(report.status) == status;
+    final busy = _reportStatusBusy.contains(report.id);
+    final color = _reportStatusColor(status);
+    final fg = status == bilgiReportStatusDikkateAlindi ? BilgiColors.bg : Colors.white;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8, bottom: 8),
+      child: active
+          ? Container(
+              height: 36,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(20)),
+              child: Text(label, style: TextStyle(color: fg, fontWeight: FontWeight.w700, fontSize: 13)),
+            )
+          : OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white70,
+                side: BorderSide(color: color.withValues(alpha: 0.55)),
+                minimumSize: const Size(0, 36),
+              ),
+              onPressed: busy ? null : () => _setReportStatus(report, status),
+              child: Text(label),
+            ),
+    );
   }
 
   Widget _faultReports() {
@@ -598,7 +700,16 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(report.questionText, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(report.questionText, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                    ),
+                    const SizedBox(width: 12),
+                    _badge(bilgiReportStatusLabel(report.status), _reportStatusColor(report.status)),
+                  ],
+                ),
                 const SizedBox(height: 6),
                 Text(
                   '${_catLabel(report.categoryId)} • ${report.difficulty} • ${report.createdAt}',
@@ -615,6 +726,36 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                   ),
                 const SizedBox(height: 8),
                 Text(report.note, style: const TextStyle(color: Colors.white, height: 1.4)),
+                const SizedBox(height: 12),
+                const Text('Durum', style: TextStyle(color: BilgiColors.muted, fontSize: 12, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                Wrap(
+                  children: [
+                    _reportStatusChip(report, bilgiReportStatusBekliyor, 'Bekliyor'),
+                    _reportStatusChip(report, bilgiReportStatusDikkateAlindi, 'Dikkate alındı'),
+                    _reportStatusChip(report, bilgiReportStatusDikkateAlinmadi, 'Dikkate alınmadı'),
+                  ],
+                ),
+                if (_reportStatusBusy.contains(report.id)) ...[
+                  const SizedBox(height: 4),
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: BilgiColors.primary),
+                  ),
+                ],
+                if (_reportStatusErrors[report.id] case final statusError?) ...[
+                  const SizedBox(height: 8),
+                  Text(statusError, style: const TextStyle(color: BilgiColors.warning)),
+                ],
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: _primary('Soruyu düzenle', () => _openReportEditor(report)),
+                ),
+                if (_reportEditMisses[report.id] case final miss?) ...[
+                  const SizedBox(height: 8),
+                  Text(miss, style: const TextStyle(color: BilgiColors.warning)),
+                ],
               ],
             ),
           ),
@@ -907,6 +1048,73 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     await _load();
   }
 
+  Future<void> _translateSelected() async {
+    if (_bulkBusy) return;
+    if (_selectedIds.isEmpty) {
+      setState(() => _note = 'Önce soru seç.');
+      return;
+    }
+    final chosen = _questions.where((question) => _selectedIds.contains(question.id)).toList();
+    if (chosen.isEmpty) {
+      setState(() => _note = 'Önce soru seç.');
+      return;
+    }
+    setState(() => _bulkBusy = true);
+    var translated = 0;
+    var skipped = 0;
+    var failed = 0;
+    try {
+      for (var i = 0; i < chosen.length; i++) {
+        if (!mounted) return;
+        final question = chosen[i];
+        if (!bilgiLanguageFieldsReady(question.text, question.options, question.explanation)) {
+          skipped++;
+          setState(() => _note = 'Türkçe soru, dört şık ve açıklama dolu olmalı.');
+          continue;
+        }
+        setState(() {
+          _translatingId = question.id;
+          _note = 'Çevriliyor... (${i + 1}/${chosen.length})';
+        });
+        final result = await BilgiQuestionApi.translateQuestion(
+          sl<ApiSession>().adminToken ?? '',
+          text: question.text,
+          options: question.options,
+          explanation: question.explanation,
+        );
+        if (!mounted) return;
+        if (result.error != null) {
+          failed++;
+          setState(() => _note = result.error!);
+          continue;
+        }
+        final written = question.copyWith(translations: result.translations);
+        try {
+          setState(() => _note = 'Tercüme kaydediliyor... (${i + 1}/${chosen.length})');
+          await _saveRemote([written]);
+          translated++;
+          await _load();
+        } on StateError catch (error) {
+          failed++;
+          if (!mounted) return;
+          setState(() => _note = error.message);
+        } catch (_) {
+          failed++;
+          if (!mounted) return;
+          setState(() => _note = 'Soru kaydedilemedi.');
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _bulkBusy = false;
+          _translatingId = null;
+          _note = '$translated soru çevrildi. $skipped atlandı. $failed başarısız.';
+        });
+      }
+    }
+  }
+
   Widget _bankTable() {
     final query = _bankSearch.text.trim();
     final filtering = query.length >= 3;
@@ -1018,6 +1226,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                     onChanged: (v) => setState(() => _moveSub = v),
                   ),
                   _primary('Kategoriyi değiştir', () { _applyBulkCategory(); }),
+                  _primary('Seçilenleri çevir', () { _translateSelected(); }),
                   _solid('Seçimi sil', BilgiColors.error, Colors.white, () { _deleteSelected(); }),
                 ],
               ),
@@ -1081,7 +1290,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     );
   }
 
-  static const _bankFlex = [1, 2, 4, 2, 3, 2, 2, 2];
+  static const _bankFlex = [1, 2, 4, 2, 3, 2, 2, 3];
 
   Widget _bankCells(List<Widget> cells, {bool header = false}) {
     return Container(
@@ -1133,18 +1342,118 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       _diffBadge(question.difficulty),
       _statusBadge(question.status),
       Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          if (pending) _iconBtn('✅', () => _setStatus(question, 'approved')),
-          if (pending) _iconBtn('❌', () => _setStatus(question, 'rejected')),
-          _iconBtn('✏️', () => _openEditor(question)),
-          if (!pending) _iconBtn('🗑️', () async { await _deleteRemote(question.id); await _load(); }),
+          if (pending)
+            _rowActionBtn(
+              icon: Icons.check_box,
+              color: const Color(0xFF3DDC84),
+              tooltip: 'Onayla',
+              onTap: () => _setStatus(question, 'approved'),
+            ),
+          if (pending)
+            _rowActionBtn(
+              icon: Icons.close,
+              color: BilgiColors.error,
+              tooltip: 'Reddet',
+              onTap: () => _setStatus(question, 'rejected'),
+            ),
+          _rowActionBtn(
+            icon: Icons.edit,
+            color: BilgiColors.warning,
+            tooltip: 'Düzenle',
+            onTap: () => _openEditor(question),
+          ),
+          _rowTranslateBtn(question),
+          if (!pending)
+            _rowActionBtn(
+              icon: Icons.delete_outline,
+              color: BilgiColors.error,
+              tooltip: 'Sil',
+              onTap: () async {
+                await _deleteRemote(question.id);
+                await _load();
+              },
+            ),
         ],
       ),
     ]);
   }
 
+  Widget _rowTranslateBtn(BilgiQuestion question) {
+    final busy = _translatingId == question.id;
+    return Tooltip(
+      message: 'Tüm dilleri çevir',
+      child: InkWell(
+        onTap: busy ? null : () => _translateRow(question),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: busy
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: BilgiColors.primary),
+                )
+              : const Text(
+                  'Çevir',
+                  style: TextStyle(color: BilgiColors.primary, fontSize: 11, fontWeight: FontWeight.w800),
+                ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _translateRow(BilgiQuestion question) async {
+    if (_translatingId == question.id) return;
+    if (!bilgiLanguageFieldsReady(question.text, question.options, question.explanation)) {
+      setState(() => _note = 'Türkçe soru, dört şık ve açıklama dolu olmalı.');
+      return;
+    }
+    setState(() {
+      _translatingId = question.id;
+      _note = 'Çevriliyor...';
+    });
+    final result = await BilgiQuestionApi.translateQuestion(
+      sl<ApiSession>().adminToken ?? '',
+      text: question.text,
+      options: question.options,
+      explanation: question.explanation,
+    );
+    if (!mounted) return;
+    if (result.error != null) {
+      setState(() {
+        _translatingId = null;
+        _note = result.error!;
+      });
+      return;
+    }
+    final written = question.copyWith(translations: result.translations);
+    try {
+      setState(() => _note = 'Tercüme kaydediliyor...');
+      await _saveRemote([written]);
+      await _load();
+      if (!mounted) return;
+      setState(() {
+        _translatingId = null;
+        _note = 'Soru çevrildi ve kaydedildi.';
+      });
+    } on StateError catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _translatingId = null;
+        _note = error.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _translatingId = null;
+        _note = 'Soru kaydedilemedi.';
+      });
+    }
+  }
+
   Widget _pendingCards() {
-    final rows = _questions.where((q) => q.status == 'pending').toList();
+    final rows = _questions.where(bilgiPendingApprovalReady).toList();
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       children: [
@@ -1240,8 +1549,18 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                         ),
                         Expanded(flex: 2, child: Text(_catLabel(question.categoryId), maxLines: 1, overflow: TextOverflow.ellipsis)),
                         SizedBox(width: 120, child: _badge(question.rejectReason.isEmpty ? 'Reddedildi' : question.rejectReason, BilgiColors.error)),
-                        _iconBtn('✏️', () => _openEditor(question)),
-                        _iconBtn('✅', () => _setStatus(question, 'approved')),
+                        _rowActionBtn(
+                          icon: Icons.edit,
+                          color: BilgiColors.warning,
+                          tooltip: 'Düzenle',
+                          onTap: () => _openEditor(question),
+                        ),
+                        _rowActionBtn(
+                          icon: Icons.check_box,
+                          color: const Color(0xFF3DDC84),
+                          tooltip: 'Onayla',
+                          onTap: () => _setStatus(question, 'approved'),
+                        ),
                       ],
                     ),
                   ),
@@ -1253,17 +1572,35 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   }
 
   Future<void> _setStatus(BilgiQuestion question, String status) async {
-    if (status == 'approved' && !bilgiQuestionLanguagesReady(question)) {
+    final latest = _questions.where((row) => row.id == question.id).firstOrNull ?? question;
+    if (status == 'approved' && !bilgiQuestionLanguagesReady(latest)) {
       setState(() => _note = bilgiApproveBlocked);
       return;
     }
+    final updated = bilgiQuestionWithReviewStatus(latest, status);
     try {
-      await _saveRemote([question.copyWith(status: status, rejectReason: status == 'rejected' ? 'Reddedildi' : '')]);
+      await _saveRemote([updated]);
     } on StateError catch (error) {
       if (!mounted) return;
       setState(() => _note = error.message);
       return;
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _note = 'Durum kaydedilemedi.');
+      return;
     }
+    if (!mounted) return;
+    setState(() {
+      _questions = [
+        for (final row in _questions)
+          if (row.id == updated.id) updated else row,
+      ];
+      _note = status == 'approved'
+          ? 'Soru onaylandı.'
+          : status == 'rejected'
+              ? 'Soru reddedildi.'
+              : 'Durum güncellendi.';
+    });
     await _load();
   }
 
@@ -1732,6 +2069,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   Future<void> _editCategory(BilgiCategory category) async {
     final labels = await BilgiQuestionApi.loadLabels();
     if (!mounted) return;
+    setState(() => _labels = labels);
     final result = await _askCategory(
       title: 'Kategoriyi düzenle',
       name: category.name,
@@ -1788,6 +2126,14 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     await _load();
   }
 
+  String _groupDropdownLabel(String locale, String group) {
+    if (locale == 'tr') return group;
+    final stored = (_labels['$locale|group|$group'] ?? '').trim();
+    // Stored Turkish key (or empty) must not mask the catalog translation for en/de/….
+    if (stored.isNotEmpty && stored != group) return stored;
+    return bilgiGroupLabel(locale, group) ?? group;
+  }
+
   Future<({String name, String emoji, String group, Map<String, String> names})?> _askCategory({
     required String title,
     required String name,
@@ -1802,59 +2148,27 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
         if (locale.id != 'tr') locale.id: TextEditingController(text: names[locale.id] ?? ''),
     };
     final emojiField = TextEditingController(text: emoji);
-    var picked = bilgiGroups.contains(group) ? group : bilgiGroups.first;
-    final saved = await showDialog<bool>(
+    final initialGroup = bilgiGroups.contains(group) ? group : bilgiGroups.first;
+    final saved = await showDialog<({bool ok, String group})>(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setLocal) => AlertDialog(
-          backgroundColor: BilgiColors.card,
-          constraints: BoxConstraints(maxWidth: _labelDialogWidth(context) + 64),
-          title: Text(title),
-          content: SizedBox(
-            width: _labelDialogWidth(context),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _LangNameFields(fields: fields, saveNames: saveNames),
-                  TextField(controller: emojiField, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'Simge')),
-                  const SizedBox(height: 12),
-                  DropdownButton<String>(
-                    isExpanded: true,
-                    value: picked,
-                    dropdownColor: BilgiColors.card,
-                    style: const TextStyle(color: Colors.white),
-                    items: [for (final item in bilgiGroups) DropdownMenuItem(value: item, child: Text(item))],
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setLocal(() => picked = value);
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Vazgeç')),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: BilgiColors.primary),
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Kaydet'),
-            ),
-          ],
-        ),
+      builder: (context) => _AskCategoryDialog(
+        title: title,
+        fields: fields,
+        emojiField: emojiField,
+        initialGroup: initialGroup,
+        saveNames: saveNames,
+        groupLabel: _groupDropdownLabel,
       ),
     );
     final nextName = fields['tr']!.text.trim();
     final nextEmoji = emojiField.text.trim();
-    final nextGroup = picked;
+    final nextGroup = saved?.group ?? initialGroup;
     final nextNames = {for (final entry in fields.entries) if (entry.key != 'tr') entry.key: entry.value.text.trim()};
     for (final field in fields.values) {
       field.dispose();
     }
     emojiField.dispose();
-    if (saved != true || nextName.isEmpty || nextEmoji.isEmpty) return null;
+    if (saved == null || !saved.ok || nextName.isEmpty || nextEmoji.isEmpty) return null;
     return (name: nextName, emoji: nextEmoji, group: nextGroup, names: nextNames);
   }
 
@@ -1966,7 +2280,20 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
             children: [
               const Text('Ana Kategori', style: TextStyle(color: BilgiColors.muted, fontSize: 12, fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
-              _select(selected.id, [for (final c in _categories) (c.id, '${c.emoji} ${c.name}')], (v) => setState(() => _subCat = v)),
+              _SearchCombo(
+                hint: 'Kategori ara',
+                selected: selected.id,
+                alwaysOpen: true,
+                clearable: false,
+                options: [
+                  for (final c in ([..._categories]..sort((a, b) => _fold(a.name).compareTo(_fold(b.name)))))
+                    (c.id, '${c.emoji} ${c.name}'),
+                ],
+                onChanged: (v) {
+                  if (v.isEmpty) return;
+                  setState(() => _subCat = v);
+                },
+              ),
               const SizedBox(height: 16),
               const Text('Ara', style: TextStyle(color: BilgiColors.muted, fontSize: 12, fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
@@ -2873,6 +3200,24 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
 
   Widget _iconBtn(String emoji, VoidCallback onTap) => InkWell(onTap: onTap, child: Padding(padding: const EdgeInsets.all(4), child: Text(emoji, style: const TextStyle(fontSize: 14))));
 
+  /// Fixed-size row actions so approve/reject hit targets do not overlap.
+  Widget _rowActionBtn({
+    required IconData icon,
+    required Color color,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
+    return IconButton(
+      onPressed: onTap,
+      icon: Icon(icon, color: color, size: 18),
+      tooltip: tooltip,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+      visualDensity: VisualDensity.compact,
+      splashRadius: 18,
+    );
+  }
+
   Widget _pageBtn(String text, VoidCallback? onTap, bool active) => Padding(
         padding: const EdgeInsets.only(left: 6),
         child: InkWell(
@@ -3658,6 +4003,8 @@ class _SearchCombo extends StatefulWidget {
     required this.options,
     required this.onChanged,
     this.enabled = true,
+    this.alwaysOpen = false,
+    this.clearable = true,
   });
 
   final String hint;
@@ -3665,6 +4012,8 @@ class _SearchCombo extends StatefulWidget {
   final List<(String, String)> options;
   final ValueChanged<String> onChanged;
   final bool enabled;
+  final bool alwaysOpen;
+  final bool clearable;
 
   @override
   State<_SearchCombo> createState() => _SearchComboState();
@@ -3681,6 +4030,7 @@ class _SearchComboState extends State<_SearchCombo> {
     super.initState();
     _picked = widget.selected;
     _text.text = _labelOf(_picked);
+    _open = widget.alwaysOpen;
     _focus.addListener(() {
       if (_focus.hasFocus && widget.enabled) setState(() => _open = true);
     });
@@ -3693,7 +4043,11 @@ class _SearchComboState extends State<_SearchCombo> {
       _picked = widget.selected;
       if (!_focus.hasFocus) _text.text = _labelOf(_picked);
     }
-    if (!widget.enabled) _open = false;
+    if (widget.alwaysOpen && widget.enabled) {
+      _open = true;
+    } else if (!widget.enabled) {
+      _open = false;
+    }
   }
 
   @override
@@ -3714,7 +4068,8 @@ class _SearchComboState extends State<_SearchCombo> {
     final raw = _text.text.trim();
     final selected = _labelOf(_picked);
     final query = _fold(raw);
-    final searching = raw.isNotEmpty && raw != selected && query.length >= 3;
+    final minLen = widget.alwaysOpen ? 1 : 3;
+    final searching = raw.isNotEmpty && raw != selected && query.length >= minLen;
     if (!searching) return widget.options;
     return [
       for (final option in widget.options)
@@ -3726,9 +4081,9 @@ class _SearchComboState extends State<_SearchCombo> {
     setState(() {
       _picked = option.$1;
       _text.text = option.$2;
-      _open = false;
+      _open = widget.alwaysOpen;
     });
-    _focus.unfocus();
+    if (!widget.alwaysOpen) _focus.unfocus();
     widget.onChanged(option.$1);
   }
 
@@ -3743,12 +4098,17 @@ class _SearchComboState extends State<_SearchCombo> {
 
   @override
   Widget build(BuildContext context) {
-    final query = _text.text.trim();
     final matches = _matches;
+    final listOpen = widget.enabled && (widget.alwaysOpen || _open);
     return SizedBox(
-      width: 240,
+      width: widget.alwaysOpen ? double.infinity : 240,
       child: TapRegion(
         onTapOutside: (_) {
+          if (widget.alwaysOpen) {
+            final label = _labelOf(_picked);
+            if (_text.text != label) setState(() => _text.text = label);
+            return;
+          }
           if (!_open) return;
           setState(() {
             _open = false;
@@ -3777,21 +4137,21 @@ class _SearchComboState extends State<_SearchCombo> {
                 fillColor: BilgiColors.bg,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 suffixIconConstraints: const BoxConstraints(maxWidth: 36, maxHeight: 36),
-                suffixIcon: _picked.isEmpty
-                    ? const Icon(Icons.arrow_drop_down, color: BilgiColors.muted)
-                    : IconButton(
+                suffixIcon: widget.clearable && _picked.isNotEmpty
+                    ? IconButton(
                         onPressed: widget.enabled ? _clear : null,
                         icon: const Icon(Icons.close, size: 16, color: BilgiColors.muted),
-                      ),
+                      )
+                    : Icon(widget.alwaysOpen ? Icons.search : Icons.arrow_drop_down, color: BilgiColors.muted, size: widget.alwaysOpen ? 18 : 24),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0x1AFFFFFF))),
                 enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0x1AFFFFFF))),
                 focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: BilgiColors.primary)),
               ),
             ),
-            if (_open && widget.enabled)
+            if (listOpen)
               Container(
                 margin: const EdgeInsets.only(top: 6),
-                constraints: const BoxConstraints(maxHeight: 220),
+                constraints: BoxConstraints(maxHeight: widget.alwaysOpen ? 280 : 220),
                 decoration: BoxDecoration(
                   color: const Color(0xFF241F3D),
                   borderRadius: BorderRadius.circular(10),
@@ -3901,11 +4261,106 @@ const _bilgiFlags = <String, String>{
   'pl': '🇵🇱',
 };
 
+class _AskCategoryDialog extends StatefulWidget {
+  const _AskCategoryDialog({
+    required this.title,
+    required this.fields,
+    required this.emojiField,
+    required this.initialGroup,
+    required this.groupLabel,
+    this.saveNames,
+  });
+
+  final String title;
+  final Map<String, TextEditingController> fields;
+  final TextEditingController emojiField;
+  final String initialGroup;
+  final String Function(String locale, String group) groupLabel;
+  final Future<String?> Function(Map<String, String> names)? saveNames;
+
+  @override
+  State<_AskCategoryDialog> createState() => _AskCategoryDialogState();
+}
+
+class _AskCategoryDialogState extends State<_AskCategoryDialog> {
+  var _lang = 'tr';
+  late String _picked = widget.initialGroup;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: BilgiColors.card,
+      constraints: BoxConstraints(maxWidth: _labelDialogWidth(context) + 64),
+      title: Text(widget.title),
+      content: SizedBox(
+        width: _labelDialogWidth(context),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _LangNameFields(
+                fields: widget.fields,
+                saveNames: widget.saveNames,
+                onLocaleChanged: (id) => setState(() => _lang = id),
+              ),
+              TextField(
+                controller: widget.emojiField,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(labelText: 'Simge'),
+              ),
+              const SizedBox(height: 12),
+              DropdownButton<String>(
+                key: ValueKey('group-$_lang'),
+                isExpanded: true,
+                value: _picked,
+                dropdownColor: BilgiColors.card,
+                style: const TextStyle(color: Colors.white),
+                selectedItemBuilder: (context) => [
+                  for (final item in bilgiGroups)
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: Text(
+                        widget.groupLabel(_lang, item),
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                ],
+                items: [
+                  for (final item in bilgiGroups)
+                    DropdownMenuItem(
+                      value: item,
+                      child: Text(widget.groupLabel(_lang, item)),
+                    ),
+                ],
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() => _picked = value);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, (ok: false, group: _picked)), child: const Text('Vazgeç')),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: BilgiColors.primary),
+          onPressed: () => Navigator.pop(context, (ok: true, group: _picked)),
+          child: const Text('Kaydet'),
+        ),
+      ],
+    );
+  }
+}
+
 class _LangNameFields extends StatefulWidget {
-  const _LangNameFields({required this.fields, this.saveNames});
+  const _LangNameFields({required this.fields, this.saveNames, this.onLocaleChanged});
 
   final Map<String, TextEditingController> fields;
   final Future<String?> Function(Map<String, String> names)? saveNames;
+  final ValueChanged<String>? onLocaleChanged;
 
   @override
   State<_LangNameFields> createState() => _LangNameFieldsState();
@@ -3915,6 +4370,11 @@ class _LangNameFieldsState extends State<_LangNameFields> {
   var _lang = 'tr';
   var _translating = false;
   var _note = '';
+
+  void _selectLang(String id) {
+    widget.onLocaleChanged?.call(id);
+    setState(() => _lang = id);
+  }
 
   Future<void> _translate() async {
     if (_translating) return;
@@ -3959,7 +4419,7 @@ class _LangNameFieldsState extends State<_LangNameFields> {
             Expanded(
               child: _BilgiLangTabs(
                 selected: _lang,
-                onSelect: (id) => setState(() => _lang = id),
+                onSelect: _selectLang,
                 wrap: true,
                 filled: (id) => widget.fields[id]?.text.trim().isNotEmpty ?? false,
               ),

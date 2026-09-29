@@ -51,6 +51,33 @@ class BilgiReportApi {
     }
   }
 
+  static Future<String?> setStatus({
+    required String token,
+    required String reportId,
+    required String status,
+  }) async {
+    if (token.isEmpty) return 'Bildirimler için yönetici oturumu gerekli.';
+    final id = reportId.trim();
+    if (id.isEmpty) return 'Bildirim bulunamadı.';
+    final next = normalizeBilgiReportStatus(status);
+    if (status.trim() != next) return 'Durum geçersiz.';
+    try {
+      final response = await http.patch(
+        Uri.parse('${ApiConfig.baseUrl}/v1/admin/bilgi-question-reports/$id'),
+        headers: {
+          'authorization': 'Bearer $token',
+          'content-type': 'application/json; charset=utf-8',
+        },
+        body: jsonEncode({'status': next}),
+      );
+      if (response.statusCode >= 200 && response.statusCode < 300) return null;
+      final decoded = _json(response.body);
+      return '${decoded['error'] ?? 'Durum güncellenemedi.'}';
+    } catch (_) {
+      return 'Durum güncellenemedi.';
+    }
+  }
+
   static Map<String, dynamic> _json(String body) {
     try {
       final decoded = jsonDecode(body);

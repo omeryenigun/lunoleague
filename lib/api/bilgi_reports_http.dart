@@ -8,6 +8,8 @@ import 'package:shelf_router/shelf_router.dart';
 
 final _random = Random.secure();
 
+const _statuses = {'bekliyor', 'dikkate_alindi', 'dikkate_alinmadi'};
+
 Future<void> migrateBilgiReports(Connection db) async {
   await db.execute('''
     create table if not exists bilgi_question_reports (
@@ -19,15 +21,22 @@ Future<void> migrateBilgiReports(Connection db) async {
       category_id text not null,
       difficulty text not null,
       note text not null,
+      status text not null default 'bekliyor',
       created_at timestamptz not null default now()
     )
   ''');
+  await db.execute(
+    "alter table bilgi_question_reports add column if not exists status text not null default 'bekliyor'",
+  );
 }
 
 void mountBilgiReports(Router router, Connection db) {
   router
     ..post('/v1/bilgi/question-reports', (request) => _create(request, db))
-    ..get('/v1/admin/bilgi-question-reports', (request) => _list(request, db));
+    ..get('/v1/admin/bilgi-question-reports', (request) => _list(request, db))
+    ..patch('/v1/admin/bilgi-question-reports/<id>', (Request request, String id) {
+      return _setStatus(request, db, id);
+    });
 }
 
 Future<Response> _create(Request request, Connection db) async {
@@ -53,9 +62,9 @@ Future<Response> _create(Request request, Connection db) async {
   await db.execute(
     Sql.named('''
       insert into bilgi_question_reports (
-        id, question_id, question_text, options_json, correct, category_id, difficulty, note
+        id, question_id, question_text, options_json, correct, category_id, difficulty, note, status
       ) values (
-        @id, @questionId, @questionText, @options, @correct, @categoryId, @difficulty, @note
+        @id, @questionId, @questionText, @options, @correct, @categoryId, @difficulty, @note, 'bekliyor'
       )
     '''),
     parameters: {
@@ -77,7 +86,7 @@ Future<Response> _list(Request request, Connection db) async {
     return jsonResponse({'error': 'Oturum geçersiz.'}, status: 401);
   }
   final rows = await db.execute('''
-    select id, question_id, question_text, options_json, correct, category_id, difficulty, note, created_at
+    select id, question_id, question_text, options_json, correct, category_id, difficulty, note, created_at, status
     from bilgi_question_reports
     order by created_at desc
     limit 200
@@ -95,9 +104,44 @@ Future<Response> _list(Request request, Connection db) async {
           'difficulty': row[6],
           'note': row[7],
           'createdAt': '${row[8]}',
+          'status': _status(row[9]),
         },
     ],
   });
+}
+
+Future<Response> _setStatus(Request request, Connection db, String id) async {
+  if (await adminIdOf(db, request) == null) {
+    return jsonResponse({'error': 'Oturum geçersiz.'}, status: 401);
+  }
+  final reportId = id.trim();
+  if (reportId.isEmpty) {
+    return jsonResponse({'error': 'Bildirim bulunamadı.'}, status: 404);
+  }
+  final body = await readJson(request);
+  final status = _status(body['status']);
+  if (!_statuses.contains('${body['status'] ?? ''}'.trim())) {
+    return jsonResponse({'error': 'Durum geçersiz.'}, status: 400);
+  }
+  final updated = await db.execute(
+    Sql.named('''
+      update bilgi_question_reports
+      set status = @status
+      where id = @id
+      returning id
+    '''),
+    parameters: {'id': reportId, 'status': status},
+  );
+  if (updated.isEmpty) {
+    return jsonResponse({'error': 'Bildirim bulunamadı.'}, status: 404);
+  }
+  return jsonResponse({'ok': true, 'id': reportId, 'status': status});
+}
+
+String _status(Object? raw) {
+  final value = '$raw'.trim();
+  if (_statuses.contains(value)) return value;
+  return 'bekliyor';
 }
 
 List<String> _options(Object? raw) {

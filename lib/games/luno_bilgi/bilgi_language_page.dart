@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:kelimelig/core/l10n/game_locale.dart';
-import 'package:kelimelig/core/theme/colors.dart';
-import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
 import 'package:kelimelig/core/theme/shimmer_title.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_l10n.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_theme.dart';
 
-/// League-style language picker for Bilgi. Locale is saved only on the Bilgi profile.
+/// Bilgi language picker. Locale is saved only on the Bilgi profile.
 class BilgiLanguagePage extends StatefulWidget {
   const BilgiLanguagePage({
     super.key,
@@ -58,7 +58,8 @@ class _BilgiLanguagePageState extends State<BilgiLanguagePage>
   @override
   Widget build(BuildContext context) {
     final selected = widget.selectedId;
-    return CosmicBackdrop(
+    return ColoredBox(
+      color: BilgiColors.bg,
       child: SafeArea(
         child: FadeTransition(
           opacity: _fade,
@@ -73,27 +74,39 @@ class _BilgiLanguagePageState extends State<BilgiLanguagePage>
                       alignment: Alignment.centerLeft,
                       child: IconButton(
                         onPressed: widget.onBack,
-                        icon: const Icon(Icons.chevron_left, size: 28),
+                        icon: const Icon(
+                          Icons.chevron_left,
+                          size: 28,
+                          color: BilgiColors.text,
+                        ),
                       ),
                     ),
                   Expanded(
                     child: ListView(
                       children: [
                         const SizedBox(height: 4),
+                        // Same path as _BilgiLogo in bilgi_screen.dart.
+                        // errorBuilder hides Flutter's red asset error (e.g.
+                        // stale web AssetManifest.bin.json) so the page stays clean.
                         Center(
                           child: ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(20),
                             child: Image.asset(
                               'assets/images/luno_bilgi_logo.jpg',
                               width: 72,
                               height: 72,
                               fit: BoxFit.cover,
-                              semanticLabel: 'Luno Bilgi',
+                              semanticLabel: bilgiT(selected, 'game_name'),
+                              errorBuilder: (_, _, _) =>
+                                  const SizedBox(width: 72, height: 72),
                             ),
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const ShimmerTitle(text: 'Luno Bilgi', fontSize: 32),
+                        ShimmerTitle(
+                          text: bilgiT(selected, 'game_name'),
+                          fontSize: 32,
+                        ),
                         const SizedBox(height: 10),
                         Container(
                           width: 88,
@@ -102,18 +115,11 @@ class _BilgiLanguagePageState extends State<BilgiLanguagePage>
                             borderRadius: BorderRadius.circular(2),
                             gradient: const LinearGradient(
                               colors: [
-                                AppColors.cosmicGreen,
-                                AppColors.cosmicTeal,
-                                AppColors.cosmicBlue,
+                                BilgiColors.primary,
+                                BilgiColors.secondary,
                                 Colors.transparent,
                               ],
                             ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.cosmicGreen.withValues(alpha: 0.45),
-                                blurRadius: 12,
-                              ),
-                            ],
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -125,7 +131,7 @@ class _BilgiLanguagePageState extends State<BilgiLanguagePage>
                           widget.subtitle,
                           textAlign: TextAlign.center,
                           style: const TextStyle(
-                            color: Color(0xFF94A3B8),
+                            color: BilgiColors.muted,
                             fontSize: 13,
                             height: 1.45,
                           ),
@@ -180,7 +186,7 @@ class _Heading extends StatelessWidget {
     return ShaderMask(
       blendMode: BlendMode.srcIn,
       shaderCallback: (bounds) => const LinearGradient(
-        colors: [Color(0xFFF0FDF4), Color(0xFFA7F3D0), Color(0xFF67E8F9)],
+        colors: [Color(0xFFF5F3FF), BilgiColors.primaryLight, BilgiColors.secondary],
       ).createShader(bounds),
       child: Text(
         text,
@@ -252,16 +258,16 @@ class _LangCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = _tr ? AppColors.cosmicGreen : AppColors.cosmicBlue;
+    final accent = _tr ? BilgiColors.secondary : BilgiColors.primary;
     final badge = _tr
-        ? const [AppColors.cosmicGreen, AppColors.cosmicTeal]
-        : const [AppColors.cosmicBlue, AppColors.cosmicPurple];
+        ? const [BilgiColors.secondary, BilgiColors.info]
+        : const [BilgiColors.primary, BilgiColors.primaryLight];
     return AnimatedScale(
       scale: selected ? 1.01 : 1,
       duration: const Duration(milliseconds: 280),
       curve: Curves.easeOutCubic,
       child: Material(
-        color: const Color(0xB30F172A),
+        color: BilgiColors.card,
         borderRadius: BorderRadius.circular(18),
         child: InkWell(
           onTap: onTap,
@@ -301,7 +307,7 @@ class _LangCard extends StatelessWidget {
                   child: Text(
                     locale.id.toUpperCase(),
                     style: const TextStyle(
-                      color: AppColors.cosmicBg,
+                      color: BilgiColors.bg,
                       fontWeight: FontWeight.w900,
                       fontSize: 12,
                       letterSpacing: 0.6,
@@ -315,6 +321,7 @@ class _LangCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
+                      color: BilgiColors.text,
                       fontWeight: FontWeight.w800,
                       fontSize: 14,
                     ),
@@ -340,7 +347,7 @@ class _LangCard extends StatelessWidget {
                           ),
                         ],
                       ),
-                      child: const Icon(Icons.check, size: 14, color: AppColors.cosmicBg),
+                      child: const Icon(Icons.check, size: 14, color: BilgiColors.bg),
                     ),
                   ),
                 ),
