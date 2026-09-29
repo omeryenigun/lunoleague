@@ -1,0 +1,538 @@
+import 'dart:convert';
+
+import 'package:kelimelig/api/admin_http.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
+import 'package:postgres/postgres.dart';
+import 'package:shelf/shelf.dart';
+import 'package:shelf_router/shelf_router.dart';
+
+const _statuses = {'approved', 'pending', 'rejected', 'draft'};
+const _difficulties = {'kolay', 'orta', 'zor', 'efsane'};
+const _extraLocales = {'en', 'de', 'es', 'fr', 'it', 'ru', 'nl', 'pt', 'pl'};
+const _labelScopes = {'category', 'sub', 'group'};
+
+Future<void> migrateBilgiQuestions(Connection db) async {
+  await db.execute('''
+    create table if not exists bilgi_questions (
+      id text primary key,
+      category_id text not null,
+      text text not null,
+      options_json text not null,
+      correct int not null,
+      difficulty text not null,
+      explanation text not null default '',
+      status text not null,
+      tags_json text not null default '[]',
+      reject_reason text not null default ''
+    )
+  ''');
+  await db.execute(
+    'create index if not exists bilgi_questions_status on bilgi_questions (status)',
+  );
+  await db.execute('''
+    create table if not exists bilgi_daily (
+      day text primary key,
+      question_json text not null
+    )
+  ''');
+  await db.execute(
+    "alter table bilgi_questions add column if not exists translations_json text not null default '{}'",
+  );
+  await db.execute('''
+    create table if not exists bilgi_labels (
+      locale text not null,
+      scope text not null,
+      key text not null,
+      label text not null,
+      primary key (locale, scope, key)
+    )
+  ''');
+  await db.execute('''
+    create table if not exists bilgi_active (
+      kind text not null,
+      key text not null,
+      primary key (kind, key)
+    )
+  ''');
+}
+
+void mountBilgiQuestions(Router router, Connection db) {
+  router
+    ..get('/v1/bilgi/labels', (request) => _labels(db))
+    ..put('/v1/admin/bilgi-labels', (request) => _saveLabels(request, db))
+    ..get('/v1/bilgi/active', (request) => _active(db))
+    ..put('/v1/admin/bilgi-active', (request) => _setActive(request, db))
+    ..get('/v1/bilgi/questions/counts', (request) => _counts(db))
+    ..get('/v1/bilgi/questions/daily', (request) => _daily(db))
+    ..get('/v1/bilgi/questions/draw', (request) => _draw(request, db))
+    ..get('/v1/bilgi/questions', (request) => _list(db, approvedOnly: true))
+    ..get('/v1/admin/bilgi-questions', (request) async {
+      if (await adminIdOf(db, request) == null) {
+        return jsonResponse({'error': 'Oturum geçersiz.'}, status: 401);
+      }
+      return _list(db, approvedOnly: false);
+    })
+    ..put('/v1/admin/bilgi-questions', (request) => _save(request, db))
+    ..delete('/v1/admin/bilgi-questions/<id>', (Request request, String id) async {
+      if (await adminIdOf(db, request) == null) {
+        return jsonResponse({'error': 'Oturum geçersiz.'}, status: 401);
+      }
+      final key = id.trim();
+      if (key.isEmpty || key.length > 80) {
+        return jsonResponse({'error': 'Soru bulunamadı.'}, status: 400);
+      }
+      await db.execute(
+        Sql.named('delete from bilgi_questions where id = @id'),
+        parameters: {'id': key},
+      );
+      return jsonResponse({'ok': true});
+    });
+}
+
+Future<Response> _counts(Connection db) async {
+  final rows = await db.execute('''
+    select category_id, difficulty, tags_json
+    from bilgi_questions
+    where status = 'approved'
+  ''');
+  final categories = resolveBilgiCategories(await _closedCatalog(db), playableOnly: true);
+  final counts = <String, int>{};
+  final subs = <String, int>{};
+  final slices = <String, int>{};
+  var total = 0;
+  for (final row in rows) {
+    final question = BilgiQuestion(
+      id: 'count',
+      categoryId: '${row[0]}',
+      text: 's',
+      options: const ['a', 'b', 'c', 'd'],
+      correct: 0,
+      difficulty: '${row[1]}',
+      explanation: '',
+      status: 'approved',
+      tags: _decodeList(row[2]),
+    );
+    if (!bilgiPlayableQuestion(question, categories, categoryId: tumuKarmaId)) continue;
+    total += 1;
+    counts[question.categoryId] = (counts[question.categoryId] ?? 0) + 1;
+    final owner = categories.where((category) => category.id == question.categoryId).firstOrNull;
+    if (owner == null) continue;
+    final difficulty = question.difficulty;
+    slices['${question.categoryId}||$difficulty'] = (slices['${question.categoryId}||$difficulty'] ?? 0) + 1;
+    slices['tumu||$difficulty'] = (slices['tumu||$difficulty'] ?? 0) + 1;
+    for (final tag in question.tags) {
+      if (!owner.subs.contains(tag)) continue;
+      subs['${question.categoryId}|$tag'] = (subs['${question.categoryId}|$tag'] ?? 0) + 1;
+      final key = '${question.categoryId}|$tag|$difficulty';
+      slices[key] = (slices[key] ?? 0) + 1;
+    }
+  }
+  counts[tumuKarmaId] = total;
+  return jsonResponse({'categories': counts, 'subs': subs, 'slices': slices});
+}
+
+Future<Response> _daily(Connection db) async {
+  final day = DateTime.now().toUtc().toIso8601String().substring(0, 10);
+  final existing = await db.execute(
+    Sql.named('select question_json from bilgi_daily where day = @day'),
+    parameters: {'day': day},
+  );
+  if (existing.isNotEmpty) {
+    final stored = jsonDecode('${existing.first[0]}');
+    return jsonResponse({'questions': stored is Map ? [stored] : const []});
+  }
+  final picked = await drawApprovedBilgiQuestions(
+    db,
+    categoryId: tumuKarmaId,
+    subcategory: '',
+    difficulty: '',
+    count: 1,
+  );
+  if (picked.isEmpty) return jsonResponse({'questions': const []});
+  await db.execute(
+    Sql.named('''
+      insert into bilgi_daily (day, question_json)
+      values (@day, @question)
+      on conflict (day) do nothing
+    '''),
+    parameters: {'day': day, 'question': jsonEncode(picked.first)},
+  );
+  final again = await db.execute(
+    Sql.named('select question_json from bilgi_daily where day = @day'),
+    parameters: {'day': day},
+  );
+  if (again.isEmpty) return jsonResponse({'questions': picked});
+  final stored = jsonDecode('${again.first[0]}');
+  return jsonResponse({'questions': stored is Map ? [stored] : picked});
+}
+
+Future<List<Map<String, dynamic>>> drawApprovedBilgiQuestions(
+  Connection db, {
+  required String categoryId,
+  required String subcategory,
+  required String difficulty,
+  required int count,
+  Set<String> exclude = const {},
+}) async {
+  final categories = resolveBilgiCategories(await _closedCatalog(db), playableOnly: true);
+  final picked = <Map<String, dynamic>>[];
+  final seen = <String>{...exclude};
+  final narrowed = difficulty.isNotEmpty && difficulty != 'hepsi';
+  for (var attempt = 0; attempt < 6 && picked.length < count; attempt++) {
+    final rows = await db.execute(
+      Sql.named('''
+        select id, category_id, text, options_json, correct, difficulty,
+               explanation, status, tags_json, reject_reason, translations_json
+        from bilgi_questions
+        where status = 'approved'
+          and (@category = 'tumu' or category_id = @category)
+          and (@difficulty = '' or difficulty = @difficulty)
+          and (@sub = '' or tags_json::jsonb ? @sub)
+        order by random()
+        limit @limit
+      '''),
+      parameters: {
+        'category': categoryId == tumuKarmaId ? 'tumu' : categoryId,
+        'difficulty': narrowed ? difficulty : '',
+        'sub': subcategory,
+        'limit': count - picked.length,
+      },
+    );
+    if (rows.isEmpty) break;
+    var fresh = 0;
+    for (final row in rows) {
+      final item = _json(row);
+      final id = '${item['id']}';
+      if (!seen.add(id)) continue;
+      fresh += 1;
+      final question = BilgiQuestion.fromMap(item);
+      if (!bilgiPlayableQuestion(
+        question,
+        categories,
+        categoryId: categoryId,
+        subcategory: subcategory,
+        difficulty: narrowed ? difficulty : '',
+      )) {
+        continue;
+      }
+      picked.add(item);
+      if (picked.length >= count) break;
+    }
+    if (fresh == 0) break;
+  }
+  return picked;
+}
+
+Future<Response> _draw(Request request, Connection db) async {
+  final params = request.url.queryParameters;
+  final categoryId = (params['category'] ?? tumuKarmaId).trim();
+  final subcategory = (params['sub'] ?? '').trim();
+  final difficulty = (params['difficulty'] ?? '').trim();
+  final count = int.tryParse(params['count'] ?? '') ?? 10;
+  if (categoryId.isEmpty || count < 1 || count > 51) {
+    return jsonResponse({'error': 'Soru isteği geçersiz.'}, status: 400);
+  }
+  final exclude = {
+    for (final id in (params['exclude'] ?? '').split(','))
+      if (id.trim().isNotEmpty) id.trim(),
+  };
+  final picked = await drawApprovedBilgiQuestions(
+    db,
+    categoryId: categoryId,
+    subcategory: subcategory,
+    difficulty: difficulty,
+    count: count,
+    exclude: exclude,
+  );
+  return jsonResponse({'questions': picked});
+}
+
+Future<Response> _list(Connection db, {required bool approvedOnly}) async {
+  final rows = await db.execute(
+    approvedOnly
+        ? '''
+            select id, category_id, text, options_json, correct, difficulty,
+                   explanation, status, tags_json, reject_reason, translations_json
+            from bilgi_questions
+            where status = 'approved'
+            order by id
+          '''
+        : '''
+            select id, category_id, text, options_json, correct, difficulty,
+                   explanation, status, tags_json, reject_reason, translations_json
+            from bilgi_questions
+            order by id
+          ''',
+  );
+  return jsonResponse({
+    'questions': [for (final row in rows) _json(row)],
+  });
+}
+
+Future<Response> _save(Request request, Connection db) async {
+  if (await adminIdOf(db, request) == null) {
+    return jsonResponse({'error': 'Oturum geçersiz.'}, status: 401);
+  }
+  final body = await readJson(request);
+  final raw = body['questions'];
+  if (raw is! List || raw.isEmpty) {
+    return jsonResponse({'error': 'Soru listesi boş.'}, status: 400);
+  }
+  if (raw.length > 400) {
+    return jsonResponse({'error': 'Bir istekte en fazla 400 soru yazılır.'}, status: 400);
+  }
+  final questions = <Map<String, Object>>[];
+  for (final item in raw) {
+    if (item is! Map) return jsonResponse({'error': 'Soru bulunamadı.'}, status: 400);
+    final question = _read(Map<String, dynamic>.from(item));
+    if (question == null) return jsonResponse({'error': 'Soru bulunamadı.'}, status: 400);
+    if (question['status'] == 'approved' && !_approvedLanguagesReady(question)) {
+      return jsonResponse({'error': bilgiApproveBlocked}, status: 400);
+    }
+    questions.add(question);
+  }
+  for (final question in questions) {
+    await db.execute(
+      Sql.named('''
+        insert into bilgi_questions (
+          id, category_id, text, options_json, correct, difficulty,
+          explanation, status, tags_json, reject_reason, translations_json
+        ) values (
+          @id, @categoryId, @text, @options, @correct, @difficulty,
+          @explanation, @status, @tags, @rejectReason, @translations
+        )
+        on conflict (id) do update set
+          category_id = excluded.category_id,
+          text = excluded.text,
+          options_json = excluded.options_json,
+          correct = excluded.correct,
+          difficulty = excluded.difficulty,
+          explanation = excluded.explanation,
+          status = excluded.status,
+          tags_json = excluded.tags_json,
+          reject_reason = excluded.reject_reason,
+          translations_json = excluded.translations_json
+      '''),
+      parameters: question,
+    );
+  }
+  return jsonResponse({'saved': questions.length});
+}
+
+Map<String, Object>? _read(Map<String, dynamic> map) {
+  final id = '${map['id'] ?? ''}'.trim();
+  final categoryId = '${map['categoryId'] ?? ''}'.trim();
+  final text = '${map['text'] ?? ''}'.trim();
+  final difficulty = '${map['difficulty'] ?? ''}'.trim();
+  final status = '${map['status'] ?? ''}'.trim();
+  final explanation = '${map['explanation'] ?? ''}';
+  final rejectReason = '${map['rejectReason'] ?? ''}';
+  final options = _strings(map['options']);
+  final tags = _strings(map['tags']);
+  final correct = map['correct'];
+  final correctIndex = correct is int ? correct : (correct is num ? correct.toInt() : null);
+  if (id.isEmpty || id.length > 80 || categoryId.isEmpty || categoryId.length > 80) return null;
+  if (text.isEmpty || text.length > 2000) return null;
+  if (options == null || options.length != 4 || options.any((item) => item.trim().isEmpty || item.length > 500)) {
+    return null;
+  }
+  if (correctIndex == null || correctIndex < 0 || correctIndex > 3) return null;
+  if (!_difficulties.contains(difficulty) || !_statuses.contains(status)) return null;
+  if (explanation.length > 4000 || rejectReason.length > 400) return null;
+  if (tags == null || tags.length > 20 || tags.any((item) => item.length > 80)) return null;
+  final translations = _translations(map['translations']);
+  if (translations == null) return null;
+  return {
+    'id': id,
+    'categoryId': categoryId,
+    'text': text,
+    'options': jsonEncode(options),
+    'correct': correctIndex,
+    'difficulty': difficulty,
+    'explanation': explanation,
+    'status': status,
+    'tags': jsonEncode(tags),
+    'rejectReason': rejectReason,
+    'translations': jsonEncode(translations),
+  };
+}
+
+Future<Map<String, dynamic>> _closedCatalog(Connection db) async {
+  final rows = await db.execute('select kind, key from bilgi_active');
+  final categories = <String>{};
+  final subs = <String>{};
+  for (final row in rows) {
+    if (row[0] == 'category') categories.add('${row[1]}');
+    if (row[0] == 'sub') subs.add('${row[1]}');
+  }
+  return bilgiCatalogClosedUnless(null, categories, subs);
+}
+
+Future<Response> _active(Connection db) async {
+  final rows = await db.execute('select kind, key from bilgi_active');
+  return jsonResponse({
+    'categories': [for (final row in rows) if (row[0] == 'category') '${row[1]}'],
+    'subs': [for (final row in rows) if (row[0] == 'sub') '${row[1]}'],
+  });
+}
+
+Future<Response> _setActive(Request request, Connection db) async {
+  if (await adminIdOf(db, request) == null) {
+    return jsonResponse({'error': 'Oturum geçersiz.'}, status: 401);
+  }
+  final body = await readJson(request);
+  final kind = '${body['kind'] ?? ''}'.trim();
+  final key = '${body['key'] ?? ''}'.trim();
+  final active = body['active'] == true;
+  if ((kind != 'category' && kind != 'sub') || key.isEmpty || key.length > 120) {
+    return jsonResponse({'error': 'Kategori bulunamadı.'}, status: 400);
+  }
+  if (!active) {
+    await db.execute(
+      Sql.named('delete from bilgi_active where kind = @kind and key = @key'),
+      parameters: {'kind': kind, 'key': key},
+    );
+    return jsonResponse({'ok': true});
+  }
+  final scope = kind == 'category' ? 'category' : 'sub';
+  final named = await db.execute(
+    Sql.named('''
+      select locale from bilgi_labels
+      where scope = @scope and key = @key and length(trim(label)) > 0
+    '''),
+    parameters: {'scope': scope, 'key': key},
+  );
+  final have = {for (final row in named) '${row[0]}'};
+  if (!_extraLocales.every(have.contains)) {
+    return jsonResponse({'error': kind == 'category' ? bilgiCategoryBlocked : bilgiSubBlocked}, status: 400);
+  }
+  await db.execute(
+    Sql.named('''
+      insert into bilgi_active (kind, key) values (@kind, @key)
+      on conflict (kind, key) do nothing
+    '''),
+    parameters: {'kind': kind, 'key': key},
+  );
+  return jsonResponse({'ok': true});
+}
+
+bool _approvedLanguagesReady(Map<String, Object> question) {
+  if ('${question['explanation']}'.trim().isEmpty) return false;
+  final raw = jsonDecode('${question['translations']}');
+  if (raw is! Map) return false;
+  for (final locale in _extraLocales) {
+    final row = raw[locale];
+    if (row is! Map) return false;
+    final text = '${row['text'] ?? ''}'.trim();
+    final explanation = '${row['explanation'] ?? ''}'.trim();
+    final options = row['options'];
+    if (text.isEmpty || explanation.isEmpty) return false;
+    if (options is! List || options.length != 4 || options.any((item) => '$item'.trim().isEmpty)) return false;
+  }
+  return true;
+}
+
+Future<Response> _labels(Connection db) async {
+  final rows = await db.execute('select locale, scope, key, label from bilgi_labels order by locale, scope, key');
+  return jsonResponse({
+    'labels': [
+      for (final row in rows)
+        {'locale': '${row[0]}', 'scope': '${row[1]}', 'key': '${row[2]}', 'label': '${row[3]}'},
+    ],
+  });
+}
+
+Future<Response> _saveLabels(Request request, Connection db) async {
+  if (await adminIdOf(db, request) == null) {
+    return jsonResponse({'error': 'Oturum geçersiz.'}, status: 401);
+  }
+  final body = await readJson(request);
+  final raw = body['labels'];
+  if (raw is! List) return jsonResponse({'error': 'Ad listesi boş.'}, status: 400);
+  if (raw.length > 400) return jsonResponse({'error': 'Bir istekte en fazla 400 ad yazılır.'}, status: 400);
+  for (final item in raw) {
+    if (item is! Map) return jsonResponse({'error': 'Ad bulunamadı.'}, status: 400);
+    final locale = '${item['locale'] ?? ''}'.trim();
+    final scope = '${item['scope'] ?? ''}'.trim();
+    final key = '${item['key'] ?? ''}'.trim();
+    final label = '${item['label'] ?? ''}'.trim();
+    if (!_extraLocales.contains(locale) && locale != 'tr') {
+      return jsonResponse({'error': 'Dil bulunamadı.'}, status: 400);
+    }
+    if (!_labelScopes.contains(scope) || key.isEmpty || key.length > 120 || label.isEmpty || label.length > 80) {
+      return jsonResponse({'error': 'Ad bulunamadı.'}, status: 400);
+    }
+    await db.execute(
+      Sql.named('''
+        insert into bilgi_labels (locale, scope, key, label)
+        values (@locale, @scope, @key, @label)
+        on conflict (locale, scope, key) do update set label = excluded.label
+      '''),
+      parameters: {'locale': locale, 'scope': scope, 'key': key, 'label': label},
+    );
+  }
+  return jsonResponse({'saved': raw.length});
+}
+
+Map<String, dynamic> _json(ResultRow row) {
+  return {
+    'id': row[0],
+    'categoryId': row[1],
+    'text': row[2],
+    'options': _decodeList(row[3]),
+    'correct': row[4],
+    'difficulty': row[5],
+    'explanation': row[6],
+    'status': row[7],
+    'tags': _decodeList(row[8]),
+    'rejectReason': row[9],
+    'translations': row.length > 10 ? _decodeMap(row[10]) : const <String, dynamic>{},
+  };
+}
+
+Map<String, dynamic> _decodeMap(Object? raw) {
+  if (raw is! String || raw.isEmpty || raw == '{}') return const {};
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is Map) return Map<String, dynamic>.from(decoded);
+  } catch (_) {}
+  return const {};
+}
+
+Map<String, Object>? _translations(Object? raw) {
+  if (raw == null) return {};
+  if (raw is! Map) return null;
+  final out = <String, Object>{};
+  for (final entry in raw.entries) {
+    final locale = '${entry.key}'.trim();
+    if (!_extraLocales.contains(locale)) continue;
+    final row = entry.value;
+    if (row is! Map) return null;
+    final text = '${row['text'] ?? ''}'.trim();
+    final options = _strings(row['options']);
+    final explanation = '${row['explanation'] ?? ''}';
+    if (text.isEmpty || text.length > 2000) return null;
+    if (options == null || options.length != 4 || options.any((item) => item.trim().isEmpty || item.length > 500)) {
+      return null;
+    }
+    if (explanation.length > 4000) return null;
+    out[locale] = {'text': text, 'options': options, 'explanation': explanation};
+  }
+  return out;
+}
+
+List<String> _decodeList(Object? raw) {
+  if (raw is! String || raw.isEmpty) return const [];
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is List) return [for (final item in decoded) '$item'];
+  } catch (_) {}
+  return const [];
+}
+
+List<String>? _strings(Object? raw) {
+  if (raw is! List) return null;
+  return [for (final item in raw) '$item'];
+}

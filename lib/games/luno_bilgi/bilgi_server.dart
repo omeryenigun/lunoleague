@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:kelimelig/core/l10n/game_locale.dart';
 import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_room.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_rules.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_trial_questions.dart';
 
@@ -46,6 +48,21 @@ class LunoBilgiServer {
   final DateTime Function() _clock;
   final Random _random;
   final Map<String, BilgiRound> _rounds = {};
+
+  /// When set, a round asks the API for only the questions it needs.
+  Future<List<BilgiQuestion>?> Function({
+    required String categoryId,
+    required String subcategory,
+    required String difficulty,
+    required int count,
+    required List<String> exclude,
+  })? remoteDraw;
+
+  /// Günün sorusu: sunucunun o gün için seçtiği tek soru.
+  Future<List<BilgiQuestion>?> Function()? remoteDaily;
+
+  /// Düello, grup ve özel oda sunucuda durur. Boşsa odalar telefon deposunda kalır.
+  BilgiRoomHooks? remoteRooms;
 
   static const _users = 'users';
   static const _questions = 'questions';
@@ -326,6 +343,9 @@ class LunoBilgiServer {
     String difficulty = '',
     int? questionCount,
     bool adCleared = false,
+    List<BilgiQuestion>? fixedQuestions,
+    BilgiQuestion? fixedSpare,
+    String roomCode = '',
   }) async {
     final user = await profile();
     final cfg = await config();
@@ -344,15 +364,24 @@ class LunoBilgiServer {
     if (categoryId != tumuKarmaId && resolveBilgiCategories(await catalog(), playableOnly: true).every((category) => category.id != categoryId)) {
       return const BilgiResult(message: 'Bu kategori şu an oyunda değil.');
     }
-    final pool = await _draw(
+    final wanted = questionCount ?? mode.questions;
+    final drawn = await _openingQuestions(
+      mode: mode,
       categoryId: categoryId,
       subcategory: subcategory,
       difficulty: difficulty,
-      count: questionCount ?? mode.questions,
+      wanted: wanted,
+      fixedQuestions: fixedQuestions,
+      fixedSpare: fixedSpare,
     );
-    if (pool.isEmpty) {
+    if (drawn == null) {
+      return const BilgiResult(message: 'Sorular alınamadı. Bağlantını kontrol et.');
+    }
+    if (drawn.questions.isEmpty) {
       return const BilgiResult(message: '❓ Bu kategoride yeterli soru yok.');
     }
+    final pool = drawn.questions;
+    final spare = drawn.spare;
     final today = DateKeys.dayKey(_clock());
     var next = user.copyWith(
       lives: cfg.livesEnabled ? user.lives - mode.lifeCost : user.lives,
@@ -381,25 +410,85 @@ class LunoBilgiServer {
       totalSeconds: mode.totalSeconds,
       jokerMax: mode.jokerMax,
       lifeCost: mode.lifeCost,
+      roomCode: roomCode,
+      spare: spare,
       startedAt: _clock(),
     );
     _rounds[round.id] = round;
     return BilgiResult(profile: next, round: round);
   }
 
-  Future<List<BilgiQuestion>> _draw({
+  Future<({List<BilgiQuestion> questions, BilgiQuestion? spare})?> _openingQuestions({
+    required BilgiMode mode,
+    required String categoryId,
+    required String subcategory,
+    required String difficulty,
+    required int wanted,
+    List<BilgiQuestion>? fixedQuestions,
+    BilgiQuestion? fixedSpare,
+  }) async {
+    if (fixedQuestions != null) {
+      return (questions: fixedQuestions, spare: fixedSpare);
+    }
+    if (mode.id == 'gunluk') {
+      final daily = remoteDaily;
+      if (daily != null) {
+        final one = await daily();
+        if (one == null) return null;
+        return (questions: one, spare: null);
+      }
+    }
+    final ask = mode.jokerMax > 0 && wanted > 0 ? wanted + 1 : wanted;
+    final pool = await _draw(
+      categoryId: categoryId,
+      subcategory: subcategory,
+      difficulty: difficulty,
+      count: ask < 1 ? 1 : ask,
+    );
+    if (pool == null) return null;
+    if (pool.length <= wanted) return (questions: pool, spare: null);
+    return (questions: pool.sublist(0, wanted), spare: pool[wanted]);
+  }
+
+  Future<List<BilgiQuestion>?> _draw({
     required String categoryId,
     required String difficulty,
     required int count,
     String subcategory = '',
+    List<String> exclude = const [],
   }) async {
+    final remote = remoteDraw;
+    if (remote != null) {
+      return remote(
+        categoryId: categoryId,
+        subcategory: subcategory,
+        difficulty: difficulty,
+        count: count,
+        exclude: exclude,
+      );
+    }
+    final blocked = exclude.toSet();
     final categories = resolveBilgiCategories(await catalog(), playableOnly: true);
     final all = (await questions())
+        .where((question) => !blocked.contains(question.id))
         .where((question) => bilgiPlayableQuestion(question, categories, categoryId: categoryId, subcategory: subcategory, difficulty: difficulty))
         .toList();
     all.shuffle(_random);
     if (all.length > count) return all.sublist(0, count);
     return all;
+  }
+
+  Future<void> _publishScore(BilgiRound round) async {
+    final remote = remoteRooms;
+    if (remote == null || round.roomCode.isEmpty) return;
+    try {
+      await remote.score(
+        code: round.roomCode,
+        playerId: round.userId,
+        score: round.score,
+        index: round.index,
+      );
+    } catch (_) {}
   }
 
   BilgiRound? roundById(String id) => _rounds[id];
@@ -443,6 +532,7 @@ class LunoBilgiServer {
     round.hint = '';
     round.paused = false;
     round.index += 1;
+    await _publishScore(round);
     if (round.index >= round.questions.length) {
       return finish(roundId);
     }
@@ -486,13 +576,13 @@ class LunoBilgiServer {
     } else if (type == 'hint') {
       round.hint = question.explanation;
     } else if (type == 'change') {
-      final spare = await _draw(categoryId: round.categoryId, subcategory: round.subcategory, difficulty: round.difficulty, count: 8);
-      final replacement = spare.where((q) => !round.questions.any((have) => have.id == q.id)).toList();
-      if (replacement.isEmpty) {
+      final next = round.spare;
+      if (next == null) {
         round.jokersUsed -= 1;
         return BilgiResult(message: '❓ Bu kategoride yeterli soru yok.', profile: user);
       }
-      round.questions[round.index] = replacement.first;
+      round.spare = null;
+      round.questions[round.index] = next;
       round.hidden = const [];
       round.hint = '';
     }
@@ -541,6 +631,7 @@ class LunoBilgiServer {
       next = _withBadges(next);
       round.gold = gold;
       round.xp = xp;
+      await _publishScore(round);
       await _save(next);
       await _store.put(_games, round.id, round.toMap());
       if (round.modeId == 'gunluk') {
@@ -645,6 +736,13 @@ class LunoBilgiServer {
     return BilgiResult(profile: next);
   }
 
+  Future<BilgiProfile> setLocale(String localeId) async {
+    final user = await profile();
+    final next = user.copyWith(locale: GameLocale.resolve(localeId).id, localeChosen: true);
+    await _save(next);
+    return next;
+  }
+
   Future<BilgiResult> updateProfile({String? username, String? city, String? avatar}) async {
     final user = await profile();
     final next = user.copyWith(username: username, city: city, avatar: avatar);
@@ -747,17 +845,35 @@ class LunoBilgiServer {
     return started;
   }
 
-  Future<BilgiRoom> createRoom({String kind = 'oda'}) async {
+  Future<BilgiRoom?> createRoom({
+    String kind = 'oda',
+    String categoryId = tumuKarmaId,
+    String subcategory = '',
+    String difficulty = 'orta',
+  }) async {
     final user = await profile();
+    final remote = remoteRooms;
+    if (remote != null) {
+      final sync = await remote.create(
+        kind: kind,
+        playerId: user.id,
+        name: user.username,
+        categoryId: categoryId,
+        subcategory: subcategory,
+        difficulty: difficulty,
+      );
+      return sync.room;
+    }
     final code = 'LB${_random.nextInt(90) + 10}';
     final room = BilgiRoom(
       code: code,
       hostId: user.id,
       hostName: user.username,
-      categoryId: tumuKarmaId,
+      categoryId: categoryId,
       questionCount: kind == 'duello' ? 10 : 20,
       seconds: kind == 'duello' ? 10 : 15,
-      difficulty: 'orta',
+      difficulty: difficulty,
+      subcategory: subcategory,
       players: [
         {'id': user.id, 'name': user.username, 'role': 'host'},
       ],
@@ -768,14 +884,22 @@ class LunoBilgiServer {
   }
 
   Future<BilgiResult> joinRoom(String code, {String? guestName}) async {
+    final remote = remoteRooms;
+    final user = await profile();
+    final name = guestName?.trim().isNotEmpty == true ? guestName!.trim() : user.username;
+    if (remote != null) {
+      final sync = await remote.join(code: code.trim(), playerId: user.id, name: name);
+      if (sync.room == null) {
+        return BilgiResult(message: sync.message ?? 'Oda açılamadı. Bağlantını kontrol et.', profile: user);
+      }
+      return BilgiResult(room: sync.room, profile: user);
+    }
     final raw = await _store.get(_rooms, code.trim());
     if (raw == null) return const BilgiResult(message: '⚠️ Bir şeyler ters gitti. Tekrar dene.');
     final room = BilgiRoom.fromMap(raw);
-    final user = await profile();
     if (room.players.length >= 10) {
       return const BilgiResult(message: '⚠️ Bir şeyler ters gitti. Tekrar dene.');
     }
-    final name = guestName?.trim().isNotEmpty == true ? guestName!.trim() : user.username;
     final players = [
       ...room.players,
       {'id': '${user.id}_${room.players.length}', 'name': name, 'role': 'player'},
@@ -801,6 +925,11 @@ class LunoBilgiServer {
   }
 
   Future<BilgiRoom?> openGroupRoom() async {
+    final remote = remoteRooms;
+    if (remote != null) {
+      final sync = await remote.openGroup();
+      return sync.room;
+    }
     final rows = await _store.values(_rooms);
     for (final raw in rows) {
       final room = BilgiRoom.fromMap(raw);
@@ -813,6 +942,18 @@ class LunoBilgiServer {
     if (id == null || id.isEmpty) return;
     await _store.delete(_duel, id);
   }
+
+  Future<void> replaceQuestionBank(List<BilgiQuestion> questions) async {
+    await clearQuestionBank();
+    for (final question in questions) {
+      if (question.id.isEmpty) continue;
+      await _store.put(_questions, question.id, question.toMap());
+    }
+  }
+
+  Future<String?> readMeta(String key) => _store.getMeta(key);
+
+  Future<void> writeMeta(String key, String value) => _store.putMeta(key, value);
 
   Future<BilgiResult> saveQuestion(BilgiQuestion question) async {
     await _store.put(_questions, question.id, question.toMap());
@@ -915,7 +1056,6 @@ class LunoBilgiServer {
       if (index >= 0) {
         custom[index]['active'] = active;
         doc['custom'] = custom;
-        return;
       }
       final inactive = <String>{for (final item in doc['inactive'] as List? ?? const []) '$item'};
       if (active) {

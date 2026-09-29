@@ -161,10 +161,24 @@ class _IconButton extends StatelessWidget {
 }
 
 class BilgiBottomNav extends StatelessWidget {
-  const BilgiBottomNav({super.key, required this.current, required this.onSelect});
+  const BilgiBottomNav({
+    super.key,
+    required this.current,
+    required this.onSelect,
+    this.home = 'Ana Sayfa',
+    this.play = 'Oyna',
+    this.league = 'Lig',
+    this.profile = 'Profil',
+    this.shop = 'Mağaza',
+  });
 
   final String current;
   final ValueChanged<String> onSelect;
+  final String home;
+  final String play;
+  final String league;
+  final String profile;
+  final String shop;
 
   @override
   Widget build(BuildContext context) {
@@ -177,11 +191,11 @@ class BilgiBottomNav extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _Nav('home', '🏠', 'Ana Sayfa', current, onSelect),
-          _Nav('play', '🎮', 'Oyna', current, onSelect),
-          _Nav('league', '🏆', 'Lig', current, onSelect),
-          _Nav('profile', '👤', 'Profil', current, onSelect),
-          _Nav('shop', '🛒', 'Mağaza', current, onSelect),
+          _Nav('home', '🏠', home, current, onSelect),
+          _Nav('play', '🎮', play, current, onSelect),
+          _Nav('league', '🏆', league, current, onSelect),
+          _Nav('profile', '👤', profile, current, onSelect),
+          _Nav('shop', '🛒', shop, current, onSelect),
         ],
       ),
     );

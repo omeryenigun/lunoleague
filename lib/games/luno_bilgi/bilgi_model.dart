@@ -1,3 +1,34 @@
+import 'package:kelimelig/core/l10n/game_locale.dart';
+
+const bilgiApproveBlocked = 'Onay için her dilde soru, dört şık ve açıklama dolu olmalı.';
+const bilgiCategoryBlocked = 'Kategori her dilde adlandırılmadan açılamaz.';
+const bilgiSubBlocked = 'Alt kategori her dilde adlandırılmadan açılamaz.';
+
+bool bilgiLanguageFieldsReady(String text, List<String> options, String explanation) {
+  if (text.trim().isEmpty || explanation.trim().isEmpty) return false;
+  return options.length == 4 && options.every((item) => item.trim().isNotEmpty);
+}
+
+/// Onay yalnız 10 dilin soru, şık ve açıklaması doluyken verilir.
+bool bilgiQuestionLanguagesReady(BilgiQuestion question) {
+  if (!bilgiLanguageFieldsReady(question.text, question.options, question.explanation)) return false;
+  for (final locale in GameLocale.all) {
+    if (locale.id == 'tr') continue;
+    final row = question.translations[locale.id];
+    if (row == null || !bilgiLanguageFieldsReady(row.text, row.options, row.explanation)) return false;
+  }
+  return true;
+}
+
+/// Türkçe ad kaydın kendisidir. Diğer dokuz dilin görünen adı dolu olmalıdır.
+bool bilgiNamesReady(Map<String, String> labels, String scope, String key) {
+  for (final locale in GameLocale.all) {
+    if (locale.id == 'tr') continue;
+    if ((labels['${locale.id}|$scope|$key'] ?? '').trim().isEmpty) return false;
+  }
+  return true;
+}
+
 class BilgiQuestion {
   const BilgiQuestion({
     required this.id,
@@ -10,6 +41,7 @@ class BilgiQuestion {
     this.status = 'approved',
     this.tags = const [],
     this.rejectReason = '',
+    this.translations = const {},
   });
 
   final String id;
@@ -22,6 +54,16 @@ class BilgiQuestion {
   final String status;
   final List<String> tags;
   final String rejectReason;
+  final Map<String, BilgiTranslation> translations;
+
+  /// Same question, words for [locale]. Empty text falls back to Turkish.
+  BilgiQuestion shown(String locale) {
+    if (locale.isEmpty || locale == 'tr') return this;
+    final row = translations[locale];
+    if (row == null || row.text.trim().isEmpty) return this;
+    if (row.options.length != 4 || row.options.any((item) => item.trim().isEmpty)) return this;
+    return copyWith(text: row.text, options: row.options, explanation: row.explanation);
+  }
 
   String get correctLetter => ['A', 'B', 'C', 'D'][correct.clamp(0, 3)];
 
@@ -36,6 +78,8 @@ class BilgiQuestion {
         'status': status,
         'tags': tags,
         'rejectReason': rejectReason,
+        if (translations.isNotEmpty)
+          'translations': {for (final entry in translations.entries) entry.key: entry.value.toMap()},
       };
 
   factory BilgiQuestion.fromMap(Map<String, dynamic> map) {
@@ -50,6 +94,7 @@ class BilgiQuestion {
       status: map['status'] as String? ?? 'approved',
       tags: (map['tags'] as List? ?? const []).map((e) => '$e').toList(),
       rejectReason: map['rejectReason'] as String? ?? '',
+      translations: BilgiTranslation.mapFrom(map['translations']),
     );
   }
 
@@ -63,6 +108,7 @@ class BilgiQuestion {
     String? status,
     String? rejectReason,
     List<String>? tags,
+    Map<String, BilgiTranslation>? translations,
   }) {
     return BilgiQuestion(
       id: id,
@@ -75,8 +121,56 @@ class BilgiQuestion {
       status: status ?? this.status,
       tags: tags ?? this.tags,
       rejectReason: rejectReason ?? this.rejectReason,
+      translations: translations ?? this.translations,
     );
   }
+}
+
+class BilgiTranslation {
+  const BilgiTranslation({required this.text, required this.options, this.explanation = ''});
+
+  final String text;
+  final List<String> options;
+  final String explanation;
+
+  Map<String, dynamic> toMap() => {
+        'text': text,
+        'options': options,
+        'explanation': explanation,
+      };
+
+  static BilgiTranslation? fromMap(Object? raw) {
+    if (raw is! Map) return null;
+    final text = '${raw['text'] ?? ''}'.trim();
+    final options = (raw['options'] as List? ?? const []).map((item) => '$item').toList();
+    if (text.isEmpty || options.length != 4) return null;
+    return BilgiTranslation(
+      text: text,
+      options: options,
+      explanation: '${raw['explanation'] ?? ''}',
+    );
+  }
+
+  static Map<String, BilgiTranslation> mapFrom(Object? raw) {
+    if (raw is! Map) return const {};
+    final out = <String, BilgiTranslation>{};
+    for (final entry in raw.entries) {
+      final row = fromMap(entry.value);
+      if (row == null) continue;
+      out['${entry.key}'] = row;
+    }
+    return out;
+  }
+}
+
+bool _sameTranslations(Map<String, BilgiTranslation> a, Map<String, BilgiTranslation> b) {
+  if (a.length != b.length) return false;
+  for (final entry in a.entries) {
+    final other = b[entry.key];
+    if (other == null || other.text != entry.value.text || other.explanation != entry.value.explanation) return false;
+    if (!_sameStrings(other.options, entry.value.options)) return false;
+  }
+  return true;
 }
 
 bool sameStoredBilgiQuestion(BilgiQuestion saved, BilgiQuestion wanted) {
@@ -89,7 +183,8 @@ bool sameStoredBilgiQuestion(BilgiQuestion saved, BilgiQuestion wanted) {
       saved.explanation == wanted.explanation &&
       saved.status == wanted.status &&
       _sameStrings(saved.tags, wanted.tags) &&
-      saved.rejectReason == wanted.rejectReason;
+      saved.rejectReason == wanted.rejectReason &&
+      _sameTranslations(saved.translations, wanted.translations);
 }
 
 bool _sameStrings(List<String> a, List<String> b) {
@@ -113,6 +208,7 @@ class BilgiQuestionFormData {
     required this.explanation,
     required this.tags,
     required this.status,
+    this.translations = const {},
   });
 
   final String id;
@@ -125,6 +221,7 @@ class BilgiQuestionFormData {
   final String explanation;
   final List<String> tags;
   final String status;
+  final Map<String, BilgiTranslation> translations;
 
   factory BilgiQuestionFormData.fromQuestion(
     BilgiQuestion question, {
@@ -150,6 +247,7 @@ class BilgiQuestionFormData {
       explanation: question.explanation,
       tags: [for (final tag in question.tags) if (tag.isNotEmpty && tag != sub) tag],
       status: question.status,
+      translations: question.translations,
     );
   }
 
@@ -213,6 +311,8 @@ class BilgiProfile {
     required this.adDay,
     required this.weekId,
     required this.weekScore,
+    this.locale = 'tr',
+    this.localeChosen = false,
   });
 
   final String id;
@@ -257,6 +357,8 @@ class BilgiProfile {
   final String adDay;
   final String weekId;
   final int weekScore;
+  final String locale;
+  final bool localeChosen;
 
   bool rewardReady(String today, String yesterday) {
     if (lastReward == today) return false;
@@ -311,6 +413,8 @@ class BilgiProfile {
         'adDay': adDay,
         'weekId': weekId,
         'weekScore': weekScore,
+        'locale': locale,
+        'localeChosen': localeChosen,
       };
 
   factory BilgiProfile.fromMap(Map<String, dynamic> map) {
@@ -360,6 +464,8 @@ class BilgiProfile {
       adDay: map['adDay'] as String? ?? '',
       weekId: map['weekId'] as String? ?? '',
       weekScore: map['weekScore'] as int? ?? 0,
+      locale: map['locale'] as String? ?? 'tr',
+      localeChosen: map['localeChosen'] as bool? ?? false,
     );
   }
 
@@ -405,6 +511,8 @@ class BilgiProfile {
     String? adDay,
     String? weekId,
     int? weekScore,
+    String? locale,
+    bool? localeChosen,
   }) {
     return BilgiProfile(
       id: id,
@@ -449,6 +557,8 @@ class BilgiProfile {
       adDay: adDay ?? this.adDay,
       weekId: weekId ?? this.weekId,
       weekScore: weekScore ?? this.weekScore,
+      locale: locale ?? this.locale,
+      localeChosen: localeChosen ?? this.localeChosen,
     );
   }
 }
@@ -529,6 +639,8 @@ class BilgiRound {
     this.roomCode = '',
     this.waiting = false,
     this.hint = '',
+    this.spare,
+    this.standings = const [],
     DateTime? startedAt,
   }) : startedAt = startedAt ?? DateTime.now();
 
@@ -562,6 +674,8 @@ class BilgiRound {
   String roomCode;
   bool waiting;
   String hint;
+  BilgiQuestion? spare;
+  List<Map<String, String>> standings;
   final DateTime startedAt;
 
   BilgiQuestion? get current => index >= 0 && index < questions.length ? questions[index] : null;
@@ -598,6 +712,8 @@ class BilgiRound {
         'waiting': waiting,
         'hint': hint,
         'startedAt': startedAt.toIso8601String(),
+        if (spare != null) 'spare': spare!.toMap(),
+        'standings': standings,
       };
 }
 
@@ -612,6 +728,8 @@ class BilgiRoom {
     required this.difficulty,
     required this.players,
     required this.kind,
+    this.status = 'lobby',
+    this.subcategory = '',
   });
 
   final String code;
@@ -623,6 +741,8 @@ class BilgiRoom {
   final String difficulty;
   final List<Map<String, String>> players;
   final String kind;
+  final String status;
+  final String subcategory;
 
   Map<String, dynamic> toMap() => {
         'code': code,
@@ -634,6 +754,8 @@ class BilgiRoom {
         'difficulty': difficulty,
         'players': players,
         'kind': kind,
+        'status': status,
+        'subcategory': subcategory,
       };
 
   factory BilgiRoom.fromMap(Map<String, dynamic> map) {
@@ -652,6 +774,8 @@ class BilgiRoom {
           },
       ],
       kind: map['kind'] as String? ?? 'oda',
+      status: map['status'] as String? ?? 'lobby',
+      subcategory: map['subcategory'] as String? ?? '',
     );
   }
 }

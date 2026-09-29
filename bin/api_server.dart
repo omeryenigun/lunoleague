@@ -6,6 +6,8 @@ import 'package:kelimelig/api/admin_http.dart';
 import 'package:kelimelig/api/coming_soon_page.dart';
 import 'package:kelimelig/api/site_cards.dart';
 import 'package:kelimelig/api/game_http.dart';
+import 'package:kelimelig/api/bilgi_questions_http.dart';
+import 'package:kelimelig/api/bilgi_rooms_http.dart';
 import 'package:kelimelig/api/bilgi_reports_http.dart';
 import 'package:kelimelig/api/mail_http.dart';
 import 'package:kelimelig/api/privacy_page.dart';
@@ -30,6 +32,8 @@ Future<void> main() async {
   await PostgresKv.migrate(db);
   await migrateMail(db);
   await migrateBilgiReports(db);
+  await migrateBilgiQuestions(db);
+  await migrateBilgiRooms(db);
   await migrateAdmin(db);
   await migrateSiteCards(db);
   await seedSiteCards(db);
@@ -130,6 +134,8 @@ Future<void> main() async {
   mountAdminApi(router, db);
   mountMailApi(router, db);
   mountBilgiReports(router, db);
+  mountBilgiQuestions(router, db);
+  mountBilgiRooms(router, db);
   mountSiteCards(router, db);
   _mountAdminWeb(router);
 

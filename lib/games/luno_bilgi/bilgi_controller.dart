@@ -1,12 +1,16 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:kelimelig/core/l10n/game_locale.dart';
 import 'package:kelimelig/core/services/ad_service.dart';
 import 'package:kelimelig/core/services/google_auth.dart';
 import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_l10n.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_mail.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_question_api.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_room.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_report_api.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
 
@@ -17,6 +21,8 @@ class BilgiController extends ChangeNotifier {
   final AdService? ads;
   final List<String> stack = ['home'];
   Timer? _timer;
+  int _syncBeat = 0;
+  BilgiRoomSync? _pendingShared;
 
   BilgiProfile? profile;
   BilgiConfig config = const BilgiConfig();
@@ -55,8 +61,18 @@ class BilgiController extends ChangeNotifier {
   List<String> newBadgeIds = const [];
   bool notifyOn = true;
   bool soundOn = true;
+  String? localePreview;
+  final Map<String, String> labels = {};
 
   String get page => stack.last;
+  String get locale => localePreview ?? profile?.locale ?? 'tr';
+  String t(String key) => bilgiT(locale, key);
+
+  String categoryLabel(String id, String fallback) => labels['$locale|category|$id'] ?? fallback;
+
+  String subLabel(String categoryId, String name) => labels['$locale|sub|$categoryId|$name'] ?? name;
+
+  String groupLabel(String name) => labels['$locale|group|$name'] ?? name;
   bool get showNav => const {
         'home',
         'play',
@@ -90,10 +106,37 @@ class BilgiController extends ChangeNotifier {
       stack
         ..clear()
         ..add('notify');
+    } else if (profile?.localeChosen != true) {
+      stack
+        ..clear()
+        ..add('language');
     }
+    await loadLabels();
     await loadCategoryCounts();
     await refreshPool();
     notifyListeners();
+  }
+
+  void previewLocale(String localeId) {
+    localePreview = GameLocale.resolve(localeId).id;
+    notifyListeners();
+  }
+
+  Future<void> confirmLocale() async {
+    final id = GameLocale.resolve(localePreview ?? profile?.locale).id;
+    profile = await server.setLocale(id);
+    localePreview = null;
+    stack
+      ..clear()
+      ..add('home');
+    notifyListeners();
+  }
+
+  Future<void> loadLabels() async {
+    final rows = await BilgiQuestionApi.loadLabels();
+    labels
+      ..clear()
+      ..addAll(rows);
   }
 
   void open(String id) {
@@ -106,6 +149,7 @@ class BilgiController extends ChangeNotifier {
     if (id == 'event') unawaited(loadEvents());
     if (id == 'setup' || id == 'detail') unawaited(refreshPool());
     if (id == 'categories') unawaited(loadCategoryCounts());
+    if (id == 'language') localePreview ??= profile?.locale ?? 'tr';
   }
 
   void flash(String text) {
@@ -125,6 +169,7 @@ class BilgiController extends ChangeNotifier {
 
   void back() {
     _timer?.cancel();
+    _syncBeat = 0;
     if (stack.length > 1) stack.removeLast();
     notice = null;
     notifyListeners();
@@ -132,6 +177,7 @@ class BilgiController extends ChangeNotifier {
 
   void tab(String id) {
     _timer?.cancel();
+    _syncBeat = 0;
     stack
       ..clear()
       ..add(id);
@@ -159,9 +205,28 @@ class BilgiController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<Map<String, dynamic>> _visibleCatalog() async {
+    final catalog = await server.catalog();
+    final active = await BilgiQuestionApi.loadActive();
+    if (active == null) return catalog;
+    return bilgiCatalogClosedUnless(catalog, active.categories, active.subs);
+  }
+
   Future<void> loadCategoryCounts() async {
+    final remote = await BilgiQuestionApi.loadCounts();
+    final playable = resolveBilgiCategories(await _visibleCatalog(), playableOnly: true);
+    if (remote != null) {
+      categoryCounts = {
+        for (final category in playable)
+          if ((remote.categories[category.id] ?? 0) > 0) category.id: remote.categories[category.id]!,
+        if ((remote.categories[tumuKarmaId] ?? 0) > 0) tumuKarmaId: remote.categories[tumuKarmaId]!,
+      };
+      subCounts = remote.subs;
+      categories = playable;
+      notifyListeners();
+      return;
+    }
     final all = await server.questions();
-    final playable = resolveBilgiCategories(await server.catalog(), playableOnly: true);
     final counts = <String, int>{};
     final subs = <String, int>{};
     var approved = 0;
@@ -185,7 +250,13 @@ class BilgiController extends ChangeNotifier {
   }
 
   Future<void> refreshPool() async {
-    final playable = resolveBilgiCategories(await server.catalog(), playableOnly: true);
+    final remote = await BilgiQuestionApi.loadCounts();
+    if (remote != null) {
+      poolCount = remote.pool(categoryId, subName, difficulty);
+      notifyListeners();
+      return;
+    }
+    final playable = resolveBilgiCategories(await _visibleCatalog(), playableOnly: true);
     final all = await server.questions();
     poolCount = all.where((question) => bilgiPlayableQuestion(question, playable, categoryId: categoryId, subcategory: subName, difficulty: difficulty)).length;
     notifyListeners();
@@ -340,6 +411,10 @@ class BilgiController extends ChangeNotifier {
         unawaited(pick(-1));
       }
     }
+    if (live.roomCode.isNotEmpty) {
+      _syncBeat += 1;
+      if (_syncBeat % 2 == 0) unawaited(syncRoom());
+    }
     notifyListeners();
   }
 
@@ -362,6 +437,12 @@ class BilgiController extends ChangeNotifier {
         return;
       }
       if (stack.isNotEmpty && stack.last == 'ad') stack.removeLast();
+      final pending = _pendingShared;
+      if (pending != null) {
+        _pendingShared = null;
+        await _startShared(pending, adCleared: true);
+        return;
+      }
       await start(adCleared: true);
     });
   }
@@ -616,26 +697,63 @@ class BilgiController extends ChangeNotifier {
     if (room != null) {
       modeId = 'grup';
       if (page != 'room') open('room');
+      _armRoom();
     }
     notifyListeners();
   }
 
   Future<void> makeRoom(String kind) async {
-    room = await server.createRoom(kind: kind);
-    modeId = kind == 'grup' ? 'grup' : 'oda';
+    room = await server.createRoom(
+      kind: kind,
+      categoryId: categoryId,
+      subcategory: subName,
+      difficulty: difficulty,
+    );
+    if (room == null) {
+      notice = 'Oda açılamadı. Bağlantını kontrol et.';
+      notifyListeners();
+      return;
+    }
+    modeId = kind == 'grup' ? 'grup' : kind == 'duello' ? 'duello' : 'oda';
     open('room');
+    _armRoom();
   }
 
   Future<void> enterRoom(String code, {String? guestName}) async {
     final result = await server.joinRoom(code, guestName: guestName);
     notice = result.message;
     room = result.room ?? room;
+    if (result.room != null) {
+      if (page != 'room') open('room');
+      _armRoom();
+    }
     notifyListeners();
   }
 
   Future<void> startRoom() async {
     final current = room;
     if (current == null) return;
+    final hooks = server.remoteRooms;
+    if (hooks != null) {
+      if (profile?.id != current.hostId) {
+        notice = 'Odayı kuran başlatır.';
+        notifyListeners();
+        return;
+      }
+      busy = true;
+      notice = null;
+      notifyListeners();
+      final sync = await hooks.start(code: current.code, playerId: profile!.id);
+      busy = false;
+      if (!sync.ok || sync.questions.isEmpty) {
+        notice = sync.message ?? '❓ Bu kategoride yeterli soru yok.';
+        room = sync.room ?? room;
+        notifyListeners();
+        return;
+      }
+      await _startShared(sync);
+      return;
+    }
     categoryId = current.categoryId;
     difficulty = current.difficulty;
     modeId = switch (current.kind) {
@@ -644,6 +762,96 @@ class BilgiController extends ChangeNotifier {
       _ => 'oda',
     };
     await start(count: current.questionCount, forcedMode: modeId);
+  }
+
+  void _armRoom() {
+    _timer?.cancel();
+    _syncBeat = 0;
+    _timer = Timer.periodic(const Duration(seconds: 2), (_) => unawaited(syncRoom()));
+  }
+
+  Future<void> syncRoom() async {
+    final hooks = server.remoteRooms;
+    final code = round?.roomCode.isNotEmpty == true ? round!.roomCode : (room?.code ?? '');
+    if (hooks == null || code.isEmpty) return;
+    final liveNow = round;
+    if (liveNow != null && liveNow.roomCode == code) {
+      await hooks.score(
+        code: code,
+        playerId: liveNow.userId,
+        score: liveNow.score,
+        index: liveNow.index,
+      );
+    }
+    final sync = await hooks.poll(code);
+    if (sync.room == null) return;
+    room = sync.room;
+    final live = round;
+    if (live != null && live.roomCode == sync.room!.code) {
+      _applyStandings(live, sync.room!);
+      notifyListeners();
+      return;
+    }
+    if (live == null && page == 'room' && sync.room!.status == 'playing' && sync.questions.isNotEmpty) {
+      await _startShared(sync);
+    } else {
+      notifyListeners();
+    }
+  }
+
+  Future<void> _startShared(BilgiRoomSync sync, {bool adCleared = false}) async {
+    final current = sync.room;
+    if (current == null || busy) return;
+    busy = true;
+    categoryId = current.categoryId;
+    subName = current.subcategory;
+    difficulty = current.difficulty.isEmpty ? 'hepsi' : current.difficulty;
+    modeId = switch (current.kind) {
+      'grup' => 'grup',
+      'duello' => 'duello',
+      _ => 'oda',
+    };
+    notice = null;
+    notifyListeners();
+    final result = await server.startRound(
+      modeId: modeId,
+      categoryId: categoryId,
+      subcategory: subName,
+      difficulty: difficulty,
+      questionCount: sync.questions.length,
+      fixedQuestions: sync.questions,
+      fixedSpare: sync.spare,
+      roomCode: current.code,
+      adCleared: adCleared,
+    );
+    busy = false;
+    profile = result.profile ?? profile;
+    if (result.message == 'ad') {
+      _pendingShared = sync;
+      adLeft = config.preGameAdSeconds;
+      open('ad');
+      _armAd();
+      return;
+    }
+    if (result.message != null || result.round == null) {
+      notice = result.message ?? '⚠️ Bir şeyler ters gitti. Tekrar dene.';
+      notifyListeners();
+      return;
+    }
+    _applyStandings(result.round!, current);
+    _begin(result.round!);
+  }
+
+  void _applyStandings(BilgiRound live, BilgiRoom current) {
+    live.standings = [
+      for (final player in current.players)
+        if (player['id'] == live.userId) {...player, 'score': '${live.score}'} else Map<String, String>.from(player),
+    ];
+    final others = live.standings.where((player) => player['id'] != live.userId);
+    if (others.isEmpty) return;
+    final rival = others.first;
+    live.opponentName = rival['name'] ?? '';
+    live.opponentScore = int.tryParse(rival['score'] ?? '') ?? live.opponentScore;
   }
 
   Future<void> loadHistory() async {

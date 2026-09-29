@@ -99,6 +99,90 @@ void main() {
     expect((await server.questions()).map((question) => question.id), ['kept_after_clear']);
   });
 
+  test('bilgi locale stays on the profile and question text falls back to Turkish', () async {
+    final server = LunoBilgiServer(MemoryKeyValueStore(), clock: () => DateTime(2026, 9, 28));
+    final before = await server.profile();
+    expect(before.locale, 'tr');
+    expect(before.weekScore, 0);
+    final next = await server.setLocale('de');
+    expect(next.locale, 'de');
+    expect(next.localeChosen, isTrue);
+    expect(next.weekScore, before.weekScore);
+    expect(next.totalScore, before.totalScore);
+    const question = BilgiQuestion(
+      id: 'q',
+      categoryId: 'genel',
+      text: 'Türkçe',
+      options: ['A', 'B', 'C', 'D'],
+      correct: 2,
+      difficulty: 'kolay',
+      explanation: 'TR',
+      tags: ['Atasözleri'],
+      translations: {
+        'en': BilgiTranslation(text: 'English', options: ['A1', 'B1', 'C1', 'D1'], explanation: 'EN'),
+      },
+    );
+    expect(question.shown('en').text, 'English');
+    expect(question.shown('en').correct, 2);
+    expect(question.shown('fr').text, 'Türkçe');
+    expect(question.shown('tr').options, question.options);
+  });
+
+  test('change joker uses the spare question from the opening draw', () async {
+    final server = LunoBilgiServer(MemoryKeyValueStore(), clock: () => DateTime(2026, 9, 28));
+    var draws = 0;
+    server.remoteDraw = ({
+      required String categoryId,
+      required String subcategory,
+      required String difficulty,
+      required int count,
+      required List<String> exclude,
+    }) async {
+      draws += 1;
+      expect(count, 2);
+      return const [
+        BilgiQuestion(
+          id: 'open',
+          categoryId: 'genel',
+          text: 'İlk',
+          options: ['A', 'B', 'C', 'D'],
+          correct: 0,
+          difficulty: 'kolay',
+          explanation: '',
+          tags: ['Atasözleri'],
+        ),
+        BilgiQuestion(
+          id: 'spare',
+          categoryId: 'genel',
+          text: 'Yedek',
+          options: ['A', 'B', 'C', 'D'],
+          correct: 1,
+          difficulty: 'kolay',
+          explanation: '',
+          tags: ['Atasözleri'],
+        ),
+      ];
+    };
+    final started = await server.startRound(
+      modeId: 'hizli',
+      categoryId: 'genel',
+      subcategory: 'Atasözleri',
+      difficulty: 'kolay',
+      questionCount: 1,
+    );
+    expect(draws, 1);
+    expect(started.round!.questions.single.id, 'open');
+    await server.buyJoker('change');
+    final changed = await server.useJoker(roundId: started.round!.id, type: 'change');
+    expect(changed.message, isNull);
+    expect(changed.round!.questions.single.id, 'spare');
+    expect(draws, 1);
+    await server.buyJoker('change');
+    final again = await server.useJoker(roundId: started.round!.id, type: 'change');
+    expect(again.message, '❓ Bu kategoride yeterli soru yok.');
+    expect(draws, 1);
+  });
+
   test('a category round uses the real pool and efsane stays empty', () async {
     final server = LunoBilgiServer(MemoryKeyValueStore(), clock: () => DateTime(2026, 9, 28));
     expect(await server.questionCount('genel'), 0);
@@ -287,6 +371,37 @@ void main() {
     expect(dayRewardAmount(messy.dailyGold, 6), 1000);
     expect(rewardConfigStored(fresh.toMap()), isTrue);
     expect(rewardConfigStored({'dailyGold': [1]}), isFalse);
+  });
+
+  test('approval and category switches need every language filled', () {
+    const bare = BilgiQuestion(
+      id: 'q1',
+      categoryId: 'genel',
+      text: 'Soru',
+      options: ['A', 'B', 'C', 'D'],
+      correct: 0,
+      difficulty: 'kolay',
+      explanation: 'Çünkü',
+      status: 'pending',
+      tags: ['Atasözleri'],
+    );
+    expect(bilgiQuestionLanguagesReady(bare), isFalse);
+    final full = bare.copyWith(translations: {
+      for (final id in ['en', 'de', 'es', 'fr', 'it', 'ru', 'nl', 'pt', 'pl'])
+        id: const BilgiTranslation(text: 'Q', options: ['A', 'B', 'C', 'D'], explanation: 'Because'),
+    });
+    expect(bilgiQuestionLanguagesReady(full), isTrue);
+    expect(bilgiNamesReady(const {}, 'category', 'genel'), isFalse);
+    expect(
+      bilgiNamesReady(
+        {for (final id in ['en', 'de', 'es', 'fr', 'it', 'ru', 'nl', 'pt', 'pl']) '$id|category|genel': 'General'},
+        'category',
+        'genel',
+      ),
+      isTrue,
+    );
+    final closed = resolveBilgiCategories(bilgiCatalogClosedUnless(null, const {}, const {}), playableOnly: true);
+    expect(closed, isEmpty);
   });
 }
 

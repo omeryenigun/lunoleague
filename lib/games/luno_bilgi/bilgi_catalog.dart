@@ -196,6 +196,27 @@ BilgiCategory? bilgiCategoryById(String id) {
   return null;
 }
 
+/// Kategoriler ve alt kategoriler, sunucunun açık listesinde yoksa kapalıdır.
+Map<String, dynamic> bilgiCatalogClosedUnless(
+  Map<String, dynamic>? catalog,
+  Set<String> openCategories,
+  Set<String> openSubs,
+) {
+  final resolved = resolveBilgiCategories(catalog);
+  return {
+    ...?catalog,
+    'inactive': [
+      for (final category in resolved)
+        if (!openCategories.contains(category.id)) category.id,
+    ],
+    'inactiveSubs': [
+      for (final category in resolved)
+        for (final sub in category.subs)
+          if (!openSubs.contains('${category.id}|$sub')) '${category.id}|$sub',
+    ],
+  };
+}
+
 List<BilgiCategory> resolveBilgiCategories(Map<String, dynamic>? catalog, {bool playableOnly = false}) {
   final hidden = _catalogIds(catalog?['hidden']);
   final inactive = _catalogIds(catalog?['inactive']);

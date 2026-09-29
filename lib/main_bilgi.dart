@@ -2,7 +2,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:kelimelig/core/constants/admob.dart';
 import 'package:kelimelig/core/services/ad_service.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_question_api.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_room_api.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_screen.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
 import 'package:kelimelig/games/luno_bilgi/register_bilgi_server.dart';
 import 'package:kelimelig/injection.dart';
 
@@ -12,6 +15,10 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await configureDependencies();
   await registerBilgiServer();
+  sl<LunoBilgiServer>()
+    ..remoteDraw = BilgiQuestionApi.draw
+    ..remoteDaily = BilgiQuestionApi.daily
+    ..remoteRooms = BilgiRoomApi.hooks();
   runApp(const LunoBilgiApp());
   if (!kIsWeb) {
     try {

@@ -55,8 +55,8 @@ android {
         create("bilgi") {
             dimension = "game"
             applicationId = "com.lunobilgi.game"
-            versionCode = 8
-            versionName = "1.0.8"
+            versionCode = 9
+            versionName = "1.0.9"
             manifestPlaceholders["admobAppId"] = "ca-app-pub-2627324717388568~1018760089"
         }
     }
