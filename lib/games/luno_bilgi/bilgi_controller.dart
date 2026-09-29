@@ -12,6 +12,7 @@ import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_question_api.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_room.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_report_api.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_rules.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
 
 class BilgiController extends ChangeNotifier {
@@ -72,7 +73,11 @@ class BilgiController extends ChangeNotifier {
 
   String subLabel(String categoryId, String name) => labels['$locale|sub|$categoryId|$name'] ?? name;
 
-  String groupLabel(String name) => labels['$locale|group|$name'] ?? name;
+  String groupLabel(String name) {
+    final stored = labels['$locale|group|$name'];
+    if (stored != null && stored.trim().isNotEmpty) return stored;
+    return bilgiGroupLabel(locale, name) ?? name;
+  }
   bool get showNav => const {
         'home',
         'play',
@@ -94,23 +99,16 @@ class BilgiController extends ChangeNotifier {
   Future<void> boot() async {
     config = await server.config();
     profile = await server.profile();
-    if (config.maintenance) {
-      stack
-        ..clear()
-        ..add('maintenance');
-    } else if (!await server.seenIntro()) {
-      stack
-        ..clear()
-        ..add('intro');
-    } else if (!await server.seenNotify()) {
-      stack
-        ..clear()
-        ..add('notify');
-    } else if (profile?.localeChosen != true) {
-      stack
-        ..clear()
-        ..add('language');
-    }
+    stack
+      ..clear()
+      ..add(
+        bilgiBootPage(
+          maintenance: config.maintenance,
+          localeChosen: profile?.localeChosen == true,
+          seenIntro: await server.seenIntro(),
+          seenNotify: await server.seenNotify(),
+        ),
+      );
     await loadLabels();
     await loadCategoryCounts();
     await refreshPool();
@@ -123,12 +121,31 @@ class BilgiController extends ChangeNotifier {
   }
 
   Future<void> confirmLocale() async {
+    final fromSettings = profile?.localeChosen == true;
     final id = GameLocale.resolve(localePreview ?? profile?.locale).id;
     profile = await server.setLocale(id);
     localePreview = null;
+    if (fromSettings) {
+      if (stack.length > 1) {
+        stack.removeLast();
+      } else {
+        stack
+          ..clear()
+          ..add('settings');
+      }
+      notifyListeners();
+      return;
+    }
     stack
       ..clear()
-      ..add('home');
+      ..add(
+        bilgiBootPage(
+          maintenance: config.maintenance,
+          localeChosen: true,
+          seenIntro: await server.seenIntro(),
+          seenNotify: await server.seenNotify(),
+        ),
+      );
     notifyListeners();
   }
 
@@ -206,7 +223,8 @@ class BilgiController extends ChangeNotifier {
   }
 
   Future<Map<String, dynamic>> _visibleCatalog() async {
-    final catalog = await server.catalog();
+    final remote = await BilgiQuestionApi.loadCatalog();
+    final catalog = remote ?? await server.catalog();
     final active = await BilgiQuestionApi.loadActive();
     if (active == null) return catalog;
     return bilgiCatalogClosedUnless(catalog, active.categories, active.subs);
@@ -987,9 +1005,9 @@ class BilgiController extends ChangeNotifier {
     final gold = dayRewardAmount(config.dailyGold, index);
     final diamond = dayRewardAmount(config.dailyDiamond, index);
     final joker = dayRewardAmount(config.dailyJoker, index);
-    if (diamond > 0) return '$diamond elmas';
-    if (joker > 0) return '$joker joker';
-    return '$gold altın';
+    if (diamond > 0) return '$diamond ${t('diamond')}';
+    if (joker > 0) return '$joker ${t('joker')}';
+    return '$gold ${t('gold')}';
   }
 
   @override

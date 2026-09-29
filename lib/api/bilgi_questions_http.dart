@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:kelimelig/api/admin_http.dart';
+import 'package:kelimelig/api/bilgi_catalog_http.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
@@ -293,6 +294,24 @@ Future<Response> _save(Request request, Connection db) async {
     }
     questions.add(question);
   }
+  final known = await db.execute('select id from bilgi_categories');
+  final categoryIds = {for (final row in known) '${row[0]}'};
+  final subRows = await db.execute('select category_id, name from bilgi_subcategories');
+  final subNames = <String, Set<String>>{};
+  for (final row in subRows) {
+    subNames.putIfAbsent('${row[0]}', () => <String>{}).add('${row[1]}');
+  }
+  for (final question in questions) {
+    final categoryId = '${question['categoryId']}';
+    if (!categoryIds.contains(categoryId)) {
+      return jsonResponse({'error': 'Kategori bulunamadı.'}, status: 400);
+    }
+    for (final tag in _decodeList(question['tags'])) {
+      if (!(subNames[categoryId]?.contains(tag) ?? false)) {
+        return jsonResponse({'error': 'Alt kategori bulunamadı.'}, status: 400);
+      }
+    }
+  }
   for (final question in questions) {
     await db.execute(
       Sql.named('''
@@ -367,7 +386,7 @@ Future<Map<String, dynamic>> _closedCatalog(Connection db) async {
     if (row[0] == 'category') categories.add('${row[1]}');
     if (row[0] == 'sub') subs.add('${row[1]}');
   }
-  return bilgiCatalogClosedUnless(null, categories, subs);
+  return bilgiCatalogClosedUnless(await bilgiAuthoritativeCatalog(db), categories, subs);
 }
 
 Future<Response> _active(Connection db) async {

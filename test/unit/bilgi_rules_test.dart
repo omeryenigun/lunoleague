@@ -128,6 +128,33 @@ void main() {
     expect(question.shown('tr').options, question.options);
   });
 
+  test('first boot page is language until the player confirms a locale', () {
+    expect(
+      bilgiBootPage(maintenance: true, localeChosen: false, seenIntro: false, seenNotify: false),
+      'maintenance',
+    );
+    expect(
+      bilgiBootPage(maintenance: false, localeChosen: false, seenIntro: false, seenNotify: false),
+      'language',
+    );
+    expect(
+      bilgiBootPage(maintenance: false, localeChosen: false, seenIntro: true, seenNotify: true),
+      'language',
+    );
+    expect(
+      bilgiBootPage(maintenance: false, localeChosen: true, seenIntro: false, seenNotify: false),
+      'intro',
+    );
+    expect(
+      bilgiBootPage(maintenance: false, localeChosen: true, seenIntro: true, seenNotify: false),
+      'notify',
+    );
+    expect(
+      bilgiBootPage(maintenance: false, localeChosen: true, seenIntro: true, seenNotify: true),
+      'home',
+    );
+  });
+
   test('change joker uses the spare question from the opening draw', () async {
     final server = LunoBilgiServer(MemoryKeyValueStore(), clock: () => DateTime(2026, 9, 28));
     var draws = 0;
@@ -240,6 +267,33 @@ void main() {
     expect(game.where((category) => category.id == 'osmanli').single.subs, isNot(contains('Kuruluş')));
     expect(await server.hideCategory('afet'), isNull);
     expect(resolveBilgiCategories(await server.catalog()).where((category) => category.id == 'afet'), isEmpty);
+  });
+
+  test('database catalog is the category list and a missing row stays gone', () {
+    final catalog = {
+      'authoritative': true,
+      'custom': [
+        {'id': 'felsefe', 'group': 'E. Felsefe ve İnanç', 'name': 'Felsefe', 'emoji': '🤔', 'subs': ['Antik Yunan Felsefesi'], 'active': true},
+      ],
+    };
+    final resolved = resolveBilgiCategories(catalog);
+    expect(resolved, hasLength(1));
+    expect(resolved.single.id, 'felsefe');
+    expect(resolved.single.subs, ['Antik Yunan Felsefesi']);
+    expect(resolveBilgiCategories({'authoritative': true, 'custom': const []}), isEmpty);
+  });
+
+  test('group headings have a name in every extra language', () {
+    const locales = ['en', 'de', 'es', 'fr', 'it', 'ru', 'nl', 'pt', 'pl'];
+    for (final group in bilgiGroups) {
+      expect(bilgiGroupLabel('tr', group), isNull);
+      for (final locale in locales) {
+        final label = bilgiGroupLabel(locale, group);
+        expect(label, isNotNull);
+        expect(label!.trim(), isNotEmpty);
+        expect(label.startsWith(group.substring(0, 2)), isTrue);
+      }
+    }
   });
 
   test('stored question fields round-trip into the edit model', () async {

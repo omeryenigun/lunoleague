@@ -122,3 +122,17 @@ DateTime livesClockAfterRegen({
   if (gained <= 0) return livesAt;
   return livesAt.add(Duration(minutes: gained * minutesPerLife));
 }
+
+/// First page after boot. Language comes before intro/notify/home.
+String bilgiBootPage({
+  required bool maintenance,
+  required bool localeChosen,
+  required bool seenIntro,
+  required bool seenNotify,
+}) {
+  if (maintenance) return 'maintenance';
+  if (!localeChosen) return 'language';
+  if (!seenIntro) return 'intro';
+  if (!seenNotify) return 'notify';
+  return 'home';
+}

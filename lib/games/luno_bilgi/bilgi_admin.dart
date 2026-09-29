@@ -186,7 +186,6 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   }
 
   Future<void> _load() async {
-    await _applyRemoteActive();
     final questions = await _bank();
     final labels = await BilgiQuestionApi.loadLabels();
     final users = await _server.users();
@@ -194,15 +193,14 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     final events = await _server.events();
     final staff = await _server.staff();
     final games = await _server.games();
-    var catalog = await _server.catalog();
-    final hidden = [for (final id in catalog['hidden'] as List? ?? const []) '$id'];
-    final stillHidden = [
-      for (final id in hidden)
-        if (!questions.any((question) => question.categoryId == id)) id,
-    ];
-    if (stillHidden.length != hidden.length) {
-      catalog = {...catalog, 'hidden': stillHidden};
-      await _server.saveCatalog(catalog);
+    final remote = await BilgiQuestionApi.loadCatalog();
+    final Map<String, dynamic> catalog;
+    if (remote != null) {
+      final active = await BilgiQuestionApi.loadActive();
+      catalog = active == null ? remote : bilgiCatalogClosedUnless(remote, active.categories, active.subs);
+    } else {
+      await _applyRemoteActive();
+      catalog = await _server.catalog();
     }
     if (!mounted) return;
     setState(() {
@@ -1564,6 +1562,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
             child: Row(
               children: [
                 Text(entry.key.toUpperCase(), style: const TextStyle(color: BilgiColors.secondary, fontSize: 13, letterSpacing: 1.5, fontWeight: FontWeight.w800)),
+                const SizedBox(width: 8),
+                _catBtn('✏️', () => _editGroup(entry.key)),
                 const Spacer(),
                 Text('${entry.value.length} kategori', style: const TextStyle(color: BilgiColors.muted, fontSize: 12, fontWeight: FontWeight.w600)),
               ],
@@ -1667,6 +1667,68 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     );
   }
 
+  Future<void> _editGroup(String group) async {
+    final fields = <String, TextEditingController>{
+      'tr': TextEditingController(text: group),
+      for (final locale in GameLocale.all)
+        if (locale.id != 'tr') locale.id: TextEditingController(text: _labels['${locale.id}|group|$group'] ?? bilgiGroupLabel(locale.id, group) ?? ''),
+    };
+    var lang = 'en';
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => AlertDialog(
+          backgroundColor: BilgiColors.card,
+          constraints: BoxConstraints(maxWidth: _labelDialogWidth(context) + 64),
+          title: const Text('Üst başlığı düzenle'),
+          content: SizedBox(
+            width: _labelDialogWidth(context),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _BilgiLangTabs(
+                    selected: lang,
+                    wrap: true,
+                    onSelect: (id) => setLocal(() => lang = id),
+                    filled: (id) => fields[id]?.text.trim().isNotEmpty ?? false,
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    key: ValueKey(lang),
+                    controller: fields[lang],
+                    readOnly: lang == 'tr',
+                    onChanged: (_) => setLocal(() {}),
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(labelText: lang == 'tr' ? 'Türkçe ad' : 'Görünen ad'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Vazgeç')),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: BilgiColors.primary),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Kaydet'),
+            ),
+          ],
+        ),
+      ),
+    );
+    final names = {for (final entry in fields.entries) if (entry.key != 'tr') entry.key: entry.value.text.trim()};
+    for (final field in fields.values) {
+      field.dispose();
+    }
+    if (saved != true || !mounted) return;
+    await _saveNameLabels(scope: 'group', key: group, names: names);
+    if (!mounted) return;
+    setState(() => _note = '$group kaydedildi.');
+    await _load();
+  }
+
   Future<void> _editCategory(BilgiCategory category) async {
     final labels = await BilgiQuestionApi.loadLabels();
     if (!mounted) return;
@@ -1686,7 +1748,18 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       await _load();
       return;
     }
-    await _server.editCategory(id: category.id, name: result.name, emoji: result.emoji, group: result.group);
+    final saved = await BilgiQuestionApi.saveCategory(
+      sl<ApiSession>().adminToken ?? '',
+      id: category.id,
+      name: result.name,
+      emoji: result.emoji,
+      group: result.group,
+    );
+    if (!mounted) return;
+    if (saved.error != null) {
+      setState(() => _note = saved.error!);
+      return;
+    }
     await _saveNameLabels(scope: 'category', key: category.id, names: result.names);
     await _load();
   }
@@ -1698,12 +1771,21 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       setState(() => _note = 'Bu kategori adı zaten var.');
       return;
     }
-    await _server.addCategory(group: result.group, name: result.name, emoji: result.emoji);
-    await _load();
-    final created = _categories.where((category) => category.name == result.name && category.emoji == result.emoji).lastOrNull;
-    if (created != null) await _saveNameLabels(scope: 'category', key: created.id, names: result.names);
+    final saved = await BilgiQuestionApi.saveCategory(
+      sl<ApiSession>().adminToken ?? '',
+      name: result.name,
+      emoji: result.emoji,
+      group: result.group,
+    );
+    if (!mounted) return;
+    if (saved.error != null || saved.id == null) {
+      setState(() => _note = saved.error ?? 'Kategori kaydedilemedi.');
+      return;
+    }
+    await _saveNameLabels(scope: 'category', key: saved.id!, names: result.names);
     if (!mounted) return;
     setState(() => _note = '${result.name} eklendi.');
+    await _load();
   }
 
   Future<({String name, String emoji, String group, Map<String, String> names})?> _askCategory({
@@ -1838,7 +1920,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: BilgiColors.card,
         title: Text('${category.name} silinsin mi?'),
-        content: const Text('Bu kategoride soru yok.'),
+        content: const Text('Bu kategoride soru yok. Kayıt veritabanından silinir.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Vazgeç')),
           FilledButton(
@@ -1850,7 +1932,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       ),
     );
     if (ok != true || !mounted) return;
-    final message = await _server.hideCategory(category.id);
+    final message = await BilgiQuestionApi.deleteCategory(sl<ApiSession>().adminToken ?? '', category.id);
     if (!mounted) return;
     if (message != null) {
       setState(() => _note = message);
@@ -1950,7 +2032,19 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       setState(() => _note = 'Bu alt kategori zaten var.');
       return;
     }
-    await _server.addSubcategory(category.id, name);
+    final saved = await BilgiQuestionApi.saveCategory(
+      sl<ApiSession>().adminToken ?? '',
+      id: category.id,
+      name: category.name,
+      emoji: category.emoji,
+      group: category.group,
+      addSub: name,
+    );
+    if (!mounted) return;
+    if (saved.error != null) {
+      setState(() => _note = saved.error!);
+      return;
+    }
     _newSub.clear();
     if (!mounted) return;
     setState(() => _note = '$name eklendi.');
@@ -2021,16 +2115,22 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       setState(() => _note = 'Bu alt kategori zaten var.');
       return;
     }
-    await _server.renameSubcategory(category.id, name, next, emoji: emoji);
-    await _saveNameLabels(scope: 'sub', key: '${category.id}|$next', names: names);
-    final renamed = (await _server.questions()).where((question) => question.tags.contains(next)).toList();
-    try {
-      await _saveRemote(renamed);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _note = 'Alt kategori yerelde değişti, sorular sunucuya yazılamadı.');
+    final stored = await BilgiQuestionApi.saveCategory(
+      sl<ApiSession>().adminToken ?? '',
+      id: category.id,
+      name: category.name,
+      emoji: category.emoji,
+      group: category.group,
+      renameFrom: name,
+      renameTo: next,
+      subEmoji: emoji,
+    );
+    if (!mounted) return;
+    if (stored.error != null) {
+      setState(() => _note = stored.error!);
       return;
     }
+    await _saveNameLabels(scope: 'sub', key: '${category.id}|$next', names: names);
     if (!mounted) return;
     setState(() => _note = '$next kaydedildi.');
     await _load();
@@ -2055,7 +2155,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       ),
     );
     if (ok != true || !mounted) return;
-    final message = await _server.deleteSubcategory(category.id, name);
+    final message = await BilgiQuestionApi.deleteSubcategory(sl<ApiSession>().adminToken ?? '', category.id, name);
     if (!mounted) return;
     setState(() => _note = message ?? '$name silindi.');
     await _load();

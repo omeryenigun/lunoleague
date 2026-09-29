@@ -257,6 +257,80 @@ class BilgiQuestionApi {
     return null;
   }
 
+  static Future<Map<String, dynamic>?> loadCatalog() async {
+    try {
+      final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/v1/bilgi/catalog'));
+      if (response.statusCode != 200) return null;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map || decoded['authoritative'] != true) return null;
+      return Map<String, dynamic>.from(decoded);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<({String? id, String? error})> saveCategory(
+    String token, {
+    String id = '',
+    required String name,
+    required String emoji,
+    required String group,
+    String addSub = '',
+    String renameFrom = '',
+    String renameTo = '',
+    String subEmoji = '',
+  }) async {
+    if (token.isEmpty) return (id: null, error: 'Yönetici oturumu gerekli.');
+    try {
+      final response = await http.put(
+        Uri.parse('${ApiConfig.baseUrl}/v1/admin/bilgi-categories'),
+        headers: {
+          'authorization': 'Bearer $token',
+          'content-type': 'application/json; charset=utf-8',
+        },
+        body: jsonEncode({
+          if (id.trim().isNotEmpty) 'id': id.trim(),
+          'name': name,
+          'emoji': emoji,
+          'group': group,
+          if (addSub.trim().isNotEmpty) 'addSub': addSub.trim(),
+          if (renameFrom.trim().isNotEmpty)
+            'renameSub': {'from': renameFrom.trim(), 'to': renameTo.trim(), 'emoji': subEmoji.trim()},
+        }),
+      );
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return (id: null, error: _error(response.body) ?? 'Kategori kaydedilemedi.');
+      }
+      final decoded = jsonDecode(response.body);
+      final saved = decoded is Map ? '${decoded['id'] ?? ''}'.trim() : '';
+      return (id: saved.isEmpty ? null : saved, error: null);
+    } catch (_) {
+      return (id: null, error: 'Kategori kaydedilemedi.');
+    }
+  }
+
+  static Future<String?> deleteCategory(String token, String id) async {
+    if (token.isEmpty) return 'Yönetici oturumu gerekli.';
+    return _delete('${ApiConfig.baseUrl}/v1/admin/bilgi-categories/${Uri.encodeComponent(id.trim())}', token, 'Kategori silinemedi.');
+  }
+
+  static Future<String?> deleteSubcategory(String token, String categoryId, String name) async {
+    if (token.isEmpty) return 'Yönetici oturumu gerekli.';
+    final url =
+        '${ApiConfig.baseUrl}/v1/admin/bilgi-categories/${Uri.encodeComponent(categoryId.trim())}/subs/${Uri.encodeComponent(name.trim())}';
+    return _delete(url, token, 'Alt kategori silinemedi.');
+  }
+
+  static Future<String?> _delete(String url, String token, String fallback) async {
+    try {
+      final response = await http.delete(Uri.parse(url), headers: {'authorization': 'Bearer $token'});
+      if (response.statusCode >= 200 && response.statusCode < 300) return null;
+      return _error(response.body) ?? fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
   static Future<String?> delete(String token, String id) async {
     if (token.isEmpty) return 'Yönetici oturumu gerekli.';
     final key = id.trim();

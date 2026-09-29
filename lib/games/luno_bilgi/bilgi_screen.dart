@@ -5,6 +5,7 @@ import 'package:kelimelig/core/constants/game_version.dart';
 import 'package:kelimelig/core/services/ad_service.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_controller.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_language_page.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_report.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
@@ -141,8 +142,8 @@ class _BilgiScreenState extends State<BilgiScreen> {
           if ((_game.categoryCounts[category.id] ?? 0) > 0) category,
     ];
     final dailyLine = ready
-        ? (user.streak > 0 ? '${user.streak} günlük seri — $reward' : reward)
-        : 'Yarının ödülü: $reward';
+        ? (user.streak > 0 ? _fill('streak_line', {'n': '${user.streak}', 'reward': reward}) : reward)
+        : _fill('reward_tomorrow', {'reward': reward});
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
@@ -188,7 +189,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          ready ? '🎁 Günün Ödülü Hazır!' : '🎁 Günün ödülü',
+                          ready ? '🎁 ${_game.t('reward_ready')}' : '🎁 ${_game.t('reward_title')}',
                           style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 4),
@@ -205,7 +206,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     onPressed: () => _game.open('reward'),
-                    child: const Text('Al', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                    child: Text(_game.t('claim'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
                   ),
                 ],
               ),
@@ -232,7 +233,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
                           crossAxisAlignment: WrapCrossAlignment.center,
                           spacing: 8,
                           children: [
-                            const Text('🎮 Bugünkü Ücretsiz Oyunun', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                            Text('🎮 ${_game.t('free_play')}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
                             if (free)
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -240,16 +241,16 @@ class _BilgiScreenState extends State<BilgiScreen> {
                                   color: BilgiColors.secondary,
                                   borderRadius: BorderRadius.circular(10),
                                 ),
-                                child: const Text(
-                                  'HAZIR',
-                                  style: TextStyle(color: BilgiColors.bg, fontSize: 10, fontWeight: FontWeight.w800),
+                                child: Text(
+                                  _game.t('ready_badge'),
+                                  style: const TextStyle(color: BilgiColors.bg, fontSize: 10, fontWeight: FontWeight.w800),
                                 ),
                               ),
                           ],
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          free ? 'Reklamsız oyna — sadece bugün' : 'Sonraki oyun öncesi reklam açılır',
+                          free ? _game.t('free_today') : _game.t('free_ad'),
                           style: const TextStyle(fontSize: 12, color: BilgiColors.muted),
                         ),
                       ],
@@ -269,14 +270,14 @@ class _BilgiScreenState extends State<BilgiScreen> {
                       _game.difficulty = 'hepsi';
                       _game.start();
                     },
-                    child: const Text('Oyna', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                    child: Text(_game.t('play'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
                   ),
                 ],
               ),
             ),
           ),
         ),
-        _sectionTitle('Hızlı Başla', 'Tümü →', () => _game.tab('play')),
+        _sectionTitle(_game.t('quick_start'), _game.t('see_all'), () => _game.tab('play')),
         GridView.count(
           crossAxisCount: 2,
           shrinkWrap: true,
@@ -311,7 +312,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
           ],
         ),
         if (popular.isNotEmpty) ...[
-          _sectionTitle('Popüler Kategoriler', 'Tümü →', () => _game.open('categories')),
+          _sectionTitle(_game.t('popular'), _game.t('see_all'), () => _game.open('categories')),
           SizedBox(
             height: 96,
             child: ListView(
@@ -369,7 +370,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   child: Text(
-                    '📚 Tüm Kategorileri Gör (${_game.categories.where((category) => (_game.categoryCounts[category.id] ?? 0) > 0).length})',
+                    '📚 ${_fill('see_categories', {'n': '${_game.categories.where((category) => (_game.categoryCounts[category.id] ?? 0) > 0).length}'})}',
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
                   ),
@@ -400,14 +401,14 @@ class _BilgiScreenState extends State<BilgiScreen> {
                       color: const Color(0x40FFFFFF),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Text('HAFTALIK ETKİNLİK', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
+                    child: Text(_game.t('weekly'), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
                   ),
                   const SizedBox(height: 10),
-                  const Text('🏆 Luno Ligi Başladı!', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                  Text('🏆 ${_game.t('league_started')}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
                   const SizedBox(height: 6),
-                  const Text(
-                    'Bu hafta en çok puan topla, 10.000 altın kazan',
-                    style: TextStyle(fontSize: 12, color: Color(0xE6FFFFFF)),
+                  Text(
+                    _game.t('league_prize'),
+                    style: const TextStyle(fontSize: 12, color: Color(0xE6FFFFFF)),
                   ),
                   const SizedBox(height: 14),
                   TextButton(
@@ -418,7 +419,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
                     onPressed: () => _game.open('event'),
-                    child: const Text('Katıl', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                    child: Text(_game.t('join'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
                   ),
                 ],
               ),
@@ -433,20 +434,29 @@ class _BilgiScreenState extends State<BilgiScreen> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: const Color(0x26FFFFFF)),
           ),
-          child: const Text(
-            '📢 Reklam Alanı — Banner',
+          child: Text(
+            '📢 ${_game.t('ad_slot')}',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 11, color: BilgiColors.muted, fontWeight: FontWeight.w600),
+            style: const TextStyle(fontSize: 11, color: BilgiColors.muted, fontWeight: FontWeight.w600),
           ),
         ),
       ],
     );
   }
 
+  String _fill(String key, Map<String, String> values) {
+    var text = _game.t(key);
+    for (final entry in values.entries) {
+      text = text.replaceAll('{${entry.key}}', entry.value);
+    }
+    return text;
+  }
+
   String _modeLine(BilgiMode mode) {
-    if (mode.totalSeconds > 0) return '${mode.questions} soru • ${mode.totalSeconds ~/ 60} dk';
-    if (mode.seconds == 0) return '${mode.questions} soru • Süresiz';
-    return '${mode.questions} soru • ${mode.seconds} sn';
+    final count = _fill('q_count', {'n': '${mode.questions}'});
+    if (mode.totalSeconds > 0) return '$count • ${_fill('minutes', {'n': '${mode.totalSeconds ~/ 60}'})}';
+    if (mode.seconds == 0) return '$count • ${_game.t('untimed')}';
+    return '$count • ${_fill('seconds', {'n': '${mode.seconds}'})}';
   }
 
   String _grouped(int value) {
@@ -480,7 +490,8 @@ class _BilgiScreenState extends State<BilgiScreen> {
       children: [
         BilgiTopBar(title: _game.t('page_play')),
         if (_game.notice != null) _note(_game.notice!),
-        for (final mode in bilgiModes) _tile(mode.emoji, _game.t('mode_${mode.id}'), mode.blurb, () => _game.selectMode(mode.id)),
+        for (final mode in bilgiModes)
+          _tile(mode.emoji, _game.t('mode_${mode.id}'), _game.t('mode_blurb_${mode.id}'), () => _game.selectMode(mode.id)),
       ],
     );
   }
@@ -508,12 +519,12 @@ class _BilgiScreenState extends State<BilgiScreen> {
                     controller: _categoryQuery,
                     onChanged: (_) => setState(() {}),
                     style: const TextStyle(color: Colors.white, fontSize: 14),
-                    decoration: const InputDecoration(
-                      hintText: 'Kategori ara...',
-                      hintStyle: TextStyle(color: BilgiColors.muted, fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: _game.t('search_category'),
+                      hintStyle: const TextStyle(color: BilgiColors.muted, fontSize: 14),
                       border: InputBorder.none,
                       isCollapsed: true,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
                     ),
                   ),
                 ),
@@ -581,7 +592,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
   Widget _categoryCard(BilgiCategory category) {
     final karma = category.id == 'karma';
     final count = _game.categoryCounts[category.id];
-    final line = karma ? 'Tümü Karma' : (count == null ? '…' : '$count soru');
+    final line = karma ? _game.t('all_mix') : (count == null ? '…' : _fill('q_count', {'n': '$count'}));
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -625,9 +636,17 @@ class _BilgiScreenState extends State<BilgiScreen> {
     final live = _game.categories.where((item) => item.id == _game.categoryId).firstOrNull;
     final subs = tumu ? const <String>[] : (live?.subs ?? category.subs);
     final approved = _game.categoryCounts[_game.categoryId] ?? _game.poolCount;
-    final heroCount = approved > 0 ? '$approved soru' : (_game.poolCount > 0 ? '${_game.poolCount} soru' : '…');
-    final heroSub = subs.isEmpty ? heroCount : '$heroCount • ${subs.length} alt kategori';
+    final heroCount = approved > 0
+        ? _fill('q_count', {'n': '$approved'})
+        : (_game.poolCount > 0 ? _fill('q_count', {'n': '${_game.poolCount}'}) : '…');
+    final heroSub = subs.isEmpty ? heroCount : '$heroCount • ${_fill('subs_n', {'n': '${subs.length}'})}';
     final highlight = _playDifficulty(_game.difficulty) ? _game.difficulty : 'kolay';
+    final diffs = [
+      (_game.t('diff_easy'), 'kolay'),
+      (_game.t('diff_medium'), 'orta'),
+      (_game.t('diff_hard'), 'zor'),
+      (_game.t('diff_legend'), 'efsane'),
+    ];
     return Column(
       children: [
         BilgiTopBar(title: _game.t('page_detail'), onBack: _game.back),
@@ -657,11 +676,11 @@ class _BilgiScreenState extends State<BilgiScreen> {
                   ],
                 ),
               ),
-              _sectionLabel('ALT KATEGORİLER'),
+              _sectionLabel(_game.t('subcategories')),
               _subRow(
                 icon: '🎲',
                 title: tumu ? _game.t('all_mix') : _game.categoryLabel(category.id, category.name),
-                subtitle: 'Tüm alt kategorilerden karışık',
+                subtitle: _game.t('mixed_subs'),
                 karma: true,
                 onTap: () => _game.selectSub(''),
               ),
@@ -669,20 +688,15 @@ class _BilgiScreenState extends State<BilgiScreen> {
                 _subRow(
                   icon: bilgiSubIcon(sub, _subEmoji(sub, category?.emoji ?? '📌')),
                   title: _game.subLabel(_game.categoryId, sub),
-                  subtitle: '${_game.subCounts['${_game.categoryId}|$sub'] ?? 0} soru',
+                  subtitle: _fill('q_count', {'n': '${_game.subCounts['${_game.categoryId}|$sub'] ?? 0}'}),
                   onTap: () => _game.selectSub(sub),
                 ),
-              _sectionLabel('ZORLUK SEVİYESİ'),
+              _sectionLabel(_game.t('difficulty_level')),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
                 child: Row(
                   children: [
-                    for (final item in const [
-                      ('Kolay', 'kolay'),
-                      ('Orta', 'orta'),
-                      ('Zor', 'zor'),
-                      ('Efsane', 'efsane'),
-                    ])
+                    for (final item in diffs)
                       Expanded(
                         child: Padding(
                           padding: EdgeInsets.only(right: item.$2 == 'efsane' ? 0 : 8),
@@ -707,7 +721,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
                   ],
                 ),
               ),
-              _startButton(_game.busy ? null : _game.start),
+              _startButton(_game.busy ? null : _game.start, label: _game.t('start_game')),
             ],
           ),
         ),
@@ -719,6 +733,17 @@ class _BilgiScreenState extends State<BilgiScreen> {
     final highlight = _playDifficulty(_game.difficulty) ? _game.difficulty : 'kolay';
     final playable = _game.playableCount();
     final modeId = const {'hizli', 'klasik', 'sakin'}.contains(_game.modeId) ? _game.modeId : 'hizli';
+    final diffs = [
+      ('🟢', _game.t('diff_easy'), 'kolay'),
+      ('🟡', _game.t('diff_medium'), 'orta'),
+      ('🔴', _game.t('diff_hard'), 'zor'),
+      ('⚫', _game.t('diff_legend'), 'efsane'),
+    ];
+    final modes = [
+      ('⚡', _game.t('mode_opt_hizli'), 'hizli'),
+      ('🎯', _game.t('mode_opt_klasik'), 'klasik'),
+      ('🧘', _game.t('mode_opt_sakin'), 'sakin'),
+    ];
     return Column(
       children: [
         BilgiTopBar(title: _game.t('page_setup'), onBack: _game.back),
@@ -727,32 +752,25 @@ class _BilgiScreenState extends State<BilgiScreen> {
             padding: const EdgeInsets.only(bottom: 24),
             children: [
               if (_game.notice != null) _note(_game.notice!),
-              _sectionLabel('ZORLUK'),
-              for (final item in const [
-                ('🟢', 'Kolay', 'kolay'),
-                ('🟡', 'Orta', 'orta'),
-                ('🔴', 'Zor', 'zor'),
-                ('⚫', 'Efsane', 'efsane'),
-              ])
+              _sectionLabel(_game.t('difficulty')),
+              for (final item in diffs)
                 _choiceRow(item.$1, item.$2, highlight == item.$3, () => _game.selectDifficulty(item.$3)),
-              _sectionLabel('SORU SAYISI'),
+              _sectionLabel(_game.t('question_count')),
               for (final count in const [10, 20, 50])
                 _choiceRow(
                   '📝',
                   '$count',
                   _game.questionChoice == count,
                   () => _game.selectQuestionChoice(count),
-                  trailing: _game.questionChoice == count && playable != count ? '$playable soru' : null,
+                  trailing: _game.questionChoice == count && playable != count
+                      ? _fill('q_count', {'n': '$playable'})
+                      : null,
                 ),
-              _sectionLabel('MOD'),
-              for (final item in const [
-                ('⚡', 'Hızlı Tur (15 sn)', 'hizli'),
-                ('🎯', 'Klasik Tur (20 sn)', 'klasik'),
-                ('🧘', 'Sakin Mod (Süresiz)', 'sakin'),
-              ])
+              _sectionLabel(_game.t('mode_section')),
+              for (final item in modes)
                 _choiceRow(item.$1, item.$2, modeId == item.$3, () => _game.selectPlayMode(item.$3)),
               const SizedBox(height: 8),
-              _startButton(_game.busy ? null : _game.start),
+              _startButton(_game.busy ? null : _game.start, label: _game.t('start_game')),
             ],
           ),
         ),
@@ -765,7 +783,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
     final revealing = _game.revealing;
     final question = round?.current;
     if (round == null || (question == null && !revealing)) {
-      return const Center(child: Text('🎮 Sorular hazırlanıyor...'));
+      return Center(child: Text(_game.t('preparing')));
     }
     final letters = ['A', 'B', 'C', 'D'];
     final source = revealing ? _game.revealQuestion : question;
@@ -1023,15 +1041,15 @@ class _BilgiScreenState extends State<BilgiScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        _startButton(_game.replaySetup, label: '🔄 Tekrar Oyna'),
+        _startButton(_game.replaySetup, label: _game.t('play_again_btn')),
         const SizedBox(height: 12),
-        _secondaryButton('📊 Liderlik Tablosunu Gör', () => _game.tab('league')),
+        _secondaryButton('📊 ${_game.t('league')}', () => _game.tab('league')),
         const SizedBox(height: 12),
-        _secondaryButton('🏠 Ana Menü', () => _game.tab('home')),
+        _secondaryButton('🏠 ${_game.t('home')}', () => _game.tab('home')),
         const SizedBox(height: 12),
-        _secondaryButton('📤 Arkadaşlarınla Paylaş', () {
-          Clipboard.setData(ClipboardData(text: '${mode.name} • ${_grouped(round.score)} puan • ${round.correct} doğru'));
-          _game.flash('Sonuç panoya kopyalandı.');
+        _secondaryButton('📤 ${_game.t('invite')}', () {
+          Clipboard.setData(ClipboardData(text: '${mode.name} • ${_grouped(round.score)} • ${round.correct}'));
+          _game.flash(_game.t('copied'));
         }),
         const SizedBox(height: 16),
         _adBanner(),
@@ -1183,7 +1201,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
               const SizedBox(height: 16),
               Row(
                 children: [
-                  Text('Seviye ${user.level}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                  Text(_fill('level', {'n': '${user.level}'}), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
                   const Spacer(),
                   Text('${_grouped(intoLevel)} / 5.000 XP', style: const TextStyle(color: BilgiColors.muted, fontSize: 12)),
                 ],
@@ -1217,14 +1235,14 @@ class _BilgiScreenState extends State<BilgiScreen> {
             mainAxisSpacing: 12,
             childAspectRatio: 1.7,
             children: [
-              _statBox('Toplam Oyun', '${user.gamesPlayed}', BilgiColors.text),
-              _statBox(ratioLabel == null ? 'Doğru' : 'Doğru Oranı', ratioLabel ?? '${user.correctTotal}', BilgiColors.secondary),
-              _statBox('En Yüksek Puan', _grouped(user.bestScore), BilgiColors.warning),
-              _statBox('Giriş Serisi', '${user.streak} gün', BilgiColors.accent),
+              _statBox(_game.t('total_games'), '${user.gamesPlayed}', BilgiColors.text),
+              _statBox(ratioLabel == null ? _game.t('correct') : _game.t('correct_ratio'), ratioLabel ?? '${user.correctTotal}', BilgiColors.secondary),
+              _statBox(_game.t('best_score'), _grouped(user.bestScore), BilgiColors.warning),
+              _statBox(_game.t('login_streak'), _fill('days', {'n': '${user.streak}'}), BilgiColors.accent),
             ],
           ),
         ),
-        _sectionLabel('ROZETLER'),
+        _sectionLabel(_game.t('badges')),
         SizedBox(
           height: 88,
           child: ListView(
@@ -1248,18 +1266,18 @@ class _BilgiScreenState extends State<BilgiScreen> {
             ],
           ),
         ),
-        _sectionLabel('HESAP'),
+        _sectionLabel(_game.t('account')),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: _card(
             child: Column(
               children: [
-                _menuRow('📊', 'İstatistikler', 'Geçmiş ve skorlar', () => _game.open('history')),
-                _menuRow('🎯', 'Başarılar', 'Görevler', () => _game.open('achievements')),
-                _menuRow('📜', 'Oyun Geçmişi', user.gamesPlayed == 0 ? 'Henüz oyun yok' : '${user.gamesPlayed} oyun', () => _game.open('history')),
-                _menuRow('⚙️', 'Ayarlar', 'Profil ve bildirim', () => _game.open('settings')),
-                _menuRow('👥', 'Davet', user.inviteCode, () => _game.open('invite')),
-                _menuRow('🔐', 'Giriş', 'Hesabını bu cihazda aç', () => _game.open('login'), last: true),
+                _menuRow('📊', _game.t('stats'), _game.t('stats_sub'), () => _game.open('history')),
+                _menuRow('🎯', _game.t('page_achievements'), _game.t('tasks'), () => _game.open('achievements')),
+                _menuRow('📜', _game.t('page_history'), user.gamesPlayed == 0 ? _game.t('no_games') : _fill('games_n', {'n': '${user.gamesPlayed}'}), () => _game.open('history')),
+                _menuRow('⚙️', _game.t('settings'), _game.t('settings_sub'), () => _game.open('settings')),
+                _menuRow('👥', _game.t('invite'), user.inviteCode, () => _game.open('invite')),
+                _menuRow('🔐', _game.t('sign_in'), _game.t('sign_in_sub'), () => _game.open('login'), last: true),
               ],
             ),
           ),
@@ -1396,7 +1414,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
           child: Text('1 soru • 30 sn • doğruysa 100 altın ve 50 XP. Can ve joker yok.'),
         ),
         BilgiPrimaryButton(
-          label: _game.busy ? '🎮 Sorular hazırlanıyor...' : 'Başla',
+          label: _game.busy ? _game.t('preparing') : _game.t('start'),
           onTap: _game.busy
               ? null
               : () {
@@ -1415,67 +1433,32 @@ class _BilgiScreenState extends State<BilgiScreen> {
       children: [
         BilgiTopBar(title: _game.t('page_events'), onBack: _game.back),
         if (_game.eventRows.isEmpty)
-          const Padding(padding: EdgeInsets.all(20), child: Text('Kayıtlı etkinlik yok.'))
+          Padding(padding: const EdgeInsets.all(20), child: Text(_game.t('no_events')))
         else
           for (final event in _game.eventRows)
-            _tile('🎉', '${event['title'] ?? 'Etkinlik'}', '${event['body'] ?? ''}', null),
+            _tile('🎉', '${event['title'] ?? _game.t('event')}', '${event['body'] ?? ''}', null),
       ],
     );
   }
 
   Widget _language() {
-    if (_game.localePreview == null && _game.profile?.localeChosen != true) {
+    final fromSettings = _game.profile?.localeChosen == true;
+    if (_game.localePreview == null && !fromSettings) {
       final code = View.of(context).platformDispatcher.locale.languageCode;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || _game.localePreview != null) return;
         _game.previewLocale(GameLocale.known(code) ? code : 'tr');
       });
     }
-    final selected = _game.locale;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
-      children: [
-        Text(_game.t('choose_language'), textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 10),
-        Text(
-          _game.t('choose_language_sub'),
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: BilgiColors.muted, fontSize: 13, height: 1.45),
-        ),
-        const SizedBox(height: 18),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: GameLocale.all.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-            mainAxisExtent: 58,
-          ),
-          itemBuilder: (context, index) {
-            final locale = GameLocale.all[index];
-            final on = selected == locale.id;
-            return Material(
-              color: on ? BilgiColors.primary : BilgiColors.card,
-              borderRadius: BorderRadius.circular(14),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(14),
-                onTap: () => _game.previewLocale(locale.id),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(locale.nativeName, style: const TextStyle(fontWeight: FontWeight.w800)),
-                    Text(locale.englishName, style: const TextStyle(color: BilgiColors.muted, fontSize: 11)),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-        const SizedBox(height: 16),
-        BilgiPrimaryButton(label: _game.t('continue'), onTap: _game.confirmLocale),
-      ],
+    return BilgiLanguagePage(
+      selectedId: _game.locale,
+      title: _game.t('choose_language'),
+      subtitle: _game.t('choose_language_sub'),
+      continueLabel: _game.t('continue'),
+      fromSettings: fromSettings,
+      onPreview: _game.previewLocale,
+      onConfirm: _game.confirmLocale,
+      onBack: fromSettings ? _game.back : null,
     );
   }
 
@@ -1485,6 +1468,19 @@ class _BilgiScreenState extends State<BilgiScreen> {
       children: [
         BilgiTopBar(title: _game.t('settings'), onBack: _game.back),
         if (_game.notice != null) _note(_game.notice!),
+        _sectionLabel(_game.t('language')),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: _card(
+            child: _menuRow(
+              '🌐',
+              _game.t('language'),
+              '${GameLocale.resolve(user.locale).nativeName} ›',
+              () => _game.open('language'),
+              last: true,
+            ),
+          ),
+        ),
         _sectionLabel(_game.t('preferences')),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1504,31 +1500,30 @@ class _BilgiScreenState extends State<BilgiScreen> {
           child: _card(
             child: Column(
               children: [
-                _menuRow('🌐', _game.t('language'), '${GameLocale.resolve(user.locale).nativeName} ›', () => _game.open('language')),
-                _menuRow('👤', 'Hesap Bilgileri', user.username, () => setState(() => _showAccountForm = !_showAccountForm)),
-                _menuRow('📄', 'Gizlilik', 'Gizlilik ve koşullar', () => _game.open('legal')),
-                _menuRow('👥', 'Davet', user.inviteCode, () => _game.open('invite'), last: true),
+                _menuRow('👤', _game.t('account_info'), user.username, () => setState(() => _showAccountForm = !_showAccountForm)),
+                _menuRow('📄', _game.t('privacy'), _game.t('privacy_sub'), () => _game.open('legal')),
+                _menuRow('👥', _game.t('invite'), user.inviteCode, () => _game.open('invite'), last: true),
               ],
             ),
           ),
         ),
         if (_showAccountForm)
           _FormCard(
-            title: 'Profil',
-            fields: const ['Kullanıcı adı', 'Şehir'],
+            title: _game.t('profile'),
+            fields: [_game.t('username'), _game.t('city')],
             initial: [user.username, user.city],
-            submit: 'Kaydet',
+            submit: _game.t('save'),
             onSubmit: (values) => _game.saveProfile(username: values[0], city: values[1]),
           ),
-        _sectionLabel('DESTEK'),
+        _sectionLabel(_game.t('support')),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: _card(
             child: Column(
               children: [
-                _menuRow('❓', 'Yardım & SSS', 'Nasıl oynanır', () => _game.flash('Kategori seç, soruları yanıtla, altın kazan.')),
-                _menuRow('✉️', 'İletişim', _game.config.supportEmail, () => _game.flash(_game.config.supportEmail)),
-                _menuRow('ℹ️', 'Hakkında', gameVersionCode, null, last: true),
+                _menuRow('❓', _game.t('help'), _game.t('how_to'), () => _game.flash(_game.t('how_to'))),
+                _menuRow('✉️', _game.t('contact'), _game.config.supportEmail, () => _game.flash(_game.config.supportEmail)),
+                _menuRow('ℹ️', _game.t('about'), gameVersionCode, null, last: true),
               ],
             ),
           ),
@@ -1542,7 +1537,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
       return ListView(
         children: [
           BilgiTopBar(title: _game.t('page_achievements'), onBack: _game.back),
-          const Padding(padding: EdgeInsets.all(20), child: Text('🎯 Henüz başarı tamamlamadın.')),
+          Padding(padding: const EdgeInsets.all(20), child: Text(_game.t('no_achievements'))),
         ],
       );
     }
@@ -1801,12 +1796,12 @@ class _BilgiScreenState extends State<BilgiScreen> {
 
     return ListView(
       children: [
-        BilgiTopBar(title: 'Bildirim', onBack: accept),
-        const Padding(
-          padding: EdgeInsets.all(20),
-          child: Text('Günlük ödül ve lig hatırlatması için bildirim izni istenir. Tarayıcıda sistem izni açılmaz.'),
+        BilgiTopBar(title: _game.t('notify_title'), onBack: accept),
+        Padding(
+          padding: const EdgeInsets.all(20),
+          child: Text(_game.t('notify_body')),
         ),
-        BilgiPrimaryButton(label: 'Tamam', onTap: accept),
+        BilgiPrimaryButton(label: _game.t('ok'), onTap: accept),
       ],
     );
   }
@@ -1919,10 +1914,10 @@ class _BilgiScreenState extends State<BilgiScreen> {
   }
 
   Widget _intro() {
-    const steps = [
-      ('1', 'Kategori Seç', 'Tarih, bilim, spor, mitoloji... 60 farklı kategoriden istediğini seç'),
-      ('2', 'Soruları Cevapla', 'Süreli veya süresiz modda bilgini test et, jokerlerini akıllı kullan'),
-      ('3', 'Ödülleri Kazan', 'Altın, rozet, unvan kazan. Liderlik tablosunda zirveye çık'),
+    final steps = [
+      ('1', _game.t('intro_step1_title'), _game.t('intro_step1_body')),
+      ('2', _game.t('intro_step2_title'), _game.t('intro_step2_body')),
+      ('3', _game.t('intro_step3_title'), _game.t('intro_step3_body')),
     ];
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1946,9 +1941,9 @@ class _BilgiScreenState extends State<BilgiScreen> {
                           style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900),
                         ),
                         const SizedBox(height: 8),
-                        const Text('Bilgiye Luno Kat!', textAlign: TextAlign.center, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+                        Text(_game.t('intro_tagline'), textAlign: TextAlign.center, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
                         const SizedBox(height: 8),
-                        const Text('60 kategori, 6 mod, binlerce soru', textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: BilgiColors.muted)),
+                        Text(_game.t('intro_sub'), textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: BilgiColors.muted)),
                         const SizedBox(height: 40),
                         for (var i = 0; i < steps.length; i++) ...[
                           if (i > 0) const SizedBox(height: 16),
@@ -1970,9 +1965,9 @@ class _BilgiScreenState extends State<BilgiScreen> {
                     child: InkWell(
                       onTap: _game.finishIntro,
                       borderRadius: BorderRadius.circular(bilgiRadius),
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 18),
-                        child: Text('🚀 Hemen Başla', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        child: Text(_game.t('intro_start'), textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
                       ),
                     ),
                   ),
@@ -2100,10 +2095,10 @@ class _BilgiScreenState extends State<BilgiScreen> {
   bool _playDifficulty(String value) => value == 'kolay' || value == 'orta' || value == 'zor' || value == 'efsane';
 
   String _difficultyLabel(String value) => switch (value) {
-        'orta' => 'Orta',
-        'zor' => 'Zor',
-        'efsane' => 'Efsane',
-        _ => 'Kolay',
+        'orta' => _game.t('diff_medium'),
+        'zor' => _game.t('diff_hard'),
+        'efsane' => _game.t('diff_legend'),
+        _ => _game.t('diff_easy'),
       };
 
   String _subEmoji(String sub, String fallback) {
@@ -2224,7 +2219,8 @@ class _BilgiScreenState extends State<BilgiScreen> {
     );
   }
 
-  Widget _startButton(VoidCallback? onTap, {String label = '🚀 Oyunu Başlat'}) {
+  Widget _startButton(VoidCallback? onTap, {String? label}) {
+    final text = label ?? _game.t('start_game');
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: DecoratedBox(
@@ -2240,7 +2236,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
             borderRadius: BorderRadius.circular(16),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 18),
-              child: Text(label, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+              child: Text(text, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
             ),
           ),
         ),

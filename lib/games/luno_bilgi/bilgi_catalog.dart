@@ -29,6 +29,104 @@ const bilgiGroups = <String>[
   'H. Popüler Kültür',
 ];
 
+const bilgiGroupLabels = <String, Map<String, String>>{
+  'A. Temel Bilgi': {
+    'en': 'A. Core Knowledge',
+    'de': 'A. Grundwissen',
+    'es': 'A. Conocimiento básico',
+    'fr': 'A. Connaissances de base',
+    'it': 'A. Conoscenze di base',
+    'ru': 'A. Базовые знания',
+    'nl': 'A. Basiskennis',
+    'pt': 'A. Conhecimento básico',
+    'pl': 'A. Wiedza podstawowa',
+  },
+  'B. Tarih ve Medeniyet': {
+    'en': 'B. History and Civilization',
+    'de': 'B. Geschichte und Zivilisation',
+    'es': 'B. Historia y civilización',
+    'fr': 'B. Histoire et civilisation',
+    'it': 'B. Storia e civiltà',
+    'ru': 'B. История и цивилизация',
+    'nl': 'B. Geschiedenis en beschaving',
+    'pt': 'B. História e civilização',
+    'pl': 'B. Historia i cywilizacja',
+  },
+  'C. Bilim ve Teknoloji': {
+    'en': 'C. Science and Technology',
+    'de': 'C. Wissenschaft und Technik',
+    'es': 'C. Ciencia y tecnología',
+    'fr': 'C. Science et technologie',
+    'it': 'C. Scienza e tecnologia',
+    'ru': 'C. Наука и технологии',
+    'nl': 'C. Wetenschap en technologie',
+    'pt': 'C. Ciência e tecnologia',
+    'pl': 'C. Nauka i technologia',
+  },
+  'D. Sanat ve Edebiyat': {
+    'en': 'D. Art and Literature',
+    'de': 'D. Kunst und Literatur',
+    'es': 'D. Arte y literatura',
+    'fr': 'D. Art et littérature',
+    'it': 'D. Arte e letteratura',
+    'ru': 'D. Искусство и литература',
+    'nl': 'D. Kunst en literatuur',
+    'pt': 'D. Arte e literatura',
+    'pl': 'D. Sztuka i literatura',
+  },
+  'E. Felsefe ve İnanç': {
+    'en': 'E. Philosophy and Belief',
+    'de': 'E. Philosophie und Glaube',
+    'es': 'E. Filosofía y creencias',
+    'fr': 'E. Philosophie et croyance',
+    'it': 'E. Filosofia e fede',
+    'ru': 'E. Философия и вера',
+    'nl': 'E. Filosofie en geloof',
+    'pt': 'E. Filosofia e crença',
+    'pl': 'E. Filozofia i wiara',
+  },
+  'F. Spor ve Oyun': {
+    'en': 'F. Sports and Games',
+    'de': 'F. Sport und Spiel',
+    'es': 'F. Deporte y juego',
+    'fr': 'F. Sport et jeu',
+    'it': 'F. Sport e gioco',
+    'ru': 'F. Спорт и игры',
+    'nl': 'F. Sport en spel',
+    'pt': 'F. Desporto e jogos',
+    'pl': 'F. Sport i gry',
+  },
+  'G. Yaşam ve Pratik': {
+    'en': 'G. Life and Practice',
+    'de': 'G. Leben und Praxis',
+    'es': 'G. Vida y práctica',
+    'fr': 'G. Vie et pratique',
+    'it': 'G. Vita e pratica',
+    'ru': 'G. Жизнь и практика',
+    'nl': 'G. Leven en praktijk',
+    'pt': 'G. Vida e prática',
+    'pl': 'G. Życie i praktyka',
+  },
+  'H. Popüler Kültür': {
+    'en': 'H. Popular Culture',
+    'de': 'H. Popkultur',
+    'es': 'H. Cultura popular',
+    'fr': 'H. Culture populaire',
+    'it': 'H. Cultura popolare',
+    'ru': 'H. Поп-культура',
+    'nl': 'H. Popcultuur',
+    'pt': 'H. Cultura popular',
+    'pl': 'H. Kultura popularna',
+  },
+};
+
+String? bilgiGroupLabel(String locale, String name) {
+  if (locale == 'tr') return null;
+  final label = bilgiGroupLabels[name]?[locale];
+  if (label == null || label.trim().isEmpty) return null;
+  return label;
+}
+
 const tumuKarmaId = 'tumu';
 
 const bilgiCategories = <BilgiCategory>[
@@ -218,6 +316,9 @@ Map<String, dynamic> bilgiCatalogClosedUnless(
 }
 
 List<BilgiCategory> resolveBilgiCategories(Map<String, dynamic>? catalog, {bool playableOnly = false}) {
+  if (catalog?['authoritative'] == true) {
+    return _resolveAuthoritative(catalog!, playableOnly: playableOnly);
+  }
   final hidden = _catalogIds(catalog?['hidden']);
   final inactive = _catalogIds(catalog?['inactive']);
   final inactiveSubs = _catalogIds(catalog?['inactiveSubs']);
@@ -316,6 +417,37 @@ List<String> _mergedSubs(
     if (display.isEmpty || removedSubs.contains('$categoryId|$display') || !seen.add(display.toLowerCase())) continue;
     if (playableOnly && inactiveSubs.contains('$categoryId|$display')) continue;
     out.add(display);
+  }
+  return out;
+}
+
+List<BilgiCategory> _resolveAuthoritative(Map<String, dynamic> catalog, {required bool playableOnly}) {
+  final inactive = _catalogIds(catalog['inactive']);
+  final inactiveSubs = _catalogIds(catalog['inactiveSubs']);
+  final custom = catalog['custom'];
+  final out = <BilgiCategory>[];
+  if (custom is! List) return out;
+  for (final raw in custom) {
+    if (raw is! Map) continue;
+    final id = '${raw['id'] ?? ''}'.trim();
+    final name = '${raw['name'] ?? ''}'.trim();
+    if (id.isEmpty || name.isEmpty) continue;
+    final active = raw['active'] != false && !inactive.contains(id);
+    if (playableOnly && !active) continue;
+    final subs = [
+      for (final item in raw['subs'] as List? ?? const [])
+        if ('$item'.trim().isNotEmpty && (!playableOnly || !inactiveSubs.contains('$id|${'$item'.trim()}'))) '$item'.trim(),
+    ];
+    out.add(
+      BilgiCategory(
+        id: id,
+        group: '${raw['group'] ?? bilgiGroups.first}',
+        name: name,
+        emoji: '${raw['emoji'] ?? '📚'}'.trim().isEmpty ? '📚' : '${raw['emoji']}'.trim(),
+        subs: subs,
+        active: active,
+      ),
+    );
   }
   return out;
 }
