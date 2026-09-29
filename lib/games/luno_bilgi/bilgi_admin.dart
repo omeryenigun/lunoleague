@@ -1589,6 +1589,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
 
   Widget _categoryCard(BilgiCategory category, double width) {
     final total = _questionTotal(category.id);
+    final ready = bilgiNamesReady(_labels, 'category', category.id);
     return Container(
       width: width,
       padding: const EdgeInsets.all(16),
@@ -1609,8 +1610,15 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
               children: [
                 Row(
                   children: [
-                    Flexible(child: Text(category.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700))),
-                    if (bilgiNamesReady(_labels, 'category', category.id)) ...[
+                    Flexible(
+                      child: Text(
+                        category.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: ready ? null : const Color(0xFFFF5C7A)),
+                      ),
+                    ),
+                    if (ready) ...[
                       const SizedBox(width: 6),
                       _langOk(),
                     ],
@@ -1671,8 +1679,13 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
         for (final locale in GameLocale.all)
           if (locale.id != 'tr') locale.id: labels['${locale.id}|category|${category.id}'] ?? '',
       },
+      saveNames: (names) => _saveNameLabels(scope: 'category', key: category.id, names: names),
     );
-    if (result == null || !mounted) return;
+    if (!mounted) return;
+    if (result == null) {
+      await _load();
+      return;
+    }
     await _server.editCategory(id: category.id, name: result.name, emoji: result.emoji, group: result.group);
     await _saveNameLabels(scope: 'category', key: category.id, names: result.names);
     await _load();
@@ -1699,6 +1712,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     required String emoji,
     required String group,
     required Map<String, String> names,
+    Future<String?> Function(Map<String, String> names)? saveNames,
   }) async {
     final fields = <String, TextEditingController>{
       'tr': TextEditingController(text: name),
@@ -1721,7 +1735,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _LangNameFields(fields: fields),
+                  _LangNameFields(fields: fields, saveNames: saveNames),
                   TextField(controller: emojiField, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'Simge')),
                   const SizedBox(height: 12),
                   DropdownButton<String>(
@@ -1762,7 +1776,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     return (name: nextName, emoji: nextEmoji, group: nextGroup, names: nextNames);
   }
 
-  Future<void> _saveNameLabels({
+  Future<String?> _saveNameLabels({
     required String scope,
     required String key,
     required Map<String, String> names,
@@ -1771,10 +1785,11 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       for (final entry in names.entries)
         if (entry.value.isNotEmpty) {'locale': entry.key, 'scope': scope, 'key': key, 'label': entry.value},
     ];
-    if (rows.isEmpty) return;
+    if (rows.isEmpty) return null;
     final error = await BilgiQuestionApi.saveLabels(sl<ApiSession>().adminToken ?? '', rows);
-    if (!mounted || error == null) return;
-    setState(() => _note = error);
+    if (!mounted) return error;
+    if (error != null) setState(() => _note = error);
+    return error;
   }
 
   Future<void> _toggleCategory(BilgiCategory category, bool active) async {
@@ -1972,7 +1987,10 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _LangNameFields(fields: fields),
+                _LangNameFields(
+                  fields: fields,
+                  saveNames: (names) => _saveNameLabels(scope: 'sub', key: '${category.id}|${fields['tr']!.text.trim()}', names: names),
+                ),
                 TextField(controller: emojiField, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'Simge')),
               ],
             ),
@@ -1995,7 +2013,10 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       field.dispose();
     }
     emojiField.dispose();
-    if (saved != true || !mounted || next.isEmpty) return;
+    if (saved != true || !mounted || next.isEmpty) {
+      if (mounted && saved != true) await _load();
+      return;
+    }
     if (next != name && category.subs.any((sub) => _fold(sub) == _fold(next))) {
       setState(() => _note = 'Bu alt kategori zaten var.');
       return;
@@ -3096,6 +3117,8 @@ class _QuestionFormState extends State<_QuestionForm> {
   var _busy = false;
   late final _picked = <String>{...?widget.initial?.tags};
   var _lang = 'tr';
+  var _translating = false;
+  var _translateNote = '';
   late final _bag = <String, BilgiTranslation>{
     ...?widget.initial?.translations,
     'tr': BilgiTranslation(
@@ -3143,6 +3166,57 @@ class _QuestionFormState extends State<_QuestionForm> {
     );
   }
 
+  Future<void> _translateAll() async {
+    if (_translating || _busy) return;
+    _storeLang();
+    final turkish = _bag['tr'];
+    if (turkish == null || !bilgiLanguageFieldsReady(turkish.text, turkish.options, turkish.explanation)) {
+      setState(() => _translateNote = 'Türkçe soru, dört şık ve açıklama dolu olmalı.');
+      return;
+    }
+    setState(() {
+      _translating = true;
+      _translateNote = 'Çevriliyor...';
+    });
+    final result = await BilgiQuestionApi.translateQuestion(
+      sl<ApiSession>().adminToken ?? '',
+      text: turkish.text,
+      options: turkish.options,
+      explanation: turkish.explanation,
+    );
+    if (!mounted) return;
+    if (result.error != null) {
+      setState(() {
+        _translating = false;
+        _translateNote = result.error!;
+      });
+      return;
+    }
+    _bag.addAll(result.translations);
+    if (_lang != 'tr') {
+      final row = _bag[_lang];
+      _text.text = row?.text ?? '';
+      for (var i = 0; i < 4; i++) {
+        _options[i].text = row != null && i < row.options.length ? row.options[i] : '';
+      }
+      _explanation.text = row?.explanation ?? '';
+    }
+    if (_category.isEmpty || _sub.trim().isEmpty) {
+      setState(() {
+        _translating = false;
+        _translateNote = 'Tercüme yazıldı. Kaydetmek için alt kategori seç.';
+      });
+      return;
+    }
+    setState(() => _translateNote = 'Tercüme kaydediliyor...');
+    final saved = await _submit(false);
+    if (!mounted) return;
+    setState(() {
+      _translating = false;
+      _translateNote = saved ? 'Tercüme kaydedildi.' : 'Tercüme geldi, kayıt tamamlanmadı.';
+    });
+  }
+
   void _showLang(String lang) {
     _storeLang();
     final row = _bag[lang];
@@ -3154,15 +3228,15 @@ class _QuestionFormState extends State<_QuestionForm> {
     setState(() => _lang = lang);
   }
 
-  Future<void> _submit(bool draft) async {
+  Future<bool> _submit(bool draft) async {
     _storeLang();
     final turkish = _bag['tr'];
     final text = turkish?.text.trim() ?? '';
     final options = turkish?.options ?? const <String>[];
-    if (text.isEmpty || options.any((option) => option.isEmpty) || _correct < 0 || _category.isEmpty) return;
+    if (text.isEmpty || options.any((option) => option.isEmpty) || _correct < 0 || _category.isEmpty) return false;
     final category = _cat;
     final sub = _sub.trim();
-    if (category == null || !category.subs.contains(sub)) return;
+    if (category == null || !category.subs.contains(sub)) return false;
     final tags = {..._picked, sub};
     setState(() => _busy = true);
     try {
@@ -3186,9 +3260,10 @@ class _QuestionFormState extends State<_QuestionForm> {
       );
     } catch (_) {
       if (mounted) setState(() => _busy = false);
-      return;
+      return false;
     }
     if (mounted) setState(() => _busy = false);
+    return true;
   }
 
   @override
@@ -3212,12 +3287,25 @@ class _QuestionFormState extends State<_QuestionForm> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _BilgiLangTabs(
-                  selected: _lang,
-                  onSelect: _showLang,
-                  wrap: true,
-                  filled: _langFilled,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _BilgiLangTabs(
+                        selected: _lang,
+                        onSelect: _showLang,
+                        wrap: true,
+                        filled: _langFilled,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    _translateAllButton(busy: _translating, onPressed: _translateAll),
+                  ],
                 ),
+                if (_translateNote.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(_translateNote, style: const TextStyle(color: BilgiColors.muted, fontSize: 12)),
+                ],
                 const SizedBox(height: 12),
                 _card(_lang == 'tr' ? '1. Soru Metni' : '1. Soru Metni · ${GameLocale.resolve(_lang).nativeName}', [
                   _label('Soru'),
@@ -3714,9 +3802,10 @@ const _bilgiFlags = <String, String>{
 };
 
 class _LangNameFields extends StatefulWidget {
-  const _LangNameFields({required this.fields});
+  const _LangNameFields({required this.fields, this.saveNames});
 
   final Map<String, TextEditingController> fields;
+  final Future<String?> Function(Map<String, String> names)? saveNames;
 
   @override
   State<_LangNameFields> createState() => _LangNameFieldsState();
@@ -3724,6 +3813,39 @@ class _LangNameFields extends StatefulWidget {
 
 class _LangNameFieldsState extends State<_LangNameFields> {
   var _lang = 'tr';
+  var _translating = false;
+  var _note = '';
+
+  Future<void> _translate() async {
+    if (_translating) return;
+    final turkish = widget.fields['tr']?.text.trim() ?? '';
+    if (turkish.isEmpty) {
+      setState(() => _note = 'Türkçe ad dolu olmalı.');
+      return;
+    }
+    setState(() {
+      _translating = true;
+      _note = 'Çevriliyor...';
+    });
+    final result = await BilgiQuestionApi.translateName(sl<ApiSession>().adminToken ?? '', turkish);
+    if (!mounted) return;
+    if (result.error != null) {
+      setState(() {
+        _translating = false;
+        _note = result.error!;
+      });
+      return;
+    }
+    for (final entry in result.names.entries) {
+      widget.fields[entry.key]?.text = entry.value;
+    }
+    final error = await widget.saveNames?.call(result.names);
+    if (!mounted) return;
+    setState(() {
+      _translating = false;
+      _note = error ?? (widget.saveNames == null ? 'Tercüme yazıldı. Kaydedince kalır.' : 'Tercüme kaydedildi.');
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3731,12 +3853,25 @@ class _LangNameFieldsState extends State<_LangNameFields> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _BilgiLangTabs(
-          selected: _lang,
-          onSelect: (id) => setState(() => _lang = id),
-          wrap: true,
-          filled: (id) => widget.fields[id]?.text.trim().isNotEmpty ?? false,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: _BilgiLangTabs(
+                selected: _lang,
+                onSelect: (id) => setState(() => _lang = id),
+                wrap: true,
+                filled: (id) => widget.fields[id]?.text.trim().isNotEmpty ?? false,
+              ),
+            ),
+            const SizedBox(width: 12),
+            _translateAllButton(busy: _translating, onPressed: _translate),
+          ],
         ),
+        if (_note.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(_note, style: const TextStyle(color: BilgiColors.muted, fontSize: 12)),
+        ],
         const SizedBox(height: 12),
         TextField(
           key: ValueKey(_lang),
@@ -3748,6 +3883,16 @@ class _LangNameFieldsState extends State<_LangNameFields> {
       ],
     );
   }
+}
+
+Widget _translateAllButton({required bool busy, required VoidCallback onPressed}) {
+  return FilledButton(
+    style: FilledButton.styleFrom(backgroundColor: BilgiColors.primary, minimumSize: const Size(0, 40)),
+    onPressed: busy ? null : onPressed,
+    child: busy
+        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+        : const Text('Tüm dilleri çevir'),
+  );
 }
 
 double _labelDialogWidth(BuildContext context) {

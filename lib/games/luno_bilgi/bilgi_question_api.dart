@@ -86,6 +86,70 @@ class BilgiQuestionApi {
     }
   }
 
+  static Future<({Map<String, BilgiTranslation> translations, String? error})> translateQuestion(
+    String token, {
+    required String text,
+    required List<String> options,
+    required String explanation,
+  }) async {
+    final decoded = await _translate(token, {
+      'kind': 'question',
+      'text': text,
+      'options': options,
+      'explanation': explanation,
+    });
+    if (decoded.error != null) return (translations: <String, BilgiTranslation>{}, error: decoded.error);
+    final raw = decoded.body?['translations'];
+    if (raw is! Map) return (translations: <String, BilgiTranslation>{}, error: 'Tercüme okunamadı.');
+    final out = <String, BilgiTranslation>{};
+    for (final entry in raw.entries) {
+      final row = BilgiTranslation.fromMap(entry.value);
+      if (row == null || !bilgiLanguageFieldsReady(row.text, row.options, row.explanation)) {
+        return (translations: <String, BilgiTranslation>{}, error: 'Tercüme eksik geldi.');
+      }
+      out['${entry.key}'] = row;
+    }
+    if (out.length != 9) return (translations: <String, BilgiTranslation>{}, error: 'Tercüme eksik geldi.');
+    return (translations: out, error: null);
+  }
+
+  static Future<({Map<String, String> names, String? error})> translateName(String token, String text) async {
+    final decoded = await _translate(token, {'kind': 'name', 'text': text});
+    if (decoded.error != null) return (names: <String, String>{}, error: decoded.error);
+    final raw = decoded.body?['names'];
+    if (raw is! Map) return (names: <String, String>{}, error: 'Tercüme okunamadı.');
+    final out = <String, String>{};
+    for (final entry in raw.entries) {
+      final label = '${entry.value}'.trim();
+      if (label.isEmpty) return (names: <String, String>{}, error: 'Tercüme eksik geldi.');
+      out['${entry.key}'] = label;
+    }
+    if (out.length != 9) return (names: <String, String>{}, error: 'Tercüme eksik geldi.');
+    return (names: out, error: null);
+  }
+
+  static Future<({Map<String, dynamic>? body, String? error})> _translate(String token, Map<String, Object> body) async {
+    if (token.isEmpty) return (body: null, error: 'Yönetici oturumu gerekli.');
+    try {
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/v1/admin/bilgi-translate'),
+        headers: {
+          'authorization': 'Bearer $token',
+          'content-type': 'application/json; charset=utf-8',
+        },
+        body: jsonEncode(body),
+      );
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return (body: null, error: 'Tercüme okunamadı.');
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return (body: null, error: '${decoded['error'] ?? 'Tercüme yapılamadı.'}');
+      }
+      return (body: Map<String, dynamic>.from(decoded), error: null);
+    } catch (_) {
+      return (body: null, error: 'Tercüme servisi yanıt vermedi.');
+    }
+  }
+
   static Future<String?> saveLabels(String token, List<Map<String, String>> rows) async {
     if (token.isEmpty) return 'Yönetici oturumu gerekli.';
     try {

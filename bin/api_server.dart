@@ -7,6 +7,7 @@ import 'package:kelimelig/api/coming_soon_page.dart';
 import 'package:kelimelig/api/site_cards.dart';
 import 'package:kelimelig/api/game_http.dart';
 import 'package:kelimelig/api/bilgi_questions_http.dart';
+import 'package:kelimelig/api/bilgi_translate_http.dart';
 import 'package:kelimelig/api/bilgi_rooms_http.dart';
 import 'package:kelimelig/api/bilgi_reports_http.dart';
 import 'package:kelimelig/api/mail_http.dart';
@@ -135,6 +136,7 @@ Future<void> main() async {
   mountMailApi(router, db);
   mountBilgiReports(router, db);
   mountBilgiQuestions(router, db);
+  mountBilgiTranslate(router, db);
   mountBilgiRooms(router, db);
   mountSiteCards(router, db);
   _mountAdminWeb(router);
