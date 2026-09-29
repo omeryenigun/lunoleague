@@ -8,6 +8,8 @@ import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_csv.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_mail.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_report.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_report_api.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_theme.dart';
 import 'package:kelimelig/injection.dart';
@@ -64,6 +66,9 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   final _mailText = TextEditingController();
   final _mailTestTo = TextEditingController(text: 'omeryenigun@gmail.com');
   var _mailLoaded = false;
+  var _reportsLoaded = false;
+  List<BilgiQuestionReport> _reports = const [];
+  var _reportsError = '';
   var _subCat = 'turk_tarihi';
 
   LunoBilgiServer get _server => sl<LunoBilgiServer>();
@@ -75,6 +80,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   static const _nav = <({String group, String emoji, String label})>[
     (group: 'GENEL', emoji: '📊', label: 'Dashboard'),
     (group: 'İÇERİK', emoji: '📚', label: 'Soru Bankası'),
+    (group: 'İÇERİK', emoji: '🚩', label: 'Hatalı soru bildirimleri'),
     (group: 'İÇERİK', emoji: '➕', label: 'Soru Ekle'),
     (group: 'İÇERİK', emoji: '⏳', label: 'Onay Bekleyenler'),
     (group: 'İÇERİK', emoji: '🚫', label: 'Reddedilenler'),
@@ -202,14 +208,14 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   String get _title {
     return switch (_index) {
       0 => 'Dashboard',
-      2 => _editing == null ? 'Yeni Soru Ekle' : 'Soruyu Düzenle',
-      3 => 'Onay Bekleyen Sorular',
-      4 => 'Reddedilen Sorular',
-      11 => 'Banlı Kullanıcılar',
-      12 => 'Premium Kullanıcılar',
-      17 => 'Ekonomi Ayarları',
-      23 => 'Genel Ayarlar',
-      25 => 'E-posta şablonu',
+      3 => _editing == null ? 'Yeni Soru Ekle' : 'Soruyu Düzenle',
+      4 => 'Onay Bekleyen Sorular',
+      5 => 'Reddedilen Sorular',
+      12 => 'Banlı Kullanıcılar',
+      13 => 'Premium Kullanıcılar',
+      18 => 'Ekonomi Ayarları',
+      24 => 'Genel Ayarlar',
+      26 => 'E-posta şablonu',
       _ => _nav[_index].label,
     };
   }
@@ -218,19 +224,20 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     return switch (_index) {
       0 => 'Luno Bilgi genel bakış',
       1 => '${_questions.length} soru • $_pendingCount onay bekliyor',
-      2 => _editing == null ? 'Soru bankasına yeni soru ekle' : 'Kayıtlı soruyu güncelle',
-      3 => '$_pendingCount soru onay bekliyor',
-      4 => '${_questions.where((q) => q.status == 'rejected').length} soru reddedildi',
-      5 => 'Yalnızca CSV ile toplu soru yükle',
-      6 => '${_categories.length} ana kategori • ${bilgiGroups.length} grup',
-      10 => '${_users.length} kullanıcı • ${_users.where((u) => u.premium).length} premium',
-      11 => '$_bannedCount kullanıcı banlı',
-      12 => '${_users.where((u) => u.premium).length} premium üye',
-      19 => '7 günlük ödül takvimi',
-      20 => 'Reklam stratejisi ve limitleri',
-      21 => '${_events.where((e) => e['status'] == 'active').length} aktif • ${_events.where((e) => e['status'] == 'pending').length} bekleyen',
-      22 => 'Detaylı analiz ve raporlar',
-      23 => 'Uygulama geneli yapılandırma',
+      2 => 'Oyuncuların hatalı soru bildirimleri',
+      3 => _editing == null ? 'Soru bankasına yeni soru ekle' : 'Kayıtlı soruyu güncelle',
+      4 => '$_pendingCount soru onay bekliyor',
+      5 => '${_questions.where((q) => q.status == 'rejected').length} soru reddedildi',
+      6 => 'Yalnızca CSV ile toplu soru yükle',
+      7 => '${_categories.length} ana kategori • ${bilgiGroups.length} grup',
+      11 => '${_users.length} kullanıcı • ${_users.where((u) => u.premium).length} premium',
+      12 => '$_bannedCount kullanıcı banlı',
+      13 => '${_users.where((u) => u.premium).length} premium üye',
+      20 => '7 günlük ödül takvimi',
+      21 => 'Reklam stratejisi ve limitleri',
+      22 => '${_events.where((e) => e['status'] == 'active').length} aktif • ${_events.where((e) => e['status'] == 'pending').length} bekleyen',
+      23 => 'Detaylı analiz ve raporlar',
+      24 => 'Uygulama geneli yapılandırma',
       _ => 'Luno Bilgi yönetim',
     };
   }
@@ -339,8 +346,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     int? badge;
     var badgeColor = BilgiColors.primary;
     if (i == 1 && _bankBadge > 0) badge = _bankBadge;
-    if (i == 3 && _pendingCount > 0) badge = _pendingCount;
-    if (i == 11) {
+    if (i == 4 && _pendingCount > 0) badge = _pendingCount;
+    if (i == 12) {
       badge = _bannedCount == 0 ? null : _bannedCount;
       badgeColor = BilgiColors.error;
     }
@@ -349,7 +356,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => i == 2 ? _openEditor() : setState(() => _index = i),
+          onTap: () => i == 3 ? _openEditor() : setState(() => _index = i),
           hoverColor: const Color(0x146C3CE9),
           child: Container(
             decoration: BoxDecoration(
@@ -418,7 +425,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
           ),
           const SizedBox(width: 8),
           IconButton(
-            onPressed: () => setState(() => _index = 3),
+            onPressed: () => setState(() => _index = 4),
             icon: const Icon(Icons.notifications_none, color: Colors.white70),
           ),
           const SizedBox(width: 4),
@@ -427,11 +434,11 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
             decoration: BoxDecoration(color: BilgiColors.card, borderRadius: BorderRadius.circular(20)),
             child: const Text('Admin', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
           ),
-          if (_index == 2) ...[
+          if (_index == 3) ...[
             const SizedBox(width: 12),
-            _primary('Toplu Soru Ekle', () => setState(() => _index = 5)),
+            _primary('Toplu Soru Ekle', () => setState(() => _index = 6)),
           ],
-          if (_index == 6) ...[
+          if (_index == 7) ...[
             const SizedBox(width: 12),
             _primary('Yeni Kategori', _addCategory),
           ],
@@ -505,34 +512,100 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     );
   }
 
+  Future<void> _loadReports() async {
+    final token = sl<ApiSession>().adminToken ?? '';
+    if (token.isEmpty) {
+      if (mounted) setState(() => _reportsError = 'Bildirimler için yönetici oturumu gerekli.');
+      return;
+    }
+    final rows = await BilgiReportApi.load(token);
+    if (!mounted) return;
+    setState(() {
+      _reports = rows ?? const [];
+      _reportsError = rows == null ? 'Bildirimler alınamadı.' : '';
+    });
+  }
+
+  Widget _faultReports() {
+    if (!_reportsLoaded) {
+      _reportsLoaded = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadReports());
+    }
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+      children: [
+        Align(alignment: Alignment.centerLeft, child: _ghost('Yenile', () { _loadReports(); })),
+        if (_reportsError.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Text(_reportsError, style: const TextStyle(color: BilgiColors.warning)),
+        ],
+        if (_reports.isEmpty && _reportsError.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 16),
+            child: Text('Hatalı soru bildirimi yok.', style: TextStyle(color: BilgiColors.muted)),
+          ),
+        for (final report in _reports) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: BilgiColors.card, borderRadius: BorderRadius.circular(12)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(report.questionText, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 6),
+                Text(
+                  '${_catLabel(report.categoryId)} • ${report.difficulty} • ${report.createdAt}',
+                  style: const TextStyle(color: BilgiColors.muted, fontSize: 12),
+                ),
+                const SizedBox(height: 8),
+                for (var i = 0; i < report.options.length; i++)
+                  Text(
+                    '${['A', 'B', 'C', 'D'][i.clamp(0, 3)]}. ${report.options[i]}',
+                    style: TextStyle(
+                      color: i == report.correct ? BilgiColors.secondary : Colors.white70,
+                      fontWeight: i == report.correct ? FontWeight.w800 : FontWeight.w500,
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                Text(report.note, style: const TextStyle(color: Colors.white, height: 1.4)),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _body() {
     return switch (_index) {
       0 => _summary(),
       1 => _questionList(null),
-      2 => _editor(),
-      3 => _questionList('pending'),
-      4 => _questionList('rejected'),
-      5 => _import(),
-      6 => _categoryList(),
-      7 => _subs(),
-      8 => _tags(),
-      9 => _karma(),
-      10 => _userList(null),
-      11 => _userList(true),
-      12 => _userList(false, premium: true),
-      13 => _toggles(),
-      14 => _modes(),
-      15 => _jokers(),
-      16 => _lives(),
-      17 => _economy(),
-      18 => _packs(),
-      19 => _rewards(),
-      20 => _ads(),
-      21 => _eventEditor(),
-      22 => _stats(),
-      23 => _general(),
-      24 => _admins(),
-      25 => _mail(),
+      2 => _faultReports(),
+      3 => _editor(),
+      4 => _questionList('pending'),
+      5 => _questionList('rejected'),
+      6 => _import(),
+      7 => _categoryList(),
+      8 => _subs(),
+      9 => _tags(),
+      10 => _karma(),
+      11 => _userList(null),
+      12 => _userList(true),
+      13 => _userList(false, premium: true),
+      14 => _toggles(),
+      15 => _modes(),
+      16 => _jokers(),
+      17 => _lives(),
+      18 => _economy(),
+      19 => _packs(),
+      20 => _rewards(),
+      21 => _ads(),
+      22 => _eventEditor(),
+      23 => _stats(),
+      24 => _general(),
+      25 => _admins(),
+      26 => _mail(),
       _ => _admins(),
     };
   }
@@ -561,7 +634,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
               _dashPanel(
                 title: 'Son 7 Gün — Oyun Oynanma',
                 action: 'Detay →',
-                onAction: () => setState(() => _index = 22),
+                onAction: () => setState(() => _index = 23),
                 child: SizedBox(
                   height: 150,
                   child: Row(
@@ -603,7 +676,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
               _dashPanel(
                 title: 'Bekleyen Onaylar',
                 action: 'Tümü →',
-                onAction: () => setState(() => _index = 3),
+                onAction: () => setState(() => _index = 4),
                 child: Column(
                   children: [
                     _dashList('❓', '$_pendingCount yeni soru', 'Onay bekliyor', _pendingCount == 0 ? null : 'Bekliyor', BilgiColors.warning),
@@ -618,7 +691,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
               _dashPanel(
                 title: 'En Çok Oynanan Kategoriler',
                 action: 'Tümü →',
-                onAction: () => setState(() => _index = 6),
+                onAction: () => setState(() => _index = 7),
                 child: categories.isEmpty
                     ? const Text('Oyun kaydı yok.', style: TextStyle(color: BilgiColors.muted, fontSize: 13))
                     : Column(
@@ -632,11 +705,11 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                 title: 'Hızlı İşlemler',
                 child: _quickGrid([
                   _dashQuick('➕', 'Soru Ekle', _openEditor),
-                  _dashQuick('📥', 'Toplu İçe Aktar', () => setState(() => _index = 5)),
-                  _dashQuick('✅', 'Onay Bekleyenler', () => setState(() => _index = 3)),
+                  _dashQuick('📥', 'Toplu İçe Aktar', () => setState(() => _index = 6)),
+                  _dashQuick('✅', 'Onay Bekleyenler', () => setState(() => _index = 4)),
                   _dashQuick('📢', 'Duyuru Gönder', () {}),
-                  _dashQuick('🏆', 'Etkinlik Oluştur', () => setState(() => _index = 21)),
-                  _dashQuick('📊', 'Rapor İndir', () => setState(() => _index = 22)),
+                  _dashQuick('🏆', 'Etkinlik Oluştur', () => setState(() => _index = 22)),
+                  _dashQuick('📊', 'Rapor İndir', () => setState(() => _index = 23)),
                 ]),
               ),
             ),
@@ -855,7 +928,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                   ),
                   _select(_bankDiff, [('','Tüm Zorluklar'), ('kolay','Kolay'), ('orta','Orta'), ('zor','Zor'), ('efsane','Efsane')], (v) => setState(() { _bankDiff = v; _bankPage = 0; })),
                   _select(_bankStatus, [('','Tüm Durumlar'), ('approved','Onaylı'), ('pending','Bekleyen'), ('draft','Taslak'), ('rejected','Reddedilen')], (v) => setState(() { _bankStatus = v; _bankPage = 0; })),
-                  _ghost('📥 İçe Aktar', () => setState(() => _index = 5)),
+                  _ghost('📥 İçe Aktar', () => setState(() => _index = 6)),
                   _primary('➕ Yeni Soru', _openEditor),
                 ],
               ),
@@ -1110,7 +1183,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     setState(() {
       _editing = question;
       _formSerial += 1;
-      _index = 2;
+      _index = 3;
     });
   }
 
@@ -1460,7 +1533,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
           ],
           _catBtn('📁', () => setState(() {
                 _subCat = category.id;
-                _index = 7;
+                _index = 8;
               })),
         ],
       ),

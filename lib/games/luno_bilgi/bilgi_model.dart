@@ -335,7 +335,7 @@ class BilgiProfile {
       createdAt: DateTime.tryParse(map['createdAt'] as String? ?? '') ?? DateTime.now(),
       jokers: {
         for (final entry in ((map['jokers'] as Map?) ?? const {}).entries)
-          entry.key.toString(): entry.value as int? ?? 0,
+          entry.key.toString(): bilgiInt(entry.value, 0),
       },
       gamesPlayed: map['gamesPlayed'] as int? ?? 0,
       correctTotal: map['correctTotal'] as int? ?? 0,
@@ -658,6 +658,26 @@ class BilgiRoom {
 
 const tumuFallback = 'tumu';
 
+int bilgiInt(Object? value, int fallback) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse('${value ?? ''}') ?? fallback;
+}
+
+int dayRewardAmount(List<int> values, int index) {
+  if (index < 0 || index >= values.length) return 0;
+  return values[index];
+}
+
+bool rewardConfigStored(Map<String, dynamic> stored) {
+  bool week(String key) {
+    final raw = stored[key];
+    return raw is List && raw.length >= 7;
+  }
+
+  return week('dailyGold') && week('dailyDiamond') && week('dailyJoker') && stored['rewardedGold'] != null;
+}
+
 class BilgiConfig {
   const BilgiConfig({
     this.maintenance = false,
@@ -804,37 +824,39 @@ class BilgiConfig {
     if (map == null) return const BilgiConfig();
     List<int> ints(String key, List<int> fallback) {
       final raw = map[key];
-      if (raw is! List || raw.isEmpty) return fallback;
-      return raw.map((e) => e as int? ?? 0).toList();
+      if (raw is! List || raw.isEmpty) return List<int>.from(fallback);
+      final values = [for (final item in raw) bilgiInt(item, 0)];
+      if (values.length >= fallback.length) return values;
+      return [...values, ...fallback.skip(values.length)];
     }
 
     return BilgiConfig(
       maintenance: map['maintenance'] as bool? ?? false,
-      maintenanceMinutes: map['maintenanceMinutes'] as int? ?? 30,
+      maintenanceMinutes: bilgiInt(map['maintenanceMinutes'], 30),
       registrationsOpen: map['registrationsOpen'] as bool? ?? true,
-      maxLives: map['maxLives'] as int? ?? 5,
-      startLives: map['startLives'] as int? ?? 5,
-      lifeMinutes: map['lifeMinutes'] as int? ?? 30,
-      lifePrice: map['lifePrice'] as int? ?? 100,
-      lifeCostDefault: map['lifeCostDefault'] as int? ?? 1,
-      lifeCostMarathon: map['lifeCostMarathon'] as int? ?? 3,
-      inviteLifeEvery: map['inviteLifeEvery'] as int? ?? 5,
-      dailyFreeGames: map['dailyFreeGames'] as int? ?? 1,
-      preGameAdSeconds: map['preGameAdSeconds'] as int? ?? 15,
-      newUserAdFree: map['newUserAdFree'] as int? ?? 3,
-      rewardedGold: map['rewardedGold'] as int? ?? 50,
-      rewardedGoldLimit: map['rewardedGoldLimit'] as int? ?? 10,
-      rewardedJokerLimit: map['rewardedJokerLimit'] as int? ?? 3,
-      rewardedLifeLimit: map['rewardedLifeLimit'] as int? ?? 2,
-      rewardedDoubleLimit: map['rewardedDoubleLimit'] as int? ?? 3,
+      maxLives: bilgiInt(map['maxLives'], 5),
+      startLives: bilgiInt(map['startLives'], 5),
+      lifeMinutes: bilgiInt(map['lifeMinutes'], 30),
+      lifePrice: bilgiInt(map['lifePrice'], 100),
+      lifeCostDefault: bilgiInt(map['lifeCostDefault'], 1),
+      lifeCostMarathon: bilgiInt(map['lifeCostMarathon'], 3),
+      inviteLifeEvery: bilgiInt(map['inviteLifeEvery'], 5),
+      dailyFreeGames: bilgiInt(map['dailyFreeGames'], 1),
+      preGameAdSeconds: bilgiInt(map['preGameAdSeconds'], 15),
+      newUserAdFree: bilgiInt(map['newUserAdFree'], 3),
+      rewardedGold: bilgiInt(map['rewardedGold'], 50),
+      rewardedGoldLimit: bilgiInt(map['rewardedGoldLimit'], 10),
+      rewardedJokerLimit: bilgiInt(map['rewardedJokerLimit'], 3),
+      rewardedLifeLimit: bilgiInt(map['rewardedLifeLimit'], 2),
+      rewardedDoubleLimit: bilgiInt(map['rewardedDoubleLimit'], 3),
       bannerEnabled: map['bannerEnabled'] as bool? ?? true,
       livesEnabled: map['livesEnabled'] as bool? ?? true,
       adaptiveDifficulty: false,
-      scoreKolay: map['scoreKolay'] as int? ?? 10,
-      scoreOrta: map['scoreOrta'] as int? ?? 15,
-      scoreZor: map['scoreZor'] as int? ?? 25,
-      scoreEfsane: map['scoreEfsane'] as int? ?? 40,
-      scoreTimeBonus: map['scoreTimeBonus'] as int? ?? 5,
+      scoreKolay: bilgiInt(map['scoreKolay'], 10),
+      scoreOrta: bilgiInt(map['scoreOrta'], 15),
+      scoreZor: bilgiInt(map['scoreZor'], 25),
+      scoreEfsane: bilgiInt(map['scoreEfsane'], 40),
+      scoreTimeBonus: bilgiInt(map['scoreTimeBonus'], 5),
       modeOverrides: {
         for (final entry in ((map['modeOverrides'] as Map?) ?? const {}).entries)
           entry.key.toString(): {
@@ -844,11 +866,11 @@ class BilgiConfig {
       },
       jokerPrices: {
         for (final entry in ((map['jokerPrices'] as Map?) ?? const BilgiConfig().jokerPrices).entries)
-          entry.key.toString(): entry.value as int? ?? 0,
+          entry.key.toString(): bilgiInt(entry.value, 0),
       },
       jokerStarts: {
         for (final entry in ((map['jokerStarts'] as Map?) ?? const BilgiConfig().jokerStarts).entries)
-          entry.key.toString(): entry.value as int? ?? 0,
+          entry.key.toString(): bilgiInt(entry.value, 0),
       },
       dailyGold: ints('dailyGold', const [100, 200, 0, 300, 0, 500, 1000]),
       dailyDiamond: ints('dailyDiamond', const [0, 0, 1, 0, 0, 0, 0]),

@@ -6,6 +6,7 @@ import 'package:kelimelig/api/admin_http.dart';
 import 'package:kelimelig/api/coming_soon_page.dart';
 import 'package:kelimelig/api/site_cards.dart';
 import 'package:kelimelig/api/game_http.dart';
+import 'package:kelimelig/api/bilgi_reports_http.dart';
 import 'package:kelimelig/api/mail_http.dart';
 import 'package:kelimelig/api/privacy_page.dart';
 import 'package:kelimelig/core/constants/game_version.dart';
@@ -28,6 +29,7 @@ Future<void> main() async {
   final db = await _open(databaseUrl);
   await PostgresKv.migrate(db);
   await migrateMail(db);
+  await migrateBilgiReports(db);
   await migrateAdmin(db);
   await migrateSiteCards(db);
   await seedSiteCards(db);
@@ -35,6 +37,7 @@ Future<void> main() async {
   await seedSiteCardSlogans(db);
   await seedSiteCardShots(db);
   await seedSiteCardGrid(db);
+  await seedSiteCardBilgi(db);
   await classifySiteCardMedia(db);
   final scoped = ScopedKeyValueStore(PostgresKv(db), GameIds.lunoLeague);
   final rules = LocalGameServer(scoped);
@@ -126,6 +129,7 @@ Future<void> main() async {
     ..get('/app-ads.txt', appAdsTxtPage);
   mountAdminApi(router, db);
   mountMailApi(router, db);
+  mountBilgiReports(router, db);
   mountSiteCards(router, db);
   _mountAdminWeb(router);
 

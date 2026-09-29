@@ -5,6 +5,7 @@ import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_csv.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_questions.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_report.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_rules.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_trial_questions.dart';
@@ -221,6 +222,12 @@ void main() {
     expect(both.map((question) => question.id), containsAll(['imp123', 'imp124']));
   });
 
+  test('a faulty question report requires an explanation', () {
+    expect(bilgiReportNoteError(''), 'Açıklama zorunlu.');
+    expect(bilgiReportNoteError('   '), 'Açıklama zorunlu.');
+    expect(bilgiReportNoteError('Şık B de doğru.'), isNull);
+  });
+
   test('csv explanation and every question field survive the save', () async {
     const raw =
         'soru,a,b,c,d,dogru,kategori,altkategori,zorluk,aciklama\n'
@@ -259,6 +266,27 @@ void main() {
 
     final dropping = LunoBilgiServer(_DropFieldStore(MemoryKeyValueStore(), 'explanation'));
     expect(dropping.saveQuestion(question), throwsStateError);
+  });
+
+  test('daily rewards and ad rewards load even from a partial config', () {
+    final fresh = BilgiConfig.fromMap(null);
+    expect(fresh.dailyGold, [100, 200, 0, 300, 0, 500, 1000]);
+    expect(fresh.dailyDiamond, [0, 0, 1, 0, 0, 0, 0]);
+    expect(fresh.dailyJoker, [0, 0, 0, 0, 1, 0, 0]);
+    expect(fresh.rewardedGold, 50);
+    expect(fresh.rewardedGoldLimit, 10);
+
+    final messy = BilgiConfig.fromMap({
+      'rewardedGold': 40.0,
+      'dailyGold': ['10', 20],
+    });
+    expect(messy.rewardedGold, 40);
+    expect(messy.dailyGold, [10, 20, 0, 300, 0, 500, 1000]);
+    expect(messy.dailyDiamond, [0, 0, 1, 0, 0, 0, 0]);
+    expect(dayRewardAmount(messy.dailyGold, 0), 10);
+    expect(dayRewardAmount(messy.dailyGold, 6), 1000);
+    expect(rewardConfigStored(fresh.toMap()), isTrue);
+    expect(rewardConfigStored({'dailyGold': [1]}), isFalse);
   });
 }
 

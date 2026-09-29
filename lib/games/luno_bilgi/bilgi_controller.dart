@@ -7,6 +7,7 @@ import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_mail.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_report_api.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
 
 class BilgiController extends ChangeNotifier {
@@ -48,6 +49,8 @@ class BilgiController extends ChangeNotifier {
   List<String> revealOptions = const [];
   String revealText = '';
   String revealDifficulty = '';
+  BilgiQuestion? revealQuestion;
+  List<String> _badgesBeforePick = const [];
   bool scoreDoubled = false;
   List<String> newBadgeIds = const [];
   bool notifyOn = true;
@@ -296,6 +299,7 @@ class BilgiController extends ChangeNotifier {
     revealOptions = const [];
     revealText = '';
     revealDifficulty = '';
+    revealQuestion = null;
     revealNumber = 1;
     scoreDoubled = false;
     newBadgeIds = const [];
@@ -330,7 +334,7 @@ class BilgiController extends ChangeNotifier {
         return;
       }
     }
-    if (live.seconds > 0) {
+    if (live.seconds > 0 && !revealing) {
       secondsLeft = (secondsLeft - 1).clamp(0, live.seconds);
       if (secondsLeft == 0 && !picked) {
         unawaited(pick(-1));
@@ -375,7 +379,9 @@ class BilgiController extends ChangeNotifier {
     revealOptions = question.options;
     revealText = question.text;
     revealDifficulty = question.difficulty;
+    revealQuestion = question;
     revealNumber = live.index + 1;
+    _badgesBeforePick = beforeBadges;
     revealing = true;
     notifyListeners();
     final result = await server.answer(
@@ -389,22 +395,29 @@ class BilgiController extends ChangeNotifier {
       notice = result.message;
       picked = false;
       revealing = false;
+      revealQuestion = null;
       notifyListeners();
       return;
     }
     final retry = option >= 0 && (round?.hidden.contains(option) ?? false) && round?.finished != true;
     if (retry) {
       revealing = false;
+      revealQuestion = null;
       lastPick = null;
       picked = false;
       notifyListeners();
       return;
     }
-    await Future<void>.delayed(const Duration(milliseconds: 700));
+    notifyListeners();
+  }
+
+  void continueReveal() {
+    if (!revealing) return;
     revealing = false;
+    revealQuestion = null;
     if (round?.finished == true) {
       _timer?.cancel();
-      newBadgeIds = (profile?.badges ?? const []).where((id) => !beforeBadges.contains(id)).toList();
+      newBadgeIds = (profile?.badges ?? const []).where((id) => !_badgesBeforePick.contains(id)).toList();
       stack
         ..clear()
         ..add('result');
@@ -416,6 +429,12 @@ class BilgiController extends ChangeNotifier {
     picked = false;
     lastPick = null;
     notifyListeners();
+  }
+
+  Future<String?> reportReveal(String note) {
+    final question = revealQuestion;
+    if (question == null) return Future.value('Soru bulunamadı.');
+    return BilgiReportApi.send(question: question, note: note);
   }
 
   Future<void> useJoker(String type) async {
@@ -757,9 +776,9 @@ class BilgiController extends ChangeNotifier {
   }
 
   String rewardLabel(int index) {
-    final gold = config.dailyGold[index % 7];
-    final diamond = config.dailyDiamond[index % 7];
-    final joker = config.dailyJoker[index % 7];
+    final gold = dayRewardAmount(config.dailyGold, index);
+    final diamond = dayRewardAmount(config.dailyDiamond, index);
+    final joker = dayRewardAmount(config.dailyJoker, index);
     if (diamond > 0) return '$diamond elmas';
     if (joker > 0) return '$joker joker';
     return '$gold altın';

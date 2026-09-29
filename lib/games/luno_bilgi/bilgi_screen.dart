@@ -5,6 +5,7 @@ import 'package:kelimelig/core/services/ad_service.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_controller.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_report.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_theme.dart';
 import 'package:kelimelig/injection.dart';
@@ -138,15 +139,14 @@ class _BilgiScreenState extends State<BilgiScreen> {
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
           child: Row(
             children: [
-              ShaderMask(
-                shaderCallback: (bounds) => const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [BilgiColors.primary, BilgiColors.secondary],
-                ).createShader(bounds),
-                child: const Text(
+              const _BilgiLogo(size: 44),
+              const SizedBox(width: 10),
+              const Flexible(
+                child: Text(
                   'Luno Bilgi',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
                 ),
               ),
               const Spacer(),
@@ -841,6 +841,15 @@ class _BilgiScreenState extends State<BilgiScreen> {
             onTap: revealing || round.hidden.contains(i) || _game.picked ? null : () => _game.pick(i),
           ),
           if (i < options.length - 1) const SizedBox(height: 12),
+        ],
+        if (revealing && _game.revealQuestion != null) ...[
+          const SizedBox(height: 16),
+          _FaultReport(
+            key: ValueKey(_game.revealQuestion!.id),
+            onSubmit: _game.reportReveal,
+          ),
+          const SizedBox(height: 12),
+          BilgiPrimaryButton(label: 'Devam', onTap: _game.continueReveal),
         ],
         const SizedBox(height: 16),
         Container(
@@ -1673,14 +1682,18 @@ class _BilgiScreenState extends State<BilgiScreen> {
   }
 
   Widget _notify() {
+    void accept() {
+      _game.answerNotify(_game.notifyOn);
+    }
+
     return ListView(
       children: [
-        BilgiTopBar(title: 'Bildirim', onBack: _game.back),
+        BilgiTopBar(title: 'Bildirim', onBack: accept),
         const Padding(
           padding: EdgeInsets.all(20),
           child: Text('Günlük ödül ve lig hatırlatması için bildirim izni istenir. Tarayıcıda sistem izni açılmaz.'),
         ),
-        BilgiPrimaryButton(label: 'Tamam', onTap: _game.back),
+        BilgiPrimaryButton(label: 'Tamam', onTap: accept),
       ],
     );
   }
@@ -1812,23 +1825,14 @@ class _BilgiScreenState extends State<BilgiScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Align(
-                          alignment: Alignment.center,
-                          child: ShaderMask(
-                            blendMode: BlendMode.srcIn,
-                            shaderCallback: (bounds) => const LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [BilgiColors.primary, BilgiColors.secondary],
-                            ).createShader(bounds),
-                            child: const Text(
-                              'Luno Bilgi',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(fontSize: 42, fontWeight: FontWeight.w900, color: Colors.white),
-                            ),
-                          ),
+                        const Center(child: _BilgiLogo(size: 148)),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Luno Bilgi',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 8),
                         const Text('Bilgiye Luno Kat!', textAlign: TextAlign.center, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
                         const SizedBox(height: 8),
                         const Text('60 kategori, 6 mod, binlerce soru', textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: BilgiColors.muted)),
@@ -2451,6 +2455,26 @@ class _BilgiScreenState extends State<BilgiScreen> {
   }
 }
 
+class _BilgiLogo extends StatelessWidget {
+  const _BilgiLogo({required this.size});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(size * 0.22),
+      child: Image.asset(
+        'assets/images/luno_bilgi_logo.jpg',
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        semanticLabel: 'Luno Bilgi',
+      ),
+    );
+  }
+}
+
 class _FormCard extends StatefulWidget {
   const _FormCard({
     required this.title,
@@ -2513,6 +2537,90 @@ class _FormCardState extends State<_FormCard> {
               onPressed: () => widget.onSecondary!([for (final field in _fields) field.text]),
               child: Text(widget.secondaryLabel!),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FaultReport extends StatefulWidget {
+  const _FaultReport({super.key, required this.onSubmit});
+
+  final Future<String?> Function(String note) onSubmit;
+
+  @override
+  State<_FaultReport> createState() => _FaultReportState();
+}
+
+class _FaultReportState extends State<_FaultReport> {
+  final _note = TextEditingController();
+  var _open = false;
+  var _busy = false;
+  var _error = '';
+
+  @override
+  void dispose() {
+    _note.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final error = bilgiReportNoteError(_note.text);
+    if (error != null) {
+      setState(() => _error = error);
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = '';
+    });
+    final result = await widget.onSubmit(_note.text);
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _error = result ?? '';
+      if (result == null) {
+        _open = false;
+        _note.clear();
+        _error = 'Bildirim iletildi.';
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: BilgiColors.card, borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextButton(
+            onPressed: _busy ? null : () => setState(() => _open = !_open),
+            child: const Text('Hatalı soru bildir'),
+          ),
+          if (_open) ...[
+            TextField(
+              controller: _note,
+              minLines: 3,
+              maxLines: 5,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                hintText: 'Sorunun nesi hatalı? Açıklama zorunlu.',
+                hintStyle: TextStyle(color: BilgiColors.muted),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: _busy ? null : _send,
+                child: Text(_busy ? 'Gönderiliyor' : 'Gönder'),
+              ),
+            ),
+          ],
+          if (_error.isNotEmpty)
+            Text(_error, style: const TextStyle(color: BilgiColors.warning, fontSize: 12)),
         ],
       ),
     );

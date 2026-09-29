@@ -65,8 +65,10 @@ class LunoBilgiServer {
     for (final question in bilgiTrialQuestions) {
       await _store.delete(_questions, question.id);
     }
-    if (await _store.get(_config, 'main') == null) {
-      await _store.put(_config, 'main', const BilgiConfig().toMap());
+    final stored = await _store.get(_config, 'main');
+    if (stored == null || !rewardConfigStored(stored)) {
+      final loaded = stored == null ? const BilgiConfig() : BilgiConfig.fromMap(stored);
+      await _store.put(_config, 'main', loaded.toMap());
     }
     if (await _store.getMeta(_active) == null) {
       final seedCfg = await config();
@@ -573,9 +575,9 @@ class LunoBilgiServer {
     }
     final yesterday = DateKeys.dayKey(_clock().subtract(const Duration(days: 1)));
     final index = user.lastReward == yesterday ? user.rewardDay % 7 : 0;
-    final gold = cfg.dailyGold[index] * (doubled ? 2 : 1);
-    final diamond = cfg.dailyDiamond[index] * (doubled ? 2 : 1);
-    final joker = cfg.dailyJoker[index] * (doubled ? 2 : 1);
+    final gold = dayRewardAmount(cfg.dailyGold, index) * (doubled ? 2 : 1);
+    final diamond = dayRewardAmount(cfg.dailyDiamond, index) * (doubled ? 2 : 1);
+    final joker = dayRewardAmount(cfg.dailyJoker, index) * (doubled ? 2 : 1);
     final jokers = Map<String, int>.from(user.jokers);
     jokers['half'] = (jokers['half'] ?? 0) + joker;
     final streak = user.lastReward == yesterday ? user.streak + 1 : 1;

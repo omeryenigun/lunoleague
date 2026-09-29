@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hesap silme — Onyapp</title>
+<meta name="description" content="Onyapp hesap ve ilişkili verilerin silinmesi için e-posta talebi.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css?v=8">
+<style>
+  .delete { max-width: 720px; margin: 0 auto 80px; text-align: left; }
+  .delete h2 { font-size: 1.25rem; margin: 2rem 0 .8rem; }
+  .delete p, .delete li { color: var(--muted); }
+  .delete ol, .delete ul { margin: 0 0 1rem 1.2rem; }
+  .delete li { margin: .45rem 0; }
+  .delete a.mail { color: var(--cyan); }
+  .delete .btn-primary { margin-top: 8px; }
+</style>
+</head>
+<body data-title="deleteTitle">
+<header>
+  <nav class="nav">
+    <a href="/" class="logo"><span class="logo-mark" aria-hidden="true">🎮</span><span><b>Onyapp</b></span></a>
+    <div class="nav-end">
+      <div class="menu">
+        <a href="/" data-i18n="navHome">Ana Sayfa</a>
+        <a href="/oyunlar" data-i18n="navGames">Oyunlar</a>
+        <a href="/hakkimizda" data-i18n="navAbout">Hakkımızda</a>
+        <a href="/iletisim" data-i18n="navContact">İletişim</a>
+      </div>
+      <div class="langs" role="group" aria-label="Language">
+        <button type="button" data-lang="tr">TR</button>
+        <button type="button" data-lang="en">EN</button>
+      </div>
+      <button class="nav-toggle" type="button" aria-label="Menü">☰</button>
+    </div>
+  </nav>
+</header>
+<main>
+  <section class="page-head">
+    <h1 data-i18n="deleteTitle">Hesap silme</h1>
+    <p data-i18n="deleteLead">Onyapp oyunlarındaki hesabını ve bu hesaba bağlı verileri silmek için aşağıdaki adımları kullan.</p>
+  </section>
+  <section class="section">
+    <article class="delete">
+      <h2 data-i18n="deleteSteps">Nasıl talep edilir</h2>
+      <ol>
+        <li data-i18n="deleteStep1">Hesabı açtığın e-posta adresinden <a class="mail" href="mailto:support@onyhub.com">support@onyhub.com</a> adresine yaz.</li>
+        <li data-i18n="deleteStep2">Konu satırına Onyapp Hesap Silme Talebi yaz. İngilizce talepte konu Onyapp Account Deletion Request olabilir.</li>
+        <li data-i18n="deleteStep3">Mesajda oyun adını (Luno League, Luno Bilgi, Luno Fall veya Luno Grid), hesap e-postasını ve kullanıcı adını yaz.</li>
+        <li data-i18n="deleteStep4">Hesabın sana ait olduğu doğrulandıktan sonra silme işlemi yapılır.</li>
+      </ol>
+      <a class="btn-primary" data-i18n="deleteMail" href="mailto:support@onyhub.com?subject=Onyapp%20Hesap%20Silme%20Talebi&amp;body=Oyun%3A%0AHesap%20e-postas%C4%B1%3A%0AKullan%C4%B1c%C4%B1%20ad%C4%B1%3A%0A">E-posta ile silme talebi gönder</a>
+      <h2 data-i18n="deleteRemoved">Silinen veriler</h2>
+      <ul>
+        <li data-i18n="deleteRemoved1">Hesap: e-posta, kullanıcı adı ve profil.</li>
+        <li data-i18n="deleteRemoved2">Bu hesaba bağlı oyun ilerlemesi ve oda kayıtları.</li>
+        <li data-i18n="deleteRemoved3">Şifre sıfırlama kodları.</li>
+      </ul>
+      <h2 data-i18n="deleteKept">Saklanabilecek veriler</h2>
+      <ul>
+        <li data-i18n="deleteKept1">Yasal saklama gerektiren satın alma kayıtları. Google Play ödemesi Google hesabında kalır.</li>
+        <li data-i18n="deleteKept2">Kimliği çıkarılmış hata bildirimleri.</li>
+        <li data-i18n="deleteKept3">Reklam verisi Google AdMob tarafında, Google’ın kendi saklama süresince kalır.</li>
+      </ul>
+      <p data-i18n="deleteTime">Doğrulanan talep en geç 30 gün içinde tamamlanır. Yasal zorunluluk varsa satın alma kaydı bu süreden uzun tutulabilir.</p>
+    </article>
+  </section>
+</main>
+<footer>
+  <div class="footer-inner">
+    <a href="/" class="logo"><span class="logo-mark" aria-hidden="true">🎮</span><span><b>Onyapp</b></span></a>
+    <div class="footer-links">
+      <a href="/" data-i18n="navHome">Ana Sayfa</a>
+      <a href="/oyunlar" data-i18n="navGames">Oyunlar</a>
+      <a href="/hakkimizda" data-i18n="navAbout">Hakkımızda</a>
+      <a href="/iletisim" data-i18n="navContact">İletişim</a>
+      <a href="/hesap-sil" data-i18n="deleteTitle">Hesap silme</a>
+      <a href="/veri-sil" data-i18n="dataTitle">Veri silme</a>
+      <a href="https://onyapp.app/privacy" data-i18n="privacy">Gizlilik</a>
+    </div>
+    <div>© 2026 Onyapp</div>
+  </div>
+</footer>
+<script src="js/i18n.js?v=11"></script>
+<script src="js/main.js?v=7"></script>
+</body>
+</html>

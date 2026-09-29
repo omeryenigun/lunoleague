@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:kelimelig/core/constants/admob.dart';
 import 'package:kelimelig/games/luno_fall/fall_game_screen.dart';
 import 'package:kelimelig/games/luno_fall/fall_home_screen.dart';
 import 'package:kelimelig/games/luno_fall/fall_league_screen.dart';
@@ -13,6 +14,7 @@ import 'package:kelimelig/games/luno_fall/register_fall_server.dart';
 import 'package:kelimelig/injection.dart';
 
 Future<void> main() async {
+  androidUsesLeagueAds = false;
   WidgetsFlutterBinding.ensureInitialized();
   await configureDependencies();
   await registerFallServer();

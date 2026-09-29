@@ -1,18 +1,21 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:kelimelig/core/constants/admob.dart';
+import 'package:kelimelig/core/services/ad_service.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_screen.dart';
 import 'package:kelimelig/games/luno_bilgi/register_bilgi_server.dart';
 import 'package:kelimelig/injection.dart';
 
 Future<void> main() async {
+  androidUsesLeagueAds = false;
+  androidRewardedUnitId = admobBilgiRewardedUnitId;
   WidgetsFlutterBinding.ensureInitialized();
   await configureDependencies();
   await registerBilgiServer();
   runApp(const LunoBilgiApp());
   if (!kIsWeb) {
     try {
-      await MobileAds.instance.initialize();
+      await sl<AdService>().prepare();
     } catch (_) {}
   }
 }

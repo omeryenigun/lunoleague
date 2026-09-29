@@ -1,11 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:kelimelig/core/constants/admob.dart';
 import 'package:kelimelig/games/luno_grid/grid_home_screen.dart';
 import 'package:kelimelig/games/luno_grid/register_grid_server.dart';
 import 'package:kelimelig/injection.dart';
 
 Future<void> main() async {
+  androidUsesLeagueAds = false;
   WidgetsFlutterBinding.ensureInitialized();
   await configureDependencies();
   await registerGridServer();

@@ -36,18 +36,28 @@ android {
         create("league") {
             dimension = "game"
             applicationId = "com.lunoleague.game"
+            manifestPlaceholders["admobAppId"] = "ca-app-pub-9773173651120365~3784384609"
         }
         create("fall") {
             dimension = "game"
             applicationId = "com.lunofall.game"
+            versionCode = 1
+            versionName = "1.0.0"
+            manifestPlaceholders["admobAppId"] = "ca-app-pub-3940256099942544~3347511713"
         }
         create("grid") {
             dimension = "game"
             applicationId = "com.lunogrid.game"
+            versionCode = 1
+            versionName = "1.0.0"
+            manifestPlaceholders["admobAppId"] = "ca-app-pub-3940256099942544~3347511713"
         }
         create("bilgi") {
             dimension = "game"
             applicationId = "com.lunobilgi.game"
+            versionCode = 8
+            versionName = "1.0.8"
+            manifestPlaceholders["admobAppId"] = "ca-app-pub-2627324717388568~1018760089"
         }
     }
 

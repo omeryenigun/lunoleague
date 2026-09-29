@@ -9,7 +9,7 @@
         android:icon="@mipmap/ic_launcher">
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-9773173651120365~3784384609"/>
+            android:value="${admobAppId}"/>
         <meta-data
             android:name="io.flutter.embedding.android.EnableImpeller"
             android:value="false" />

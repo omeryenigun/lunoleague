@@ -13,6 +13,7 @@ const siteCardsCopyKey = 'site_cards_copy_v1';
 const siteCardsSloganKey = 'site_cards_slogan_v1';
 const siteCardsShotKey = 'site_cards_shots_v1';
 const siteCardsGridKey = 'site_cards_grid_v1';
+const siteCardsBilgiKey = 'site_cards_bilgi_v1';
 
 const _iconPaths = [
   '/seed/luno_league_icon.png',
@@ -272,6 +273,58 @@ Future<void> seedSiteCardGrid(Connection db) async {
     parameters: {'key': siteCardsGridKey},
   );
   stdout.writeln('site card grid seeded soon');
+}
+
+/// Adds the Luno Bilgi showcase card once. Later admin edits stay.
+Future<void> seedSiteCardBilgi(Connection db) async {
+  final meta = await db.execute(
+    Sql.named('select value from kv_meta where item_key = @key'),
+    parameters: {'key': siteCardsBilgiKey},
+  );
+  if (meta.isNotEmpty && meta.first[0] == '1') return;
+  await db.execute(
+    Sql.named('''
+      insert into site_cards (
+        id, name, description, status, sort_order, name_en, description_en
+      )
+      values (
+        'luno_bilgi', @name, @description, 'soon', 4, @nameEn, @descriptionEn
+      )
+      on conflict (id) do update set
+        name = excluded.name,
+        description = excluded.description,
+        status = excluded.status,
+        sort_order = excluded.sort_order,
+        name_en = excluded.name_en,
+        description_en = excluded.description_en
+    '''),
+    parameters: {
+      'name': 'Luno Bilgi',
+      'description': 'Dört şıktan doğruyu bul.',
+      'nameEn': 'Luno Bilgi',
+      'descriptionEn': 'Find the right answer among four.',
+    },
+  );
+  final icon = await _storeSeedImage(
+    db,
+    cardId: 'luno_bilgi',
+    role: siteMediaIcon,
+    paths: ['/seed/luno_bilgi_icon.jpg', 'assets/images/luno_bilgi_logo.jpg'],
+    sortOrder: 1,
+  );
+  if (!icon) {
+    stdout.writeln('site card bilgi waiting for icon');
+    return;
+  }
+  await db.execute(
+    Sql.named('''
+      insert into kv_meta (item_key, value)
+      values (@key, '1')
+      on conflict (item_key) do update set value = excluded.value
+    '''),
+    parameters: {'key': siteCardsBilgiKey},
+  );
+  stdout.writeln('site card bilgi seeded soon');
 }
 
 void mountSiteCards(Router router, Connection db) {
