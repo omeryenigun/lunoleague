@@ -429,6 +429,13 @@ class BilgiProfile {
         'localeChosen': localeChosen,
       };
 
+  /// Admin/API payload without credentials.
+  Map<String, dynamic> toPublicMap() {
+    final map = toMap();
+    map.remove('passwordHash');
+    return map;
+  }
+
   factory BilgiProfile.fromMap(Map<String, dynamic> map) {
     return BilgiProfile(
       id: map['id'] as String? ?? 'me',
@@ -482,6 +489,7 @@ class BilgiProfile {
   }
 
   BilgiProfile copyWith({
+    String? id,
     String? username,
     String? email,
     String? passwordHash,
@@ -527,7 +535,7 @@ class BilgiProfile {
     bool? localeChosen,
   }) {
     return BilgiProfile(
-      id: id,
+      id: id ?? this.id,
       username: username ?? this.username,
       email: email ?? this.email,
       passwordHash: passwordHash ?? this.passwordHash,

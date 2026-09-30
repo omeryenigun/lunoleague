@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:kelimelig/api/admin_http.dart';
+import 'package:kelimelig/api/bilgi_count_snapshot.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
 import 'package:postgres/postgres.dart';
 import 'package:shelf/shelf.dart';
@@ -16,6 +17,9 @@ Future<void> migrateBilgiCatalog(Connection db) async {
       sort_order int not null default 0
     )
   ''');
+  await db.execute(
+    'alter table bilgi_categories add column if not exists popular boolean not null default false',
+  );
   await db.execute('''
     create table if not exists bilgi_subcategories (
       category_id text not null references bilgi_categories(id) on delete cascade,
@@ -141,13 +145,14 @@ void mountBilgiCatalog(Router router, Connection db) {
   router
     ..get('/v1/bilgi/catalog', (request) => _catalog(db))
     ..put('/v1/admin/bilgi-categories', (request) => _save(request, db))
+    ..put('/v1/admin/bilgi-categories/popular', (request) => _setPopular(request, db))
     ..delete('/v1/admin/bilgi-categories/<id>', (Request request, String id) => _delete(request, db, id))
     ..delete('/v1/admin/bilgi-categories/<id>/subs/<name>', (Request request, String id, String name) => _deleteSub(request, db, id, name));
 }
 
 Future<Map<String, dynamic>> bilgiAuthoritativeCatalog(Connection db) async {
   final categories = await db.execute('''
-    select id, group_name, name, emoji
+    select id, group_name, name, emoji, popular
     from bilgi_categories
     order by sort_order, name
   ''');
@@ -176,10 +181,18 @@ Future<Map<String, dynamic>> bilgiAuthoritativeCatalog(Connection db) async {
           'emoji': '${row[3]}',
           'subs': [for (final sub in byCategory['${row[0]}'] ?? const []) sub['name']],
           'active': true,
+          'popular': _isPopular(row[4]),
         },
     ],
     if (icons.isNotEmpty) 'subEmoji': icons,
   };
+}
+
+bool _isPopular(Object? raw) {
+  if (raw == true) return true;
+  if (raw is num) return raw != 0;
+  final text = '$raw'.toLowerCase();
+  return text == 't' || text == 'true' || text == '1';
 }
 
 Future<Response> _catalog(Connection db) async {
@@ -253,6 +266,23 @@ Future<Response> _save(Request request, Connection db) async {
   return jsonResponse({'id': id});
 }
 
+Future<Response> _setPopular(Request request, Connection db) async {
+  if (await adminIdOf(db, request) == null) {
+    return jsonResponse({'error': 'Oturum geçersiz.'}, status: 401);
+  }
+  final body = await readJson(request);
+  final id = '${body['id'] ?? ''}'.trim();
+  if (id.isEmpty || id.length > 80 || body['popular'] is! bool) {
+    return jsonResponse({'error': 'Kategori bulunamadı.'}, status: 400);
+  }
+  final updated = await db.execute(
+    Sql.named('update bilgi_categories set popular = @popular where id = @id'),
+    parameters: {'id': id, 'popular': body['popular'] as bool},
+  );
+  if (updated.affectedRows == 0) return jsonResponse({'error': 'Kategori bulunamadı.'}, status: 404);
+  return jsonResponse({'ok': true});
+}
+
 Future<void> _renameSub(Connection db, String categoryId, String from, String to, String emoji) async {
   await db.execute(
     Sql.named('update bilgi_subcategories set name = @to, emoji = case when @emoji = \'\' then emoji else @emoji end where category_id = @id and name = @from'),
@@ -282,6 +312,7 @@ Future<void> _renameSub(Connection db, String categoryId, String from, String to
       parameters: {'id': '${row[0]}', 'tags': jsonEncode(tags)},
     );
   }
+  await moveBilgiCountSubName(db, categoryId, from, to);
 }
 
 Future<Response> _delete(Request request, Connection db, String id) async {

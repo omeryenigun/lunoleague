@@ -11,6 +11,7 @@ import 'package:kelimelig/api/bilgi_catalog_http.dart';
 import 'package:kelimelig/api/bilgi_translate_http.dart';
 import 'package:kelimelig/api/bilgi_rooms_http.dart';
 import 'package:kelimelig/api/bilgi_reports_http.dart';
+import 'package:kelimelig/api/bilgi_users_http.dart';
 import 'package:kelimelig/api/mail_http.dart';
 import 'package:kelimelig/api/privacy_page.dart';
 import 'package:kelimelig/core/constants/game_version.dart';
@@ -112,6 +113,18 @@ Future<void> main() async {
   stdout.writeln(
     'ru frequency words imported=${russian.imported} skipped=${russian.skipped} invalid=${russian.invalid}',
   );
+  final polish = await rules.importPolishFrequencyWords();
+  stdout.writeln(
+    'pl frequency words imported=${polish.imported} skipped=${polish.skipped} invalid=${polish.invalid}',
+  );
+  final english = await rules.importEnglishFrequencyWords();
+  stdout.writeln(
+    'en frequency words imported=${english.imported} skipped=${english.skipped} invalid=${english.invalid}',
+  );
+  final dutch = await rules.importDutchFrequencyWords();
+  stdout.writeln(
+    'nl frequency words imported=${dutch.imported} skipped=${dutch.skipped} invalid=${dutch.invalid}',
+  );
   final droppedProfanity = await rules.dropListedProfanity();
   stdout.writeln('profanity words removed=$droppedProfanity');
   final adCoins = await rules.raiseAdCoinReward();
@@ -143,6 +156,7 @@ Future<void> main() async {
   mountBilgiCatalog(router, db);
   mountBilgiTranslate(router, db);
   mountBilgiRooms(router, db);
+  mountBilgiUsers(router, db);
   mountSiteCards(router, db);
   _mountAdminWeb(router);
 

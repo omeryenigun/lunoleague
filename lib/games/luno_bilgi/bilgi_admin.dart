@@ -14,6 +14,7 @@ import 'package:kelimelig/games/luno_bilgi/bilgi_question_api.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_report_api.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_theme.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_user_api.dart';
 import 'package:kelimelig/injection.dart';
 
 class BilgiAdminScreen extends StatefulWidget {
@@ -194,10 +195,18 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     await _server.saveCatalog(bilgiCatalogClosedUnless(catalog, active.categories, active.subs));
   }
 
+  Future<List<BilgiProfile>> _usersBank() async {
+    final token = sl<ApiSession>().adminToken ?? '';
+    if (token.isEmpty) return _server.users();
+    final remote = await BilgiUserApi.loadAll(token);
+    if (remote == null) return _server.users();
+    return remote;
+  }
+
   Future<void> _load() async {
     final questions = await _bank();
     final labels = await BilgiQuestionApi.loadLabels();
-    final users = await _server.users();
+    final users = await _usersBank();
     final config = await _server.config();
     final events = await _server.events();
     final staff = await _server.staff();
@@ -1965,6 +1974,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                 Row(
                   children: [
                     Expanded(child: Text('📝 $total soru    📁 ${category.subs.length} alt', style: const TextStyle(color: BilgiColors.muted, fontSize: 11))),
+                    _popularMark(category),
+                    const SizedBox(width: 8),
                     _activeSwitch(category.active, (value) => _toggleCategory(category, value)),
                   ],
                 ),
@@ -2186,6 +2197,39 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     if (!mounted) return error;
     if (error != null) setState(() => _note = error);
     return error;
+  }
+
+  Widget _popularMark(BilgiCategory category) {
+    final on = category.popular;
+    return InkWell(
+      onTap: () => _togglePopular(category),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: Text(
+          on ? '⭐ Popüler' : '☆ Popüler',
+          style: TextStyle(
+            color: on ? BilgiColors.warning : BilgiColors.muted,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _togglePopular(BilgiCategory category) async {
+    final error = await BilgiQuestionApi.setPopular(
+      sl<ApiSession>().adminToken ?? '',
+      id: category.id,
+      popular: !category.popular,
+    );
+    if (!mounted) return;
+    if (error != null) {
+      setState(() => _note = error);
+      return;
+    }
+    await _load();
   }
 
   Future<void> _toggleCategory(BilgiCategory category, bool active) async {
@@ -2648,7 +2692,17 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                         Expanded(child: _badge(user.banned ? 'Banlı' : user.premium ? 'Premium' : 'Aktif', user.banned ? BilgiColors.error : BilgiColors.secondary)),
                         if (!premium)
                           _ghost(user.banned ? 'Aç' : 'Banla', () async {
-                            await _server.setBan(user.id, banned: !user.banned, reason: user.banned ? '' : 'Askıya alındı');
+                            final banned = !user.banned;
+                            final reason = banned ? 'Askıya alındı' : '';
+                            final token = sl<ApiSession>().adminToken ?? '';
+                            final error = await BilgiUserApi.setBan(
+                              token,
+                              user.id,
+                              banned: banned,
+                              reason: reason,
+                            );
+                            await _server.setBan(user.id, banned: banned, reason: reason);
+                            if (error != null && mounted) setState(() => _note = error);
                             await _load();
                           }),
                       ],

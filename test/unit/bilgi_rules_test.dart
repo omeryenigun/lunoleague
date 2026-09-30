@@ -270,13 +270,14 @@ void main() {
     final catalog = {
       'authoritative': true,
       'custom': [
-        {'id': 'felsefe', 'group': 'E. Felsefe ve İnanç', 'name': 'Felsefe', 'emoji': '🤔', 'subs': ['Antik Yunan Felsefesi'], 'active': true},
+        {'id': 'felsefe', 'group': 'E. Felsefe ve İnanç', 'name': 'Felsefe', 'emoji': '🤔', 'subs': ['Antik Yunan Felsefesi'], 'active': true, 'popular': true},
       ],
     };
     final resolved = resolveBilgiCategories(catalog);
     expect(resolved, hasLength(1));
     expect(resolved.single.id, 'felsefe');
     expect(resolved.single.subs, ['Antik Yunan Felsefesi']);
+    expect(resolved.single.popular, isTrue);
     expect(resolveBilgiCategories({'authoritative': true, 'custom': const []}), isEmpty);
   });
 

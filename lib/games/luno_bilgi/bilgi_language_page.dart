@@ -9,8 +9,6 @@ class BilgiLanguagePage extends StatefulWidget {
   const BilgiLanguagePage({
     super.key,
     required this.selectedId,
-    required this.title,
-    required this.subtitle,
     required this.continueLabel,
     required this.fromSettings,
     required this.onPreview,
@@ -19,8 +17,6 @@ class BilgiLanguagePage extends StatefulWidget {
   });
 
   final String selectedId;
-  final String title;
-  final String subtitle;
   final String continueLabel;
   final bool fromSettings;
   final ValueChanged<String> onPreview;
@@ -124,18 +120,6 @@ class _BilgiLanguagePageState extends State<BilgiLanguagePage>
                         ),
                         const SizedBox(height: 16),
                         const _SpinningGlobe(),
-                        const SizedBox(height: 10),
-                        _Heading(text: widget.title),
-                        const SizedBox(height: 10),
-                        Text(
-                          widget.subtitle,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: BilgiColors.muted,
-                            fontSize: 13,
-                            height: 1.45,
-                          ),
-                        ),
                         const SizedBox(height: 18),
                         GridView.builder(
                           shrinkWrap: true,
@@ -170,32 +154,6 @@ class _BilgiLanguagePageState extends State<BilgiLanguagePage>
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Heading extends StatelessWidget {
-  const _Heading({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return ShaderMask(
-      blendMode: BlendMode.srcIn,
-      shaderCallback: (bounds) => const LinearGradient(
-        colors: [Color(0xFFF5F3FF), BilgiColors.primaryLight, BilgiColors.secondary],
-      ).createShader(bounds),
-      child: Text(
-        text,
-        textAlign: TextAlign.center,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w800,
-          fontSize: 22,
-          letterSpacing: -0.2,
         ),
       ),
     );

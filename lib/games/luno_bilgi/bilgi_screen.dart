@@ -65,10 +65,25 @@ class _BilgiScreenState extends State<BilgiScreen> {
       child: Scaffold(
         backgroundColor: BilgiColors.bg,
         body: BilgiChrome(
-          child: Column(
+          child: _game.booting
+              ? Center(child: BilgiBootProgress(label: _game.bootLabel))
+              : Column(
             children: [
-              Expanded(child: _page(user)),
-              if (_game.showNav)
+              Expanded(
+                child: Stack(
+                  children: [
+                    _page(user),
+                    if (_game.busy)
+                      Positioned.fill(
+                        child: ColoredBox(
+                          color: const Color(0xE60F0E1A),
+                          child: Center(child: BilgiBootProgress(label: _game.t('questions_loading'))),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (_game.showNav && !_game.busy)
                 BilgiBottomNav(
                   current: _navId(),
                   onSelect: _game.tab,
@@ -95,7 +110,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
 
   Widget _page(BilgiProfile? user) {
     if (user == null && _game.page != 'maintenance' && _game.page != 'language') {
-      return Center(child: Text('📚 ${_game.t('loading')}'));
+      return Center(child: BilgiBootProgress(label: _game.t('loading')));
     }
     return switch (_game.page) {
       'intro' => _intro(),
@@ -137,12 +152,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
     final reward = _game.rewardLabel(_game.rewardIndex());
     final free = !_game.server.needsAd(user, _game.config);
     final solo = bilgiModes.where((mode) => mode.group == 'solo').toList();
-    const popularIds = ['genel', 'turk_tarihi', 'cografya', 'futbol', 'sinema', 'mitoloji'];
-    final popular = [
-      for (final id in popularIds)
-        if (_game.categories.where((category) => category.id == id).firstOrNull case final category?)
-          if ((_game.categoryCounts[category.id] ?? 0) > 0) category,
-    ];
+    final popular = [for (final category in _game.categories) if (category.popular) category];
     final dailyLine = ready
         ? (user.streak > 0 ? _fill('streak_line', {'n': '${user.streak}', 'reward': reward}) : reward)
         : _fill('reward_tomorrow', {'reward': reward});
@@ -372,7 +382,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   child: Text(
-                    '📚 ${_fill('see_categories', {'n': '${_game.categories.where((category) => (_game.categoryCounts[category.id] ?? 0) > 0).length}'})}',
+                    '📚 ${_fill('see_categories', {'n': '${_game.categories.length}'})}',
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
                   ),
@@ -420,7 +430,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
-                    onPressed: () => _game.open('event'),
+                    onPressed: () => _game.tab('league'),
                     child: Text(_game.t('join'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
                   ),
                 ],
@@ -503,6 +513,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
     return Column(
       children: [
         BilgiTopBar(title: _game.t('page_categories'), onBack: _game.back),
+        if (_game.notice != null) _note(_game.notice!),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
           child: DecoratedBox(
@@ -539,7 +550,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
             padding: const EdgeInsets.only(bottom: 24),
             children: [
               for (final group in bilgiGroups)
-                if (_game.categories.where((category) => category.group == group && (_game.categoryCounts[category.id] ?? 0) > 0 && _matchesCategory(category, query)).toList() case final rows when rows.isNotEmpty) ...[
+                if (_game.categories.where((category) => category.group == group && _matchesCategory(category, query)).toList() case final rows when rows.isNotEmpty) ...[
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
                     child: Text(
@@ -637,9 +648,9 @@ class _BilgiScreenState extends State<BilgiScreen> {
     final emoji = tumu ? '🃏' : category.emoji;
     final live = _game.categories.where((item) => item.id == _game.categoryId).firstOrNull;
     final subs = tumu ? const <String>[] : (live?.subs ?? category.subs);
-    final approved = _game.categoryCounts[_game.categoryId] ?? _game.poolCount;
-    final heroCount = approved > 0
-        ? _fill('q_count', {'n': '$approved'})
+    final known = _game.categoryCounts[_game.categoryId];
+    final heroCount = known != null
+        ? _fill('q_count', {'n': '$known'})
         : (_game.poolCount > 0 ? _fill('q_count', {'n': '${_game.poolCount}'}) : '…');
     final heroSub = subs.isEmpty ? heroCount : '$heroCount • ${_fill('subs_n', {'n': '${subs.length}'})}';
     final highlight = _playDifficulty(_game.difficulty) ? _game.difficulty : 'kolay';
@@ -785,7 +796,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
     final revealing = _game.revealing;
     final question = round?.current;
     if (round == null || (question == null && !revealing)) {
-      return Center(child: Text(_game.t('preparing')));
+      return Center(child: BilgiBootProgress(label: _game.t('questions_loading')));
     }
     final letters = ['A', 'B', 'C', 'D'];
     final source = revealing ? _game.revealQuestion : question;
@@ -1064,10 +1075,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
         const SizedBox(height: 12),
         _secondaryButton('🏠 ${_game.t('home')}', () => _game.tab('home')),
         const SizedBox(height: 12),
-        _secondaryButton('📤 ${_game.t('invite')}', () {
-          Clipboard.setData(ClipboardData(text: '${mode.name} • ${_grouped(round.score)} • ${round.correct}'));
-          _game.flash(_game.t('copied'));
-        }),
+        _secondaryButton('📤 ${_game.t('invite')}', () => _game.open('invite')),
         const SizedBox(height: 16),
         _adBanner(showNoticeAbove: false),
       ],
@@ -1468,8 +1476,6 @@ class _BilgiScreenState extends State<BilgiScreen> {
     }
     return BilgiLanguagePage(
       selectedId: _game.locale,
-      title: _game.t('choose_language'),
-      subtitle: _game.t('choose_language_sub'),
       continueLabel: _game.t('continue'),
       fromSettings: fromSettings,
       onPreview: _game.previewLocale,
@@ -2382,7 +2388,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
             const SizedBox(width: 12),
             Expanded(child: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600))),
             Text(subtitle, style: const TextStyle(color: BilgiColors.muted, fontSize: 12)),
-            const Text(' ›', style: TextStyle(color: BilgiColors.muted)),
+            if (onTap != null) const Text(' ›', style: TextStyle(color: BilgiColors.muted)),
           ],
         ),
       ),
@@ -2975,6 +2981,36 @@ class _BilgiWatchAdCardState extends State<_BilgiWatchAdCard> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class BilgiBootProgress extends StatelessWidget {
+  const BilgiBootProgress({super.key, required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: BilgiColors.text, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 12),
+        const SizedBox(
+          width: 220,
+          child: LinearProgressIndicator(
+            minHeight: 6,
+            color: BilgiColors.secondary,
+            backgroundColor: BilgiColors.card,
+            borderRadius: BorderRadius.all(Radius.circular(6)),
+          ),
+        ),
+      ],
     );
   }
 }

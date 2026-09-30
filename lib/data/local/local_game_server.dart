@@ -16,9 +16,12 @@ import 'package:kelimelig/data/local/en_batch_words.dart';
 import 'package:kelimelig/data/local/en_next_words.dart';
 import 'package:kelimelig/data/local/en_plus_words.dart';
 import 'package:kelimelig/data/local/de_frequency_words.dart';
+import 'package:kelimelig/data/local/en_frequency_words.dart';
 import 'package:kelimelig/data/local/es_frequency_words.dart';
 import 'package:kelimelig/data/local/fr_frequency_words.dart';
 import 'package:kelimelig/data/local/it_frequency_words.dart';
+import 'package:kelimelig/data/local/nl_frequency_words.dart';
+import 'package:kelimelig/data/local/pl_frequency_words.dart';
 import 'package:kelimelig/data/local/pt_frequency_words.dart';
 import 'package:kelimelig/data/local/ru_frequency_words.dart';
 import 'package:kelimelig/data/local/de_glosses.dart';
@@ -102,7 +105,10 @@ class LocalGameServer implements GameServer {
   static const _frFrequencyKey = 'fr_frequency_words_v1';
   static const _itFrequencyKey = 'it_frequency_words_v1';
   static const _ptFrequencyKey = 'pt_frequency_words_v1';
+  static const _plFrequencyKey = 'pl_frequency_words_v1';
   static const _ruFrequencyKey = 'ru_frequency_words_v1';
+  static const _enFrequencyKey = 'en_frequency_words_v1';
+  static const _nlFrequencyKey = 'nl_frequency_words_v1';
   static const _profanityDropKey = 'profanity_drop_v1';
   static const _adCoin15Key = 'ad_coin_reward_15_v1';
   static const _noiseEnglishWords = {
@@ -365,6 +371,36 @@ class LocalGameServer implements GameServer {
     }
     final result = await adminImportWords(ruFrequencyWordsCsv);
     await _store.putMeta(_ruFrequencyKey, '1');
+    return result;
+  }
+
+  /// Adds Polish words that have a real gloss. Ą Ć Ę Ł Ń Ó Ś Ź Ż stay.
+  Future<WordImportResult> importPolishFrequencyWords() async {
+    if (await _store.getMeta(_plFrequencyKey) == '1') {
+      return const WordImportResult(imported: 0, skipped: 0, invalid: 0);
+    }
+    final result = await adminImportWords(plFrequencyWordsCsv);
+    await _store.putMeta(_plFrequencyKey, '1');
+    return result;
+  }
+
+  /// Adds English words that have a real gloss. Accents fold to A-Z.
+  Future<WordImportResult> importEnglishFrequencyWords() async {
+    if (await _store.getMeta(_enFrequencyKey) == '1') {
+      return const WordImportResult(imported: 0, skipped: 0, invalid: 0);
+    }
+    final result = await adminImportWords(enFrequencyWordsCsv);
+    await _store.putMeta(_enFrequencyKey, '1');
+    return result;
+  }
+
+  /// Adds Dutch words that have a real gloss. Accents fold to A-Z.
+  Future<WordImportResult> importDutchFrequencyWords() async {
+    if (await _store.getMeta(_nlFrequencyKey) == '1') {
+      return const WordImportResult(imported: 0, skipped: 0, invalid: 0);
+    }
+    final result = await adminImportWords(nlFrequencyWordsCsv);
+    await _store.putMeta(_nlFrequencyKey, '1');
     return result;
   }
 

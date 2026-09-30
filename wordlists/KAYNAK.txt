@@ -15,6 +15,9 @@ es.txt  İspanyolca. Aksanlar düz harfe iner, Ñ kalır.
 fr.txt  Fransızca. Aksanlar düz harfe iner (école -> ECOLE).
 it.txt  İtalyanca. Aksanlar düz harfe iner (città -> CITTA).
 pt.txt  Portekizce. Aksanlar ve ç düz harfe iner (ação -> ACAO).
+pl.txt  Lehçe. Ą Ć Ę Ł Ń Ó Ś Ź Ż durur; altyazı ASCII biçimleri Wiktionary kök yazımına çekilir.
 ru.txt  Rusça. Ё durur. Vurgu işaretleri silinir.
+en.txt  İngilizce. Aksanlar düz harfe iner.
+nl.txt  Felemenkçe. Aksanlar düz harfe iner.
 
 Altyazı sözcükleri olduğu için arada kişi adı da kalabilir.

@@ -17,6 +17,8 @@ import 'package:kelimelig/games/luno_bilgi/bilgi_rules.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
 import 'package:kelimelig/injection.dart';
 
+const _countsNotice = '📡 Bağlantı hatası. İnternetini kontrol et.';
+
 class BilgiController extends ChangeNotifier {
   BilgiController(this.server, {this.ads});
 
@@ -38,6 +40,8 @@ class BilgiController extends ChangeNotifier {
   String subName = '';
   int questionChoice = 10;
   bool busy = false;
+  bool booting = true;
+  String bootLabel = 'Oyun açılıyor...';
   int secondsLeft = 0;
   int marathonLeft = 0;
   int pauseLeft = 0;
@@ -100,6 +104,10 @@ class BilgiController extends ChangeNotifier {
   }
 
   Future<void> boot() async {
+    final showNow = profile != null;
+    booting = true;
+    bootLabel = t('boot_open');
+    if (showNow) notifyListeners();
     config = await server.config();
     profile = await server.profile();
     stack
@@ -111,9 +119,12 @@ class BilgiController extends ChangeNotifier {
           seenIntro: await server.seenIntro(),
         ),
       );
+    bootLabel = t('loading');
+    notifyListeners();
     await loadLabels();
     await loadCategoryCounts();
     await refreshPool();
+    booting = false;
     notifyListeners();
   }
 
@@ -232,52 +243,33 @@ class BilgiController extends ChangeNotifier {
   }
 
   Future<void> loadCategoryCounts() async {
-    final remote = await BilgiQuestionApi.loadCounts();
     final playable = resolveBilgiCategories(await _visibleCatalog(), playableOnly: true);
-    if (remote != null) {
-      categoryCounts = {
-        for (final category in playable)
-          if ((remote.categories[category.id] ?? 0) > 0) category.id: remote.categories[category.id]!,
-        if ((remote.categories[tumuKarmaId] ?? 0) > 0) tumuKarmaId: remote.categories[tumuKarmaId]!,
-      };
-      subCounts = remote.subs;
+    final remote = await BilgiQuestionApi.loadCounts();
+    if (remote == null) {
       categories = playable;
+      notice = _countsNotice;
       notifyListeners();
       return;
     }
-    final all = await server.questions();
-    final counts = <String, int>{};
-    final subs = <String, int>{};
-    var approved = 0;
-    for (final question in all) {
-      if (!bilgiPlayableQuestion(question, playable, categoryId: tumuKarmaId)) continue;
-      approved += 1;
-      counts[question.categoryId] = (counts[question.categoryId] ?? 0) + 1;
-      final owner = playable.where((category) => category.id == question.categoryId).firstOrNull;
-      if (owner == null) continue;
-      for (final tag in question.tags) {
-        if (!owner.subs.contains(tag)) continue;
-        final key = '${question.categoryId}|$tag';
-        subs[key] = (subs[key] ?? 0) + 1;
-      }
-    }
-    counts[tumuKarmaId] = approved;
-    categoryCounts = counts;
-    subCounts = subs;
+    if (notice == _countsNotice) notice = null;
+    categoryCounts = {
+      for (final category in playable) category.id: remote.categories[category.id] ?? 0,
+      tumuKarmaId: remote.categories[tumuKarmaId] ?? 0,
+    };
+    subCounts = remote.subs;
     categories = playable;
     notifyListeners();
   }
 
   Future<void> refreshPool() async {
     final remote = await BilgiQuestionApi.loadCounts();
-    if (remote != null) {
-      poolCount = remote.pool(categoryId, subName, difficulty);
+    if (remote == null) {
+      notice = _countsNotice;
       notifyListeners();
       return;
     }
-    final playable = resolveBilgiCategories(await _visibleCatalog(), playableOnly: true);
-    final all = await server.questions();
-    poolCount = all.where((question) => bilgiPlayableQuestion(question, playable, categoryId: categoryId, subcategory: subName, difficulty: difficulty)).length;
+    if (notice == _countsNotice) notice = null;
+    poolCount = remote.pool(categoryId, subName, difficulty);
     notifyListeners();
   }
 

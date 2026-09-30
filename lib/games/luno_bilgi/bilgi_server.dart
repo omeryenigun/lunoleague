@@ -64,6 +64,9 @@ class LunoBilgiServer {
   /// Düello, grup ve özel oda sunucuda durur. Boşsa odalar telefon deposunda kalır.
   BilgiRoomHooks? remoteRooms;
 
+  /// Registered accounts are mirrored to the API so Bilgi admin can list them.
+  Future<void> Function(BilgiProfile user)? remoteUpsert;
+
   static const _users = 'users';
   static const _questions = 'questions';
   static const _games = 'games';
@@ -233,6 +236,15 @@ class LunoBilgiServer {
 
   Future<void> _save(BilgiProfile user) => _store.put(_users, user.id, user.toMap());
 
+  Future<void> _pushRemote(BilgiProfile user) async {
+    final push = remoteUpsert;
+    if (push == null) return;
+    if (user.email.trim().isEmpty && user.passwordHash.isEmpty) return;
+    try {
+      await push(user);
+    } catch (_) {}
+  }
+
   Future<List<BilgiQuestion>> questions() async {
     await ensureSeed();
     final rows = await _store.values(_questions);
@@ -276,6 +288,7 @@ class LunoBilgiServer {
     );
     await _save(user);
     await _store.putMeta(_active, user.id);
+    await _pushRemote(user);
     return BilgiResult(profile: user);
   }
 
@@ -290,6 +303,7 @@ class LunoBilgiServer {
       final user = match.first;
       if (user.banned) return const BilgiResult(message: '🚫 Hesabın askıya alındı.');
       await _store.putMeta(_active, user.id);
+      await _pushRemote(user);
       return BilgiResult(profile: user);
     }
     final name = username?.trim();
@@ -302,6 +316,7 @@ class LunoBilgiServer {
     );
     await _save(user);
     await _store.putMeta(_active, user.id);
+    await _pushRemote(user);
     return BilgiResult(profile: user);
   }
 
@@ -315,6 +330,7 @@ class LunoBilgiServer {
     final user = match.first;
     if (user.banned) return const BilgiResult(message: '🚫 Hesabın askıya alındı.');
     await _store.putMeta(_active, user.id);
+    await _pushRemote(user);
     return BilgiResult(profile: user);
   }
 
@@ -747,6 +763,7 @@ class LunoBilgiServer {
     final user = await profile();
     final next = user.copyWith(username: username, city: city, avatar: avatar);
     await _save(next);
+    await _pushRemote(next);
     return BilgiResult(profile: next);
   }
 
@@ -1224,6 +1241,7 @@ class LunoBilgiServer {
     }
     final next = match.first.copyWith(passwordHash: hashBilgiPassword(password));
     await _save(next);
+    await _pushRemote(next);
     return BilgiResult(profile: next);
   }
 
@@ -1267,6 +1285,7 @@ class LunoBilgiServer {
     if (raw == null) return;
     final user = BilgiProfile.fromMap(raw).copyWith(banned: banned, banReason: reason);
     await _save(user);
+    await _pushRemote(user);
   }
 }
 

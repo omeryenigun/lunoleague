@@ -265,6 +265,8 @@ const _tables = <String, Map<String, String>>{
     'wrong': 'Yanlış',
     'save': 'Kaydet',
     'loading': 'Kategoriler yükleniyor...',
+    'boot_open': 'Oyun açılıyor...',
+    'questions_loading': 'Sorular yükleniyor...',
   },
   'en': {
     'home': 'Home',
@@ -295,6 +297,8 @@ const _tables = <String, Map<String, String>>{
     'wrong': 'Wrong',
     'save': 'Save',
     'loading': 'Loading categories...',
+    'boot_open': 'Opening the game...',
+    'questions_loading': 'Loading questions...',
   },
   'de': {
     'home': 'Start',
@@ -325,6 +329,8 @@ const _tables = <String, Map<String, String>>{
     'wrong': 'Falsch',
     'save': 'Speichern',
     'loading': 'Kategorien werden geladen...',
+    'boot_open': 'Spiel wird geöffnet...',
+    'questions_loading': 'Fragen werden geladen...',
   },
   'es': {
     'home': 'Inicio',
@@ -355,6 +361,8 @@ const _tables = <String, Map<String, String>>{
     'wrong': 'Incorrectas',
     'save': 'Guardar',
     'loading': 'Cargando categorías...',
+    'boot_open': 'Abriendo el juego...',
+    'questions_loading': 'Cargando preguntas...',
   },
   'fr': {
     'home': 'Accueil',
@@ -385,6 +393,8 @@ const _tables = <String, Map<String, String>>{
     'wrong': 'Fausses',
     'save': 'Enregistrer',
     'loading': 'Chargement des catégories...',
+    'boot_open': 'Ouverture du jeu...',
+    'questions_loading': 'Chargement des questions...',
   },
   'it': {
     'home': 'Home',
@@ -415,6 +425,8 @@ const _tables = <String, Map<String, String>>{
     'wrong': 'Sbagliate',
     'save': 'Salva',
     'loading': 'Caricamento categorie...',
+    'boot_open': 'Apertura del gioco...',
+    'questions_loading': 'Caricamento domande...',
   },
   'ru': {
     'home': 'Главная',
@@ -445,6 +457,8 @@ const _tables = <String, Map<String, String>>{
     'wrong': 'Неверно',
     'save': 'Сохранить',
     'loading': 'Категории загружаются...',
+    'boot_open': 'Игра открывается...',
+    'questions_loading': 'Вопросы загружаются...',
   },
   'nl': {
     'home': 'Home',
@@ -475,6 +489,8 @@ const _tables = <String, Map<String, String>>{
     'wrong': 'Fout',
     'save': 'Opslaan',
     'loading': 'Categorieën laden...',
+    'boot_open': 'Spel wordt geopend...',
+    'questions_loading': 'Vragen laden...',
   },
   'pt': {
     'home': 'Início',
@@ -505,6 +521,8 @@ const _tables = <String, Map<String, String>>{
     'wrong': 'Erradas',
     'save': 'Guardar',
     'loading': 'A carregar categorias...',
+    'boot_open': 'A abrir o jogo...',
+    'questions_loading': 'A carregar perguntas...',
   },
   'pl': {
     'home': 'Start',
@@ -535,5 +553,7 @@ const _tables = <String, Map<String, String>>{
     'wrong': 'Źle',
     'save': 'Zapisz',
     'loading': 'Wczytywanie kategorii...',
+    'boot_open': 'Otwieranie gry...',
+    'questions_loading': 'Wczytywanie pytań...',
   },
 };

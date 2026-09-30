@@ -107,6 +107,8 @@ Future<Object?> _ask(String key, String instruction, String source) async {
           body: jsonEncode({
             'model': model,
             'temperature': 0.2,
+            // Cap completion size so low remaining credit balances (402) still work.
+            'max_tokens': 8192,
             'messages': [
               {'role': 'system', 'content': instruction},
               {'role': 'user', 'content': source},

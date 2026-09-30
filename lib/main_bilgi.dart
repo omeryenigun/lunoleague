@@ -6,6 +6,7 @@ import 'package:kelimelig/games/luno_bilgi/bilgi_question_api.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_room_api.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_screen.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_user_api.dart';
 import 'package:kelimelig/games/luno_bilgi/register_bilgi_server.dart';
 import 'package:kelimelig/injection.dart';
 
@@ -18,7 +19,8 @@ Future<void> main() async {
   sl<LunoBilgiServer>()
     ..remoteDraw = BilgiQuestionApi.draw
     ..remoteDaily = BilgiQuestionApi.daily
-    ..remoteRooms = BilgiRoomApi.hooks();
+    ..remoteRooms = BilgiRoomApi.hooks()
+    ..remoteUpsert = BilgiUserApi.upsert;
   runApp(const LunoBilgiApp());
   if (!kIsWeb) {
     try {

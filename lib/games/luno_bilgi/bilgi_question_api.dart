@@ -309,6 +309,24 @@ class BilgiQuestionApi {
     }
   }
 
+  static Future<String?> setPopular(String token, {required String id, required bool popular}) async {
+    if (token.isEmpty) return 'Yönetici oturumu gerekli.';
+    try {
+      final response = await http.put(
+        Uri.parse('${ApiConfig.baseUrl}/v1/admin/bilgi-categories/popular'),
+        headers: {
+          'authorization': 'Bearer $token',
+          'content-type': 'application/json; charset=utf-8',
+        },
+        body: jsonEncode({'id': id, 'popular': popular}),
+      );
+      if (response.statusCode >= 200 && response.statusCode < 300) return null;
+      return _error(response.body) ?? 'Kategori kaydedilemedi.';
+    } catch (_) {
+      return 'Kategori kaydedilemedi.';
+    }
+  }
+
   static Future<String?> deleteCategory(String token, String id) async {
     if (token.isEmpty) return 'Yönetici oturumu gerekli.';
     return _delete('${ApiConfig.baseUrl}/v1/admin/bilgi-categories/${Uri.encodeComponent(id.trim())}', token, 'Kategori silinemedi.');

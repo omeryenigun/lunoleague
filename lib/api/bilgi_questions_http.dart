@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:kelimelig/api/admin_http.dart';
 import 'package:kelimelig/api/bilgi_catalog_http.dart';
+import 'package:kelimelig/api/bilgi_count_snapshot.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
@@ -57,6 +58,7 @@ Future<void> migrateBilgiQuestions(Connection db) async {
       primary key (kind, key)
     )
   ''');
+  await ensureBilgiCountSnapshot(db);
 }
 
 void mountBilgiQuestions(Router router, Connection db) {
@@ -84,54 +86,20 @@ void mountBilgiQuestions(Router router, Connection db) {
       if (key.isEmpty || key.length > 80) {
         return jsonResponse({'error': 'Soru bulunamadı.'}, status: 400);
       }
+      final previous = await loadBilgiCountParts(db, [key]);
       await db.execute(
         Sql.named('delete from bilgi_questions where id = @id'),
         parameters: {'id': key},
       );
+      await commitBilgiCountDelta(db, before: [previous[key]], after: const [null]);
       return jsonResponse({'ok': true});
     });
 }
 
 Future<Response> _counts(Connection db) async {
-  final rows = await db.execute('''
-    select category_id, difficulty, tags_json
-    from bilgi_questions
-    where status = 'approved'
-  ''');
-  final categories = resolveBilgiCategories(await _closedCatalog(db), playableOnly: true);
-  final counts = <String, int>{};
-  final subs = <String, int>{};
-  final slices = <String, int>{};
-  var total = 0;
-  for (final row in rows) {
-    final question = BilgiQuestion(
-      id: 'count',
-      categoryId: '${row[0]}',
-      text: 's',
-      options: const ['a', 'b', 'c', 'd'],
-      correct: 0,
-      difficulty: '${row[1]}',
-      explanation: '',
-      status: 'approved',
-      tags: _decodeList(row[2]),
-    );
-    if (!bilgiPlayableQuestion(question, categories, categoryId: tumuKarmaId)) continue;
-    total += 1;
-    counts[question.categoryId] = (counts[question.categoryId] ?? 0) + 1;
-    final owner = categories.where((category) => category.id == question.categoryId).firstOrNull;
-    if (owner == null) continue;
-    final difficulty = question.difficulty;
-    slices['${question.categoryId}||$difficulty'] = (slices['${question.categoryId}||$difficulty'] ?? 0) + 1;
-    slices['tumu||$difficulty'] = (slices['tumu||$difficulty'] ?? 0) + 1;
-    for (final tag in question.tags) {
-      if (!owner.subs.contains(tag)) continue;
-      subs['${question.categoryId}|$tag'] = (subs['${question.categoryId}|$tag'] ?? 0) + 1;
-      final key = '${question.categoryId}|$tag|$difficulty';
-      slices[key] = (slices[key] ?? 0) + 1;
-    }
-  }
-  counts[tumuKarmaId] = total;
-  return jsonResponse({'categories': counts, 'subs': subs, 'slices': slices});
+  final snapshot = await loadBilgiCountSnapshot(db);
+  final open = await _openSets(db);
+  return jsonResponse(snapshot.visible(open.categories, open.subs).toJson());
 }
 
 Future<Response> _daily(Connection db) async {
@@ -312,6 +280,8 @@ Future<Response> _save(Request request, Connection db) async {
       }
     }
   }
+  final ids = [for (final question in questions) '${question['id']}'];
+  final previous = await loadBilgiCountParts(db, ids);
   for (final question in questions) {
     await db.execute(
       Sql.named('''
@@ -337,7 +307,21 @@ Future<Response> _save(Request request, Connection db) async {
       parameters: question,
     );
   }
+  await commitBilgiCountDelta(
+    db,
+    before: [for (final id in ids) previous[id]],
+    after: [for (final question in questions) _countPart(question)],
+  );
   return jsonResponse({'saved': questions.length});
+}
+
+BilgiCountPart _countPart(Map<String, Object> question) {
+  return BilgiCountPart(
+    categoryId: '${question['categoryId']}',
+    difficulty: '${question['difficulty']}',
+    status: '${question['status']}',
+    tags: _decodeList(question['tags']),
+  );
 }
 
 Map<String, Object>? _read(Map<String, dynamic> map) {
@@ -378,7 +362,7 @@ Map<String, Object>? _read(Map<String, dynamic> map) {
   };
 }
 
-Future<Map<String, dynamic>> _closedCatalog(Connection db) async {
+Future<({Set<String> categories, Set<String> subs})> _openSets(Connection db) async {
   final rows = await db.execute('select kind, key from bilgi_active');
   final categories = <String>{};
   final subs = <String>{};
@@ -386,7 +370,12 @@ Future<Map<String, dynamic>> _closedCatalog(Connection db) async {
     if (row[0] == 'category') categories.add('${row[1]}');
     if (row[0] == 'sub') subs.add('${row[1]}');
   }
-  return bilgiCatalogClosedUnless(await bilgiAuthoritativeCatalog(db), categories, subs);
+  return (categories: categories, subs: subs);
+}
+
+Future<Map<String, dynamic>> _closedCatalog(Connection db) async {
+  final open = await _openSets(db);
+  return bilgiCatalogClosedUnless(await bilgiAuthoritativeCatalog(db), open.categories, open.subs);
 }
 
 Future<Response> _active(Connection db) async {

@@ -6,6 +6,7 @@ class BilgiCategory {
     required this.emoji,
     required this.subs,
     this.active = true,
+    this.popular = false,
   });
 
   final String id;
@@ -14,6 +15,7 @@ class BilgiCategory {
   final String emoji;
   final List<String> subs;
   final bool active;
+  final bool popular;
 
   String get karmaName => '$name Karma';
 }
@@ -358,6 +360,7 @@ List<BilgiCategory> resolveBilgiCategories(Map<String, dynamic>? catalog, {bool 
           emoji: '${raw['emoji'] ?? '📚'}'.trim().isEmpty ? '📚' : '${raw['emoji']}'.trim(),
           subs: _mergedSubs(id, [for (final item in raw['subs'] as List? ?? const []) '$item'], const [], inactiveSubs, removedSubs, renames, playableOnly),
           active: active,
+          popular: raw['popular'] == true,
         ),
       );
     }
@@ -446,6 +449,7 @@ List<BilgiCategory> _resolveAuthoritative(Map<String, dynamic> catalog, {require
         emoji: '${raw['emoji'] ?? '📚'}'.trim().isEmpty ? '📚' : '${raw['emoji']}'.trim(),
         subs: subs,
         active: active,
+        popular: raw['popular'] == true,
       ),
     );
   }
