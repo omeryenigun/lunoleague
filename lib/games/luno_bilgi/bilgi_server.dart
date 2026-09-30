@@ -28,16 +28,25 @@ bool bilgiPlayableQuestion(
   required String categoryId,
   String subcategory = '',
   String difficulty = '',
+  String locale = '',
 }) {
   if (question.status != 'approved') return false;
   if (difficulty.isNotEmpty && difficulty != 'hepsi' && question.difficulty != difficulty) return false;
   final owner = categories.where((category) => category.id == question.categoryId).firstOrNull;
   if (owner == null || !question.tags.any(owner.subs.contains)) return false;
+  if (locale.isNotEmpty && !owner.publishesIn(locale)) return false;
   if (categoryId == tumuKarmaId) return true;
   if (question.categoryId != categoryId) return false;
   if (subcategory.isEmpty) return true;
   return owner.subs.contains(subcategory) && question.tags.contains(subcategory);
 }
+
+/// Profile-store meta: one-shot gunluk start after a completed rewarded ad.
+const dailyQuestionAdPassMeta = 'dailyQuestionAdPass';
+
+/// Server reject when gunluk is locked and no ad pass is set.
+const dailyQuestionQuotaMessage =
+    'Günlük oyun hakkınız doldu. Reklamla yeni oyun başlatın';
 
 class LunoBilgiServer {
   LunoBilgiServer(this._store, {DateTime Function()? clock, Random? random})
@@ -56,10 +65,11 @@ class LunoBilgiServer {
     required String difficulty,
     required int count,
     required List<String> exclude,
+    required String locale,
   })? remoteDraw;
 
   /// Günün sorusu: sunucunun o gün için seçtiği tek soru.
-  Future<List<BilgiQuestion>?> Function()? remoteDaily;
+  Future<List<BilgiQuestion>?> Function({required String locale})? remoteDaily;
 
   /// Düello, grup ve özel oda sunucuda durur. Boşsa odalar telefon deposunda kalır.
   BilgiRoomHooks? remoteRooms;
@@ -367,9 +377,16 @@ class LunoBilgiServer {
     final cfg = await config();
     final mode = cfg.resolvedMode(bilgiModeById(modeId));
     if (mode.id == 'gunluk') {
+      final today = DateKeys.dayKey(_clock());
       final played = await _store.getMeta('dailyQuestion');
-      if (played == DateKeys.dayKey(_clock())) {
-        return const BilgiResult(message: '📅 Bugünkü hakkını kullandın.');
+      if (played == today) {
+        final pass = await _store.getMeta(dailyQuestionAdPassMeta);
+        if (pass == today) {
+          // One-shot ad pass: consume when the round actually starts.
+          await _store.putMeta(dailyQuestionAdPassMeta, '');
+        } else {
+          return const BilgiResult(message: dailyQuestionQuotaMessage);
+        }
       }
     }
     final blocked = await startGate(user, mode);
@@ -377,7 +394,8 @@ class LunoBilgiServer {
     if (needsAd(user, cfg) && !adCleared) {
       return BilgiResult(message: 'ad', profile: user);
     }
-    if (categoryId != tumuKarmaId && resolveBilgiCategories(await catalog(), playableOnly: true).every((category) => category.id != categoryId)) {
+    final visible = resolveBilgiCategories(await catalog(), playableOnly: true).where((category) => category.publishesIn(user.locale));
+    if (categoryId != tumuKarmaId && visible.every((category) => category.id != categoryId)) {
       return const BilgiResult(message: 'Bu kategori şu an oyunda değil.');
     }
     final wanted = questionCount ?? mode.questions;
@@ -387,6 +405,7 @@ class LunoBilgiServer {
       subcategory: subcategory,
       difficulty: difficulty,
       wanted: wanted,
+      locale: user.locale,
       fixedQuestions: fixedQuestions,
       fixedSpare: fixedSpare,
     );
@@ -440,6 +459,7 @@ class LunoBilgiServer {
     required String subcategory,
     required String difficulty,
     required int wanted,
+    required String locale,
     List<BilgiQuestion>? fixedQuestions,
     BilgiQuestion? fixedSpare,
   }) async {
@@ -449,7 +469,7 @@ class LunoBilgiServer {
     if (mode.id == 'gunluk') {
       final daily = remoteDaily;
       if (daily != null) {
-        final one = await daily();
+        final one = await daily(locale: locale);
         if (one == null) return null;
         return (questions: one, spare: null);
       }
@@ -460,6 +480,7 @@ class LunoBilgiServer {
       subcategory: subcategory,
       difficulty: difficulty,
       count: ask < 1 ? 1 : ask,
+      locale: locale,
     );
     if (pool == null) return null;
     if (pool.length <= wanted) return (questions: pool, spare: null);
@@ -472,6 +493,7 @@ class LunoBilgiServer {
     required int count,
     String subcategory = '',
     List<String> exclude = const [],
+    String locale = '',
   }) async {
     final remote = remoteDraw;
     if (remote != null) {
@@ -481,13 +503,21 @@ class LunoBilgiServer {
         difficulty: difficulty,
         count: count,
         exclude: exclude,
+        locale: locale,
       );
     }
     final blocked = exclude.toSet();
     final categories = resolveBilgiCategories(await catalog(), playableOnly: true);
     final all = (await questions())
         .where((question) => !blocked.contains(question.id))
-        .where((question) => bilgiPlayableQuestion(question, categories, categoryId: categoryId, subcategory: subcategory, difficulty: difficulty))
+        .where((question) => bilgiPlayableQuestion(
+              question,
+              categories,
+              categoryId: categoryId,
+              subcategory: subcategory,
+              difficulty: difficulty,
+              locale: locale,
+            ))
         .toList();
     all.shuffle(_random);
     if (all.length > count) return all.sublist(0, count);
@@ -971,6 +1001,18 @@ class LunoBilgiServer {
   Future<String?> readMeta(String key) => _store.getMeta(key);
 
   Future<void> writeMeta(String key, String value) => _store.putMeta(key, value);
+
+  /// True when today's free gunluk round was already finished (day key locked).
+  Future<bool> dailyQuestionUsedToday() async {
+    final played = await _store.getMeta('dailyQuestion');
+    return played == DateKeys.dayKey(_clock());
+  }
+
+  /// Grants a one-shot gunluk start. Call only after a completed rewarded ad.
+  /// Does not grant gold, joker, or life.
+  Future<void> grantDailyQuestionAdPass() async {
+    await _store.putMeta(dailyQuestionAdPassMeta, DateKeys.dayKey(_clock()));
+  }
 
   Future<BilgiResult> saveQuestion(BilgiQuestion question) async {
     await _store.put(_questions, question.id, question.toMap());

@@ -10,6 +10,19 @@ import 'package:shelf_router/shelf_router.dart';
 
 const _targetLocales = ['en', 'de', 'es', 'fr', 'it', 'ru', 'nl', 'pt', 'pl'];
 
+/// İstek `locales` göndermezse dokuz dil. Gönderirse yalnız listedekiler.
+/// Kapalı dil bu listede yoktur, modele gitmez.
+List<String> _requestedLocales(Map<String, dynamic> body) {
+  final raw = body['locales'];
+  if (raw is! List) return List<String>.from(_targetLocales);
+  final picked = <String>[];
+  for (final item in raw) {
+    final id = '$item'.trim();
+    if (_targetLocales.contains(id) && !picked.contains(id)) picked.add(id);
+  }
+  return picked;
+}
+
 void mountBilgiTranslate(Router router, Connection db) {
   router.post('/v1/admin/bilgi-translate', (request) => _translate(request, db));
 }
@@ -38,18 +51,21 @@ Future<Response> _question(String key, Map<String, dynamic> body) async {
   if (!bilgiLanguageFieldsReady(text, choices, explanation)) {
     return jsonResponse({'error': 'Türkçe soru, dört şık ve açıklama dolu olmalı.'}, status: 400);
   }
+  final targets = _requestedLocales(body);
+  if (targets.isEmpty) return jsonResponse({'translations': <String, Object>{}});
+  final sample = targets.map((id) => '"$id":{"text":"","options":["","","",""],"explanation":""}').join(',');
   final decoded = await _ask(
     key,
-    'Translate this Turkish trivia item into en, de, es, fr, it, ru, nl, pt, and pl. '
+    'Translate this Turkish trivia item into ${targets.join(', ')}. '
     'Keep the four options in the same order. Do not change which option is correct. '
     'Every text, option, and explanation must be non-empty. '
-    'Return only JSON: {"en":{"text":"","options":["","","",""],"explanation":""},"de":{...}}.',
+    'Return only JSON: {$sample}.',
     jsonEncode({'text': text, 'options': choices, 'explanation': explanation}),
   );
   if (decoded is String) return jsonResponse({'error': decoded}, status: 502);
   if (decoded is! Map) return jsonResponse({'error': 'Tercüme okunamadı.'}, status: 502);
   final out = <String, Object>{};
-  for (final locale in _targetLocales) {
+  for (final locale in targets) {
     final row = decoded[locale];
     if (row is! Map) return jsonResponse({'error': 'Tercüme eksik geldi.'}, status: 502);
     final translated = '${row['text'] ?? ''}'.trim();
@@ -72,17 +88,20 @@ Future<Response> _name(String key, Map<String, dynamic> body) async {
   if (text.isEmpty || text.length > 80) {
     return jsonResponse({'error': 'Türkçe ad dolu olmalı.'}, status: 400);
   }
+  final targets = _requestedLocales(body);
+  if (targets.isEmpty) return jsonResponse({'names': <String, String>{}});
+  final sample = targets.map((id) => '"$id":""').join(',');
   final decoded = await _ask(
     key,
-    'Translate this Turkish category name into short display names for en, de, es, fr, it, ru, nl, pt, and pl. '
+    'Translate this Turkish category name into short display names for ${targets.join(', ')}. '
     'Each name must be non-empty and at most 80 characters. '
-    'Return only JSON: {"en":"","de":"","es":"","fr":"","it":"","ru":"","nl":"","pt":"","pl":""}.',
+    'Return only JSON: {$sample}.',
     text,
   );
   if (decoded is String) return jsonResponse({'error': decoded}, status: 502);
   if (decoded is! Map) return jsonResponse({'error': 'Tercüme okunamadı.'}, status: 502);
   final out = <String, String>{};
-  for (final locale in _targetLocales) {
+  for (final locale in targets) {
     final label = '${decoded[locale] ?? ''}'.trim();
     if (label.isEmpty || label.length > 80) {
       return jsonResponse({'error': 'Tercüme eksik geldi.'}, status: 502);
@@ -108,7 +127,7 @@ Future<Object?> _ask(String key, String instruction, String source) async {
             'model': model,
             'temperature': 0.2,
             // Cap completion size so low remaining credit balances (402) still work.
-            'max_tokens': 8192,
+            'max_tokens': 2000,
             'messages': [
               {'role': 'system', 'content': instruction},
               {'role': 'user', 'content': source},

@@ -20,6 +20,9 @@ Future<void> migrateBilgiCatalog(Connection db) async {
   await db.execute(
     'alter table bilgi_categories add column if not exists popular boolean not null default false',
   );
+  await db.execute(
+    "alter table bilgi_categories add column if not exists locales text not null default ''",
+  );
   await db.execute('''
     create table if not exists bilgi_subcategories (
       category_id text not null references bilgi_categories(id) on delete cascade,
@@ -152,7 +155,7 @@ void mountBilgiCatalog(Router router, Connection db) {
 
 Future<Map<String, dynamic>> bilgiAuthoritativeCatalog(Connection db) async {
   final categories = await db.execute('''
-    select id, group_name, name, emoji, popular
+    select id, group_name, name, emoji, popular, locales
     from bilgi_categories
     order by sort_order, name
   ''');
@@ -182,6 +185,7 @@ Future<Map<String, dynamic>> bilgiAuthoritativeCatalog(Connection db) async {
           'subs': [for (final sub in byCategory['${row[0]}'] ?? const []) sub['name']],
           'active': true,
           'popular': _isPopular(row[4]),
+          if (bilgiStoredLocales(row[5]) != null) 'locales': bilgiStoredLocales(row[5]),
         },
     ],
     if (icons.isNotEmpty) 'subEmoji': icons,
@@ -211,21 +215,35 @@ Future<Response> _save(Request request, Connection db) async {
     return jsonResponse({'error': 'Kategori bulunamadı.'}, status: 400);
   }
   var id = '${body['id'] ?? ''}'.trim();
+  final creating = id.isEmpty;
   if (id.isEmpty) id = 'c${DateTime.now().microsecondsSinceEpoch}';
   if (id.length > 80) return jsonResponse({'error': 'Kategori bulunamadı.'}, status: 400);
+  final writeLocales = body.containsKey('locales') || creating;
+  final locales = writeLocales
+      ? jsonEncode(bilgiNormalizePublishLocales(body['locales'] is List ? body['locales'] as List : const ['tr']))
+      : '';
   final sortRows = await db.execute('select coalesce(max(sort_order), -1) from bilgi_categories');
   final maxSort = sortRows.first[0];
   final nextSort = (maxSort is int ? maxSort : (maxSort is num ? maxSort.toInt() : -1)) + 1;
   await db.execute(
     Sql.named('''
-      insert into bilgi_categories (id, group_name, name, emoji, sort_order)
-      values (@id, @group, @name, @emoji, @sort)
+      insert into bilgi_categories (id, group_name, name, emoji, sort_order, locales)
+      values (@id, @group, @name, @emoji, @sort, @locales)
       on conflict (id) do update set
         group_name = excluded.group_name,
         name = excluded.name,
-        emoji = excluded.emoji
+        emoji = excluded.emoji,
+        locales = case when @writeLocales then excluded.locales else bilgi_categories.locales end
     '''),
-    parameters: {'id': id, 'group': group, 'name': name, 'emoji': emoji, 'sort': nextSort},
+    parameters: {
+      'id': id,
+      'group': group,
+      'name': name,
+      'emoji': emoji,
+      'sort': nextSort,
+      'locales': locales,
+      'writeLocales': writeLocales,
+    },
   );
   final rename = body['renameSub'];
   if (rename is Map) {

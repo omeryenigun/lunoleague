@@ -1,28 +1,36 @@
 import 'package:kelimelig/core/l10n/game_locale.dart';
 
-const bilgiApproveBlocked = 'Onay için her dilde soru, dört şık ve açıklama dolu olmalı.';
-const bilgiCategoryBlocked = 'Kategori her dilde adlandırılmadan açılamaz.';
-const bilgiSubBlocked = 'Alt kategori her dilde adlandırılmadan açılamaz.';
+const bilgiApproveBlocked = 'Onay için seçili dillerde soru, dört şık ve açıklama dolu olmalı.';
+const bilgiCategoryBlocked = 'Kategori seçili dillerde adlandırılmadan açılamaz.';
+const bilgiSubBlocked = 'Alt kategori seçili dillerde adlandırılmadan açılamaz.';
 
 bool bilgiLanguageFieldsReady(String text, List<String> options, String explanation) {
   if (text.trim().isEmpty || explanation.trim().isEmpty) return false;
   return options.length == 4 && options.every((item) => item.trim().isNotEmpty);
 }
 
-/// Onay yalnız 10 dilin soru, şık ve açıklaması doluyken verilir.
-bool bilgiQuestionLanguagesReady(BilgiQuestion question) {
+/// Yayın listesindeki Türkçe dışındaki diller. null veya boş: dokuz dil.
+List<String> bilgiExtraLocales(List<String>? locales) {
+  if (locales == null || locales.isEmpty) {
+    return [for (final locale in GameLocale.all) if (locale.id != 'tr') locale.id];
+  }
+  return [for (final locale in GameLocale.all) if (locale.id != 'tr' && locales.contains(locale.id)) locale.id];
+}
+
+/// Onay, kategorinin işaretli dillerinde soru, şık ve açıklama doluyken verilir.
+/// [locales] boş veya verilmezse on dil istenir (eski kategori).
+bool bilgiQuestionLanguagesReady(BilgiQuestion question, {List<String>? locales}) {
   if (!bilgiLanguageFieldsReady(question.text, question.options, question.explanation)) return false;
-  for (final locale in GameLocale.all) {
-    if (locale.id == 'tr') continue;
-    final row = question.translations[locale.id];
+  for (final id in bilgiExtraLocales(locales)) {
+    final row = question.translations[id];
     if (row == null || !bilgiLanguageFieldsReady(row.text, row.options, row.explanation)) return false;
   }
   return true;
 }
 
-/// Onay Bekleyenler: yalnızca bekleyen ve tercümesi tamamlanmış sorular.
-bool bilgiPendingApprovalReady(BilgiQuestion question) =>
-    question.status == 'pending' && bilgiQuestionLanguagesReady(question);
+/// Onay Bekleyenler: yalnızca bekleyen ve seçili dilleri dolu sorular.
+bool bilgiPendingApprovalReady(BilgiQuestion question, {List<String>? locales}) =>
+    question.status == 'pending' && bilgiQuestionLanguagesReady(question, locales: locales);
 
 /// Admin list approve/reject: persist `approved` or `rejected` (and clear reject reason on approve).
 BilgiQuestion bilgiQuestionWithReviewStatus(BilgiQuestion question, String status) {
@@ -32,11 +40,11 @@ BilgiQuestion bilgiQuestionWithReviewStatus(BilgiQuestion question, String statu
   );
 }
 
-/// Türkçe ad kaydın kendisidir. Diğer dokuz dilin görünen adı dolu olmalıdır.
-bool bilgiNamesReady(Map<String, String> labels, String scope, String key) {
-  for (final locale in GameLocale.all) {
-    if (locale.id == 'tr') continue;
-    if ((labels['${locale.id}|$scope|$key'] ?? '').trim().isEmpty) return false;
+/// Türkçe ad kaydın kendisidir. İşaretli diğer dillerin görünen adı dolu olmalıdır.
+/// [locales] boş veya verilmezse dokuz dil istenir (eski kategori).
+bool bilgiNamesReady(Map<String, String> labels, String scope, String key, {List<String>? locales}) {
+  for (final id in bilgiExtraLocales(locales)) {
+    if ((labels['$id|$scope|$key'] ?? '').trim().isEmpty) return false;
   }
   return true;
 }

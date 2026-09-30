@@ -40,7 +40,21 @@ class BilgiController extends ChangeNotifier {
   String subName = '';
   int questionChoice = 10;
   bool busy = false;
-  bool booting = true;
+  /// True while [start] is drawing questions for the chosen round settings.
+  bool roundLoading = false;
+  double loadProgress = 0;
+  String loadStatusKey = 'load_status_sending';
+  String loadTipKey = 'load_tip_speed';
+  int _startEpoch = 0;
+  static const _loadTips = ['load_tip_speed', 'load_tip_joker', 'load_tip_streak'];
+  /// True while reading local profile to decide language vs opening loader.
+  bool resolvingLocale = true;
+  /// First-launch language picker; no opening loader in front of it.
+  bool awaitingLocale = false;
+  bool booting = false;
+  double bootProgress = 0;
+  String bootStatusKey = 'boot_status_starting';
+  String bootMessageKey = 'boot_msg_connecting';
   String bootLabel = 'Oyun açılıyor...';
   int secondsLeft = 0;
   int marathonLeft = 0;
@@ -70,6 +84,8 @@ class BilgiController extends ChangeNotifier {
   bool soundOn = true;
   String? localePreview;
   final Map<String, String> labels = {};
+  /// True when today's free Günün Sorusu was finished (day key locked).
+  bool dailyQuestionUsed = false;
 
   String get page => stack.last;
   String get locale => localePreview ?? profile?.locale ?? 'tr';
@@ -103,13 +119,71 @@ class BilgiController extends ChangeNotifier {
     await boot();
   }
 
+  void _setBootPhase(double progress, String statusKey, String messageKey) {
+    bootProgress = progress.clamp(0.0, 1.0);
+    bootStatusKey = statusKey;
+    bootMessageKey = messageKey;
+    bootLabel = t(messageKey);
+  }
+
   Future<void> boot() async {
-    final showNow = profile != null;
-    booting = true;
-    bootLabel = t('boot_open');
-    if (showNow) notifyListeners();
+    resolvingLocale = true;
+    awaitingLocale = false;
+    booting = false;
+    bootProgress = 0;
+    _setBootPhase(0.08, 'boot_status_starting', 'boot_msg_connecting');
+    notifyListeners();
+
     config = await server.config();
     profile = await server.profile();
+    resolvingLocale = false;
+
+    if (config.maintenance) {
+      stack
+        ..clear()
+        ..add('maintenance');
+      booting = false;
+      awaitingLocale = false;
+      notifyListeners();
+      return;
+    }
+
+    if (profile?.localeChosen != true) {
+      awaitingLocale = true;
+      booting = false;
+      stack
+        ..clear()
+        ..add('language');
+      notifyListeners();
+      return;
+    }
+
+    await _runOpeningLoad();
+  }
+
+  Future<void> _runOpeningLoad() async {
+    awaitingLocale = false;
+    booting = true;
+    _setBootPhase(0.15, 'boot_status_starting', 'boot_msg_connecting');
+    notifyListeners();
+
+    profile ??= await server.profile();
+    _setBootPhase(0.30, 'boot_status_connected', 'boot_msg_verifying');
+    notifyListeners();
+
+    _setBootPhase(0.50, 'boot_status_verified', 'boot_msg_categories');
+    notifyListeners();
+    await loadLabels();
+
+    _setBootPhase(0.70, 'boot_status_categories', 'boot_msg_counts');
+    notifyListeners();
+    await loadCategoryCounts();
+
+    _setBootPhase(0.85, 'boot_status_preparing', 'boot_msg_preparing');
+    notifyListeners();
+    await refreshPool();
+
+    _setBootPhase(1.0, 'boot_status_ready', 'boot_msg_enjoy');
     stack
       ..clear()
       ..add(
@@ -119,13 +193,12 @@ class BilgiController extends ChangeNotifier {
           seenIntro: await server.seenIntro(),
         ),
       );
-    bootLabel = t('loading');
     notifyListeners();
-    await loadLabels();
-    await loadCategoryCounts();
-    await refreshPool();
-    booting = false;
-    notifyListeners();
+    await Future<void>.delayed(const Duration(milliseconds: 450));
+    if (booting) {
+      booting = false;
+      notifyListeners();
+    }
   }
 
   void previewLocale(String localeId) {
@@ -147,18 +220,10 @@ class BilgiController extends ChangeNotifier {
           ..add('settings');
       }
       notifyListeners();
+      await loadCategoryCounts();
       return;
     }
-    stack
-      ..clear()
-      ..add(
-        bilgiBootPage(
-          maintenance: config.maintenance,
-          localeChosen: true,
-          seenIntro: await server.seenIntro(),
-        ),
-      );
-    notifyListeners();
+    await _runOpeningLoad();
   }
 
   Future<void> loadLabels() async {
@@ -178,7 +243,13 @@ class BilgiController extends ChangeNotifier {
     if (id == 'event') unawaited(loadEvents());
     if (id == 'setup' || id == 'detail') unawaited(refreshPool());
     if (id == 'categories') unawaited(loadCategoryCounts());
+    if (id == 'daily') unawaited(refreshDailyQuestionStatus());
     if (id == 'language') localePreview ??= profile?.locale ?? 'tr';
+  }
+
+  Future<void> refreshDailyQuestionStatus() async {
+    dailyQuestionUsed = await server.dailyQuestionUsedToday();
+    notifyListeners();
   }
 
   void flash(String text) {
@@ -246,7 +317,7 @@ class BilgiController extends ChangeNotifier {
     final playable = resolveBilgiCategories(await _visibleCatalog(), playableOnly: true);
     final remote = await BilgiQuestionApi.loadCounts();
     if (remote == null) {
-      categories = playable;
+      categories = _publishedForLocale(playable);
       notice = _countsNotice;
       notifyListeners();
       return;
@@ -257,9 +328,12 @@ class BilgiController extends ChangeNotifier {
       tumuKarmaId: remote.categories[tumuKarmaId] ?? 0,
     };
     subCounts = remote.subs;
-    categories = playable;
+    categories = _publishedForLocale(playable);
     notifyListeners();
   }
+
+  List<BilgiCategory> _publishedForLocale(List<BilgiCategory> playable) =>
+      [for (final category in playable) if (category.publishesIn(locale)) category];
 
   Future<void> refreshPool() async {
     final remote = await BilgiQuestionApi.loadCounts();
@@ -331,10 +405,37 @@ class BilgiController extends ChangeNotifier {
     return poolCount < questionChoice ? poolCount : questionChoice;
   }
 
+  void _setLoadPhase(double progress, String statusKey) {
+    loadProgress = progress.clamp(0.0, 1.0);
+    loadStatusKey = statusKey;
+  }
+
+  void _clearRoundLoading() {
+    busy = false;
+    roundLoading = false;
+    loadProgress = 0;
+  }
+
+  /// Cancel an in-flight [start] draw and leave setup via the normal back path.
+  void cancelRoundLoad() {
+    if (!roundLoading) return;
+    _startEpoch++;
+    _clearRoundLoading();
+    notice = null;
+    back();
+  }
+
   Future<void> start({bool adCleared = false, int? count, String? forcedMode}) async {
     if (busy) return;
+    final epoch = ++_startEpoch;
     busy = true;
+    roundLoading = true;
     notice = null;
+    loadTipKey = _loadTips[epoch % _loadTips.length];
+    _setLoadPhase(0.12, 'load_status_sending');
+    notifyListeners();
+
+    _setLoadPhase(0.28, 'load_status_sending');
     notifyListeners();
     final result = await server.startRound(
       modeId: forcedMode ?? modeId,
@@ -344,31 +445,50 @@ class BilgiController extends ChangeNotifier {
       questionCount: count ?? questionChoice,
       adCleared: adCleared,
     );
-    busy = false;
+    if (epoch != _startEpoch) return;
+
+    _setLoadPhase(0.72, 'load_status_received');
+    notifyListeners();
+
     profile = result.profile ?? profile;
     if (result.message == 'ad') {
+      _clearRoundLoading();
       adLeft = config.preGameAdSeconds;
       open('ad');
       _armAd();
       return;
     }
     if (result.message != null) {
-      notice = result.message;
+      _clearRoundLoading();
+      notice = result.message == dailyQuestionQuotaMessage
+          ? t('daily_quota_ad')
+          : result.message;
       if (result.message!.contains('Canın')) open('nolives');
+      if (result.message == dailyQuestionQuotaMessage) {
+        dailyQuestionUsed = true;
+      }
       notifyListeners();
       return;
     }
     final started = result.round;
     if (started == null) {
+      _clearRoundLoading();
       notice = '⚠️ Bir şeyler ters gitti. Tekrar dene.';
       notifyListeners();
       return;
     }
     if (started.waiting) {
+      _clearRoundLoading();
       round = started;
       open('duel');
       return;
     }
+
+    _setLoadPhase(1.0, 'load_status_ready');
+    notifyListeners();
+    await Future<void>.delayed(const Duration(milliseconds: 320));
+    if (epoch != _startEpoch) return;
+    _clearRoundLoading();
     _begin(started);
   }
 
@@ -499,6 +619,9 @@ class BilgiController extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    if (live.modeId == 'gunluk' && (round?.finished ?? false)) {
+      dailyQuestionUsed = true;
+    }
     final retry = option >= 0 && (round?.hidden.contains(option) ?? false) && round?.finished != true;
     if (retry) {
       revealing = false;
@@ -560,6 +683,7 @@ class BilgiController extends ChangeNotifier {
     final result = await server.finish(live.id);
     profile = result.profile ?? profile;
     round = result.round ?? live;
+    if (live.modeId == 'gunluk') dailyQuestionUsed = true;
     newBadgeIds = (profile?.badges ?? const []).where((id) => !beforeBadges.contains(id)).toList();
     revealing = false;
     stack
@@ -677,6 +801,25 @@ class BilgiController extends ChangeNotifier {
       }
     }
     notifyListeners();
+  }
+
+  /// Watch the Bilgi rewarded interstitial, then start one gunluk round.
+  /// Completing the ad only grants a start pass — not gold, joker, or life.
+  Future<void> startGunlukWithAd() async {
+    if (busy) return;
+    final user = profile;
+    if (user == null) return;
+    final played = await (ads?.showRewarded(user.id) ?? Future.value(false));
+    if (!played) {
+      // Stay on daily with the same quota message; do not start.
+      notifyListeners();
+      return;
+    }
+    await server.grantDailyQuestionAdPass();
+    modeId = 'gunluk';
+    categoryId = tumuKarmaId;
+    difficulty = 'hepsi';
+    await start(forcedMode: 'gunluk', count: 1);
   }
 
   Future<void> findDuel() async {

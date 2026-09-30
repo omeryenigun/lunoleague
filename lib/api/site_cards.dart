@@ -309,7 +309,7 @@ Future<void> seedSiteCardBilgi(Connection db) async {
     db,
     cardId: 'luno_bilgi',
     role: siteMediaIcon,
-    paths: ['/seed/luno_bilgi_icon.jpg', 'assets/images/luno_bilgi_logo.jpg'],
+    paths: ['/seed/luno_bilgi_icon.png', 'assets/images/luno_bilgi_logo.png'],
     sortOrder: 1,
   );
   if (!icon) {

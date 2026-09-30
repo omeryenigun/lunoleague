@@ -57,7 +57,7 @@ android {
             applicationId = "com.lunobilgi.game"
             versionCode = 9
             versionName = "1.0.9"
-            manifestPlaceholders["admobAppId"] = "ca-app-pub-2627324717388568~1018760089"
+            manifestPlaceholders["admobAppId"] = "ca-app-pub-9773173651120365~7602218411"
         }
     }
 

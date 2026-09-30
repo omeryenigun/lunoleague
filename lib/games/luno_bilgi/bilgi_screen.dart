@@ -9,7 +9,9 @@ import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_controller.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_language_page.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_opening_loader.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_report.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_round_loading.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_theme.dart';
 import 'package:kelimelig/injection.dart';
@@ -65,39 +67,60 @@ class _BilgiScreenState extends State<BilgiScreen> {
       child: Scaffold(
         backgroundColor: BilgiColors.bg,
         body: BilgiChrome(
-          child: _game.booting
-              ? Center(child: BilgiBootProgress(label: _game.bootLabel))
-              : Column(
+          child: _openingOrApp(user),
+        ),
+      ),
+    );
+  }
+
+  Widget _openingOrApp(BilgiProfile? user) {
+    if (_game.resolvingLocale) {
+      // Dark frame only — no spinner before language or opening loader.
+      return const SizedBox.expand();
+    }
+    if (_game.awaitingLocale) {
+      return _language();
+    }
+    if (_game.booting) {
+      return BilgiOpeningLoader(
+        progress: _game.bootProgress,
+        status: _game.t(_game.bootStatusKey),
+        message: _game.t(_game.bootMessageKey),
+        gameName: _game.t('boot_brand'),
+        slogan: _game.t('boot_slogan'),
+        version: gameVersionCode,
+      );
+    }
+    return Column(
+      children: [
+        Expanded(
+          child: Stack(
             children: [
-              Expanded(
-                child: Stack(
-                  children: [
-                    _page(user),
-                    if (_game.busy)
-                      Positioned.fill(
-                        child: ColoredBox(
-                          color: const Color(0xE60F0E1A),
-                          child: Center(child: BilgiBootProgress(label: _game.t('questions_loading'))),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              if (_game.showNav && !_game.busy)
-                BilgiBottomNav(
-                  current: _navId(),
-                  onSelect: _game.tab,
-                  home: _game.t('home'),
-                  play: _game.t('play'),
-                  league: _game.t('league'),
-                  settings: _game.t('settings'),
-                  profile: _game.t('profile'),
-                  shop: _game.t('shop'),
+              _page(user),
+              if (_game.roundLoading)
+                Positioned.fill(child: _roundLoadingOverlay())
+              else if (_game.busy)
+                Positioned.fill(
+                  child: ColoredBox(
+                    color: const Color(0xE60F0E1A),
+                    child: Center(child: BilgiBootProgress(label: _game.t('questions_loading'))),
+                  ),
                 ),
             ],
           ),
         ),
-      ),
+        if (_game.showNav && !_game.busy)
+          BilgiBottomNav(
+            current: _navId(),
+            onSelect: _game.tab,
+            home: _game.t('home'),
+            play: _game.t('play'),
+            league: _game.t('league'),
+            settings: _game.t('settings'),
+            profile: _game.t('profile'),
+            shop: _game.t('shop'),
+          ),
+      ],
     );
   }
 
@@ -512,6 +535,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
       children: [
         BilgiTopBar(
           title: _game.t('page_play'),
+          titleAlign: TextAlign.left,
           onHome: () => _game.tab('home'),
           trailing: _wallet(_game.profile),
         ),
@@ -1459,12 +1483,6 @@ class _BilgiScreenState extends State<BilgiScreen> {
         ),
         const SizedBox(height: 16),
         _startButton(_game.replaySetup, label: _game.t('play_again_btn')),
-        const SizedBox(height: 12),
-        _secondaryButton('📊 ${_game.t('league')}', () => _game.tab('league')),
-        const SizedBox(height: 12),
-        _secondaryButton('🏠 ${_game.t('home')}', () => _game.tab('home')),
-        const SizedBox(height: 12),
-        _secondaryButton('📤 ${_game.t('invite')}', () => _game.open('invite')),
         const SizedBox(height: 16),
         _adBanner(showNoticeAbove: false),
       ],
@@ -1818,6 +1836,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
   }
 
   Widget _daily() {
+    final used = _game.dailyQuestionUsed;
     return ListView(
       children: [
         BilgiTopBar(title: _game.t('page_daily'), onBack: _game.back),
@@ -1826,16 +1845,28 @@ class _BilgiScreenState extends State<BilgiScreen> {
           padding: EdgeInsets.all(20),
           child: Text('1 soru • 30 sn • doğruysa 100 altın ve 50 XP. Can ve joker yok.'),
         ),
+        if (used)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+            child: Text(
+              _game.t('daily_quota_ad'),
+              style: const TextStyle(color: BilgiColors.muted, height: 1.35),
+            ),
+          ),
         BilgiPrimaryButton(
-          label: _game.busy ? _game.t('preparing') : _game.t('start'),
+          label: _game.busy
+              ? _game.t('preparing')
+              : (used ? _game.t('daily_ad_start') : _game.t('start')),
           onTap: _game.busy
               ? null
-              : () {
-                  _game.modeId = 'gunluk';
-                  _game.categoryId = tumuKarmaId;
-                  _game.difficulty = 'hepsi';
-                  _game.start(forcedMode: 'gunluk', count: 1);
-                },
+              : used
+                  ? _game.startGunlukWithAd
+                  : () {
+                      _game.modeId = 'gunluk';
+                      _game.categoryId = tumuKarmaId;
+                      _game.difficulty = 'hepsi';
+                      _game.start(forcedMode: 'gunluk', count: 1);
+                    },
         ),
       ],
     );
@@ -2495,6 +2526,47 @@ class _BilgiScreenState extends State<BilgiScreen> {
         _ => _game.t('diff_easy'),
       };
 
+  Widget _roundLoadingOverlay() {
+    final mode = bilgiModeById(_game.modeId);
+    final count = _game.playableCount() > 0 ? _game.playableCount() : _game.questionChoice;
+    final category = _game.categories.where((item) => item.id == _game.categoryId).firstOrNull ??
+        bilgiCategoryById(_game.categoryId);
+    final tumu = _game.categoryId == tumuKarmaId || category == null;
+    final categoryName = tumu
+        ? _game.t('all_mix')
+        : _game.categoryLabel(category.id, category.name);
+    final categoryValue = tumu || _game.subName.isEmpty
+        ? categoryName
+        : '$categoryName · ${_game.subLabel(_game.categoryId, _game.subName)}';
+    final diffKey = _playDifficulty(_game.difficulty) ? _game.difficulty : 'kolay';
+    final timeValue = mode.totalSeconds > 0
+        ? _fill('minutes', {'n': '${mode.totalSeconds ~/ 60}'})
+        : mode.seconds == 0
+            ? _game.t('untimed')
+            : _fill('seconds', {'n': '${mode.seconds}'});
+    final subtitle = '${_fill('q_count', {'n': '$count'})} · $timeValue';
+    return BilgiRoundLoading(
+      progress: _game.loadProgress,
+      status: _game.t(_game.loadStatusKey),
+      message: _game.t('questions_loading'),
+      modeEmoji: mode.emoji,
+      modeName: _game.t('mode_${mode.id}'),
+      subtitle: subtitle,
+      categoryLabel: _game.t('categories'),
+      categoryValue: categoryValue,
+      difficultyLabel: _game.t('difficulty'),
+      difficultyValue: _difficultyLabel(diffKey),
+      difficultyColor: diffKey == 'kolay' ? BilgiColors.secondary : BilgiColors.warning,
+      questionsLabel: _game.t('question_count'),
+      questionsValue: '$count',
+      timeLabel: mode.totalSeconds > 0 ? _game.t('total_time') : _game.t('time_remaining'),
+      timeValue: timeValue,
+      questionCount: count,
+      tip: _game.t(_game.loadTipKey),
+      onCancel: _game.cancelRoundLoad,
+    );
+  }
+
   String _subEmoji(String sub, String fallback) {
     return switch (sub) {
       'İlk Türk Devletleri' => '🏹',
@@ -2593,24 +2665,6 @@ class _BilgiScreenState extends State<BilgiScreen> {
               padding: const EdgeInsets.symmetric(vertical: 18),
               child: Text(text, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _secondaryButton(String label, VoidCallback onTap) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Material(
-        color: BilgiColors.card,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Text(label, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
           ),
         ),
       ),
@@ -3046,15 +3100,12 @@ class _BilgiLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(size * 0.22),
-      child: Image.asset(
-        'assets/images/luno_bilgi_logo.jpg',
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        semanticLabel: semanticLabel ?? 'Luno Bilgi',
-      ),
+    return Image.asset(
+      'assets/images/luno_bilgi_logo.png',
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      semanticLabel: semanticLabel ?? 'Luno Bilgi',
     );
   }
 }

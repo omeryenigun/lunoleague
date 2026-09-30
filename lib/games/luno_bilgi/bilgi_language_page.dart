@@ -85,17 +85,14 @@ class _BilgiLanguagePageState extends State<BilgiLanguagePage>
                         // errorBuilder hides Flutter's red asset error (e.g.
                         // stale web AssetManifest.bin.json) so the page stays clean.
                         Center(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(20),
-                            child: Image.asset(
-                              'assets/images/luno_bilgi_logo.jpg',
-                              width: 72,
-                              height: 72,
-                              fit: BoxFit.cover,
-                              semanticLabel: bilgiT(selected, 'game_name'),
-                              errorBuilder: (_, _, _) =>
-                                  const SizedBox(width: 72, height: 72),
-                            ),
+                          child: Image.asset(
+                            'assets/images/luno_bilgi_logo.png',
+                            width: 72,
+                            height: 72,
+                            fit: BoxFit.contain,
+                            semanticLabel: bilgiT(selected, 'game_name'),
+                            errorBuilder: (_, _, _) =>
+                                const SizedBox(width: 72, height: 72),
                           ),
                         ),
                         const SizedBox(height: 8),

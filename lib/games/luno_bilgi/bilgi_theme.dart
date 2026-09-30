@@ -44,12 +44,14 @@ class BilgiTopBar extends StatelessWidget {
     this.onBack,
     this.onHome,
     this.trailing,
+    this.titleAlign = TextAlign.center,
   });
 
   final String title;
   final VoidCallback? onBack;
   final VoidCallback? onHome;
   final Widget? trailing;
+  final TextAlign titleAlign;
 
   @override
   Widget build(BuildContext context) {
@@ -58,36 +60,49 @@ class BilgiTopBar extends StatelessWidget {
         : onHome != null
             ? _IconButton(icon: Icons.arrow_back_rounded, onTap: onHome!)
             : const SizedBox(width: 40, height: 40);
+    final titleStyle = const TextStyle(fontSize: 18, fontWeight: FontWeight.w700);
+    final rewards = Flexible(
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerRight,
+          child: trailing ?? const SizedBox(width: 40, height: 40),
+        ),
+      ),
+    );
+    final leftTitle = titleAlign == TextAlign.left || titleAlign == TextAlign.start;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
       child: SizedBox(
         height: 40,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-            ),
-            Row(
-              children: [
-                leading,
-                const Spacer(),
-                Flexible(
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerRight,
-                      child: trailing ?? const SizedBox(width: 40, height: 40),
-                    ),
+        child: leftTitle
+            ? Row(
+                children: [
+                  leading,
+                  const SizedBox(width: 10),
+                  Text(title, style: titleStyle),
+                  const Spacer(),
+                  rewards,
+                ],
+              )
+            : Stack(
+                alignment: Alignment.center,
+                children: [
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: titleStyle,
                   ),
-                ),
-              ],
-            ),
-          ],
-        ),
+                  Row(
+                    children: [
+                      leading,
+                      const Spacer(),
+                      rewards,
+                    ],
+                  ),
+                ],
+              ),
       ),
     );
   }

@@ -91,40 +91,48 @@ class BilgiQuestionApi {
     required String text,
     required List<String> options,
     required String explanation,
+    List<String>? locales,
   }) async {
+    final wanted = locales ?? bilgiExtraLocales(null);
+    if (wanted.isEmpty) return (translations: <String, BilgiTranslation>{}, error: null);
     final decoded = await _translate(token, {
       'kind': 'question',
       'text': text,
       'options': options,
       'explanation': explanation,
+      'locales': wanted,
     });
     if (decoded.error != null) return (translations: <String, BilgiTranslation>{}, error: decoded.error);
     final raw = decoded.body?['translations'];
     if (raw is! Map) return (translations: <String, BilgiTranslation>{}, error: 'Tercüme okunamadı.');
     final out = <String, BilgiTranslation>{};
-    for (final entry in raw.entries) {
-      final row = BilgiTranslation.fromMap(entry.value);
+    for (final id in wanted) {
+      final row = BilgiTranslation.fromMap(raw[id]);
       if (row == null || !bilgiLanguageFieldsReady(row.text, row.options, row.explanation)) {
         return (translations: <String, BilgiTranslation>{}, error: 'Tercüme eksik geldi.');
       }
-      out['${entry.key}'] = row;
+      out[id] = row;
     }
-    if (out.length != 9) return (translations: <String, BilgiTranslation>{}, error: 'Tercüme eksik geldi.');
     return (translations: out, error: null);
   }
 
-  static Future<({Map<String, String> names, String? error})> translateName(String token, String text) async {
-    final decoded = await _translate(token, {'kind': 'name', 'text': text});
+  static Future<({Map<String, String> names, String? error})> translateName(
+    String token,
+    String text, {
+    List<String>? locales,
+  }) async {
+    final wanted = locales ?? bilgiExtraLocales(null);
+    if (wanted.isEmpty) return (names: <String, String>{}, error: null);
+    final decoded = await _translate(token, {'kind': 'name', 'text': text, 'locales': wanted});
     if (decoded.error != null) return (names: <String, String>{}, error: decoded.error);
     final raw = decoded.body?['names'];
     if (raw is! Map) return (names: <String, String>{}, error: 'Tercüme okunamadı.');
     final out = <String, String>{};
-    for (final entry in raw.entries) {
-      final label = '${entry.value}'.trim();
+    for (final id in wanted) {
+      final label = '${raw[id] ?? ''}'.trim();
       if (label.isEmpty) return (names: <String, String>{}, error: 'Tercüme eksik geldi.');
-      out['${entry.key}'] = label;
+      out[id] = label;
     }
-    if (out.length != 9) return (names: <String, String>{}, error: 'Tercüme eksik geldi.');
     return (names: out, error: null);
   }
 
@@ -216,7 +224,8 @@ class BilgiQuestionApi {
     required String subcategory,
     required String difficulty,
     required int count,
-    List<String> exclude = const [],
+    required List<String> exclude,
+    required String locale,
   }) async {
     final taken = count < 1 ? 1 : (count > 51 ? 51 : count);
     final uri = Uri.parse('${ApiConfig.baseUrl}/v1/bilgi/questions/draw').replace(
@@ -226,13 +235,17 @@ class BilgiQuestionApi {
         'difficulty': difficulty,
         'count': '$taken',
         if (exclude.isNotEmpty) 'exclude': exclude.join(','),
+        if (locale.trim().isNotEmpty) 'locale': locale.trim(),
       },
     );
     return _load(uri.toString(), const {});
   }
 
-  static Future<List<BilgiQuestion>?> daily() {
-    return _load('${ApiConfig.baseUrl}/v1/bilgi/questions/daily', const {});
+  static Future<List<BilgiQuestion>?> daily({required String locale}) {
+    final uri = Uri.parse('${ApiConfig.baseUrl}/v1/bilgi/questions/daily').replace(
+      queryParameters: {if (locale.trim().isNotEmpty) 'locale': locale.trim()},
+    );
+    return _load(uri.toString(), const {});
   }
 
   static Future<List<BilgiQuestion>?> loadApproved() {
@@ -279,6 +292,7 @@ class BilgiQuestionApi {
     String renameFrom = '',
     String renameTo = '',
     String subEmoji = '',
+    List<String>? locales,
   }) async {
     if (token.isEmpty) return (id: null, error: 'Yönetici oturumu gerekli.');
     try {
@@ -296,6 +310,7 @@ class BilgiQuestionApi {
           if (addSub.trim().isNotEmpty) 'addSub': addSub.trim(),
           if (renameFrom.trim().isNotEmpty)
             'renameSub': {'from': renameFrom.trim(), 'to': renameTo.trim(), 'emoji': subEmoji.trim()},
+          'locales': ?locales,
         }),
       );
       if (response.statusCode < 200 || response.statusCode >= 300) {

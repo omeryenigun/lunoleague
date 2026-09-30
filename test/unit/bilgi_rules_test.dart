@@ -161,6 +161,7 @@ void main() {
       required String difficulty,
       required int count,
       required List<String> exclude,
+      required String locale,
     }) async {
       draws += 1;
       expect(count, 2);
@@ -240,7 +241,7 @@ void main() {
     expect(daily.round, isNotNull);
     await server.finish(daily.round!.id);
     final again = await server.startRound(modeId: 'gunluk');
-    expect(again.message, '📅 Bugünkü hakkını kullandın.');
+    expect(again.message, 'Günlük oyun hakkınız doldu. Reklamla yeni oyun başlatın');
   });
 
   test('hidden categories stay hidden and inactive ones leave the game list', () async {
@@ -278,6 +279,26 @@ void main() {
     expect(resolved.single.id, 'felsefe');
     expect(resolved.single.subs, ['Antik Yunan Felsefesi']);
     expect(resolved.single.popular, isTrue);
+    expect(resolved.single.locales, isNull);
+    expect(resolved.single.publishesIn('en'), isTrue);
+    final turkishOnly = resolveBilgiCategories({
+      'authoritative': true,
+      'custom': [
+        {
+          'id': 'yeni',
+          'group': 'A. Temel Bilgi',
+          'name': 'Yeni',
+          'emoji': '📚',
+          'subs': ['Alt'],
+          'locales': ['tr'],
+        },
+      ],
+    });
+    expect(turkishOnly.single.publishLocales, ['tr']);
+    expect(turkishOnly.single.publishesIn('tr'), isTrue);
+    expect(turkishOnly.single.publishesIn('en'), isFalse);
+    expect(bilgiStoredLocales(''), isNull);
+    expect(bilgiStoredLocales('["tr","en"]'), ['tr', 'en']);
     expect(resolveBilgiCategories({'authoritative': true, 'custom': const []}), isEmpty);
   });
 
@@ -443,6 +464,9 @@ void main() {
         id: const BilgiTranslation(text: 'Q', options: ['A', 'B', 'C', 'D'], explanation: 'Because'),
     });
     expect(bilgiQuestionLanguagesReady(full), isTrue);
+    expect(bilgiQuestionLanguagesReady(bare, locales: const ['tr']), isTrue);
+    expect(bilgiNamesReady(const {}, 'category', 'genel', locales: const ['tr']), isTrue);
+    expect(bilgiExtraLocales(const ['tr', 'de']), ['de']);
     expect(bilgiPendingApprovalReady(bare), isFalse);
     expect(bilgiPendingApprovalReady(full), isTrue);
     final approved = bilgiQuestionWithReviewStatus(full, 'approved');

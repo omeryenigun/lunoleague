@@ -68,7 +68,7 @@ void mountBilgiQuestions(Router router, Connection db) {
     ..get('/v1/bilgi/active', (request) => _active(db))
     ..put('/v1/admin/bilgi-active', (request) => _setActive(request, db))
     ..get('/v1/bilgi/questions/counts', (request) => _counts(db))
-    ..get('/v1/bilgi/questions/daily', (request) => _daily(db))
+    ..get('/v1/bilgi/questions/daily', (request) => _daily(request, db))
     ..get('/v1/bilgi/questions/draw', (request) => _draw(request, db))
     ..get('/v1/bilgi/questions', (request) => _list(db, approvedOnly: true))
     ..get('/v1/admin/bilgi-questions', (request) async {
@@ -102,15 +102,21 @@ Future<Response> _counts(Connection db) async {
   return jsonResponse(snapshot.visible(open.categories, open.subs).toJson());
 }
 
-Future<Response> _daily(Connection db) async {
+Future<Response> _daily(Request request, Connection db) async {
   final day = DateTime.now().toUtc().toIso8601String().substring(0, 10);
+  final locale = (request.url.queryParameters['locale'] ?? '').trim();
   final existing = await db.execute(
     Sql.named('select question_json from bilgi_daily where day = @day'),
     parameters: {'day': day},
   );
   if (existing.isNotEmpty) {
     final stored = jsonDecode('${existing.first[0]}');
-    return jsonResponse({'questions': stored is Map ? [stored] : const []});
+    if (stored is Map && await _publishesForLocale(db, stored, locale)) {
+      return jsonResponse({'questions': [stored]});
+    }
+    if (locale.isEmpty) {
+      return jsonResponse({'questions': stored is Map ? [stored] : const []});
+    }
   }
   final picked = await drawApprovedBilgiQuestions(
     db,
@@ -118,23 +124,42 @@ Future<Response> _daily(Connection db) async {
     subcategory: '',
     difficulty: '',
     count: 1,
+    locale: locale,
   );
   if (picked.isEmpty) return jsonResponse({'questions': const []});
-  await db.execute(
-    Sql.named('''
-      insert into bilgi_daily (day, question_json)
-      values (@day, @question)
-      on conflict (day) do nothing
-    '''),
-    parameters: {'day': day, 'question': jsonEncode(picked.first)},
+  if (existing.isEmpty) {
+    await db.execute(
+      Sql.named('''
+        insert into bilgi_daily (day, question_json)
+        values (@day, @question)
+        on conflict (day) do nothing
+      '''),
+      parameters: {'day': day, 'question': jsonEncode(picked.first)},
+    );
+    final again = await db.execute(
+      Sql.named('select question_json from bilgi_daily where day = @day'),
+      parameters: {'day': day},
+    );
+    if (again.isNotEmpty) {
+      final stored = jsonDecode('${again.first[0]}');
+      if (stored is Map && await _publishesForLocale(db, stored, locale)) {
+        return jsonResponse({'questions': [stored]});
+      }
+    }
+  }
+  return jsonResponse({'questions': picked});
+}
+
+Future<bool> _publishesForLocale(Connection db, Map stored, String locale) async {
+  if (locale.isEmpty) return true;
+  final categoryId = '${stored['categoryId'] ?? ''}'.trim();
+  if (categoryId.isEmpty) return false;
+  final rows = await db.execute(
+    Sql.named('select locales from bilgi_categories where id = @id'),
+    parameters: {'id': categoryId},
   );
-  final again = await db.execute(
-    Sql.named('select question_json from bilgi_daily where day = @day'),
-    parameters: {'day': day},
-  );
-  if (again.isEmpty) return jsonResponse({'questions': picked});
-  final stored = jsonDecode('${again.first[0]}');
-  return jsonResponse({'questions': stored is Map ? [stored] : picked});
+  if (rows.isEmpty) return false;
+  return bilgiPublishLocalesOf(bilgiStoredLocales(rows.first[0])).contains(locale);
 }
 
 Future<List<Map<String, dynamic>>> drawApprovedBilgiQuestions(
@@ -144,6 +169,7 @@ Future<List<Map<String, dynamic>>> drawApprovedBilgiQuestions(
   required String difficulty,
   required int count,
   Set<String> exclude = const {},
+  String locale = '',
 }) async {
   final categories = resolveBilgiCategories(await _closedCatalog(db), playableOnly: true);
   final picked = <Map<String, dynamic>>[];
@@ -183,6 +209,7 @@ Future<List<Map<String, dynamic>>> drawApprovedBilgiQuestions(
         categoryId: categoryId,
         subcategory: subcategory,
         difficulty: narrowed ? difficulty : '',
+        locale: locale,
       )) {
         continue;
       }
@@ -207,6 +234,7 @@ Future<Response> _draw(Request request, Connection db) async {
     for (final id in (params['exclude'] ?? '').split(','))
       if (id.trim().isNotEmpty) id.trim(),
   };
+  final locale = (params['locale'] ?? '').trim();
   final picked = await drawApprovedBilgiQuestions(
     db,
     categoryId: categoryId,
@@ -214,6 +242,7 @@ Future<Response> _draw(Request request, Connection db) async {
     difficulty: difficulty,
     count: count,
     exclude: exclude,
+    locale: locale,
   );
   return jsonResponse({'questions': picked});
 }
@@ -252,12 +281,15 @@ Future<Response> _save(Request request, Connection db) async {
   if (raw.length > 400) {
     return jsonResponse({'error': 'Bir istekte en fazla 400 soru yazılır.'}, status: 400);
   }
+  final localeRows = await db.execute('select id, locales from bilgi_categories');
+  final localesByCategory = {for (final row in localeRows) '${row[0]}': bilgiStoredLocales(row[1])};
   final questions = <Map<String, Object>>[];
   for (final item in raw) {
     if (item is! Map) return jsonResponse({'error': 'Soru bulunamadı.'}, status: 400);
     final question = _read(Map<String, dynamic>.from(item));
     if (question == null) return jsonResponse({'error': 'Soru bulunamadı.'}, status: 400);
-    if (question['status'] == 'approved' && !_approvedLanguagesReady(question)) {
+    if (question['status'] == 'approved' &&
+        !_approvedLanguagesReady(question, localesByCategory['${question['categoryId']}'])) {
       return jsonResponse({'error': bilgiApproveBlocked}, status: 400);
     }
     questions.add(question);
@@ -413,7 +445,15 @@ Future<Response> _setActive(Request request, Connection db) async {
     parameters: {'scope': scope, 'key': key},
   );
   final have = {for (final row in named) '${row[0]}'};
-  if (!_extraLocales.every(have.contains)) {
+  final categoryId = kind == 'category' ? key : key.split('|').first;
+  final storedLocales = await db.execute(
+    Sql.named('select locales from bilgi_categories where id = @id'),
+    parameters: {'id': categoryId},
+  );
+  final requiredLocales = bilgiExtraLocales(
+    storedLocales.isEmpty ? null : bilgiStoredLocales(storedLocales.first[0]),
+  );
+  if (!requiredLocales.every(have.contains)) {
     return jsonResponse({'error': kind == 'category' ? bilgiCategoryBlocked : bilgiSubBlocked}, status: 400);
   }
   await db.execute(
@@ -426,11 +466,13 @@ Future<Response> _setActive(Request request, Connection db) async {
   return jsonResponse({'ok': true});
 }
 
-bool _approvedLanguagesReady(Map<String, Object> question) {
+bool _approvedLanguagesReady(Map<String, Object> question, List<String>? locales) {
   if ('${question['explanation']}'.trim().isEmpty) return false;
+  final required = bilgiExtraLocales(locales);
+  if (required.isEmpty) return true;
   final raw = jsonDecode('${question['translations']}');
   if (raw is! Map) return false;
-  for (final locale in _extraLocales) {
+  for (final locale in required) {
     final row = raw[locale];
     if (row is! Map) return false;
     final text = '${row['text'] ?? ''}'.trim();

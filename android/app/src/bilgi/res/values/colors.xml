@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches Luno Bilgi logo purple so adaptive corners are not a black square. -->
+    <color name="ic_launcher_background">#FF3D11CA</color>
+</resources>

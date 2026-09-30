@@ -1,3 +1,41 @@
+import 'dart:convert';
+
+/// Yayın dilleri. Türkçe her zaman açıktır.
+const bilgiLocaleIds = ['tr', 'en', 'de', 'es', 'fr', 'it', 'ru', 'nl', 'pt', 'pl'];
+
+/// Boş veya eksik kayıt: eski kategori, on dil birden.
+/// Dolu liste: yalnız o diller (Türkçe her zaman eklenir).
+List<String>? bilgiStoredLocales(Object? raw) {
+  if (raw == null) return null;
+  if (raw is String) {
+    final text = raw.trim();
+    if (text.isEmpty) return null;
+    try {
+      return bilgiStoredLocales(jsonDecode(text));
+    } catch (_) {
+      return null;
+    }
+  }
+  if (raw is List) {
+    if (raw.isEmpty) return null;
+    return bilgiNormalizePublishLocales(raw);
+  }
+  return null;
+}
+
+List<String> bilgiNormalizePublishLocales(Iterable<Object?> raw) {
+  final picked = <String>{'tr'};
+  for (final item in raw) {
+    final id = '$item'.trim();
+    if (bilgiLocaleIds.contains(id)) picked.add(id);
+  }
+  return [for (final id in bilgiLocaleIds) if (picked.contains(id)) id];
+}
+
+/// null veya boş: on dil. Aksi halde kayıtlı liste.
+List<String> bilgiPublishLocalesOf(List<String>? stored) =>
+    stored == null || stored.isEmpty ? bilgiLocaleIds : stored;
+
 class BilgiCategory {
   const BilgiCategory({
     required this.id,
@@ -7,6 +45,7 @@ class BilgiCategory {
     required this.subs,
     this.active = true,
     this.popular = false,
+    this.locales,
   });
 
   final String id;
@@ -16,6 +55,13 @@ class BilgiCategory {
   final List<String> subs;
   final bool active;
   final bool popular;
+
+  /// null: kayıt yok, on dilde yayın. Dolu liste: yalnız o diller.
+  final List<String>? locales;
+
+  List<String> get publishLocales => bilgiPublishLocalesOf(locales);
+
+  bool publishesIn(String locale) => publishLocales.contains(locale);
 
   String get karmaName => '$name Karma';
 }
@@ -132,7 +178,30 @@ String? bilgiGroupLabel(String locale, String name) {
 const tumuKarmaId = 'tumu';
 
 const bilgiCategories = <BilgiCategory>[
-  BilgiCategory(id: 'genel', group: 'A. Temel Bilgi', name: 'Genel Kültür', emoji: '🧠', subs: ['Atasözleri', 'Günlük Bilgi']),
+  BilgiCategory(
+    id: 'genel',
+    group: 'A. Temel Bilgi',
+    name: 'Genel Kültür',
+    emoji: '🧠',
+    subs: [
+      'Atasözleri',
+      'Günlük Bilgi',
+      'Deyimler',
+      'İlkler',
+      'Rekorlar',
+      'Ölçü Birimleri',
+      'Takvim ve Zaman',
+      'Renkler',
+      'Trafik',
+      'Güvenlik',
+      'Çevre',
+      'İletişim',
+      'Alışveriş',
+      'Seyahat',
+      'Yemek Kültürü',
+      'Görgü Kuralları',
+    ],
+  ),
   BilgiCategory(id: 'turkiye', group: 'A. Temel Bilgi', name: 'Türkiye', emoji: '🇹🇷', subs: ['Şehirler', 'Simgeler']),
   BilgiCategory(id: 'dunya_kultur', group: 'A. Temel Bilgi', name: 'Dünya Kültürleri', emoji: '🌏', subs: ['Gelenekler', 'Bayramlar']),
   BilgiCategory(id: 'cografya', group: 'A. Temel Bilgi', name: 'Coğrafya', emoji: '🌍', subs: ['Ülkeler', 'Nehirler']),
@@ -361,6 +430,7 @@ List<BilgiCategory> resolveBilgiCategories(Map<String, dynamic>? catalog, {bool 
           subs: _mergedSubs(id, [for (final item in raw['subs'] as List? ?? const []) '$item'], const [], inactiveSubs, removedSubs, renames, playableOnly),
           active: active,
           popular: raw['popular'] == true,
+          locales: bilgiStoredLocales(raw['locales']),
         ),
       );
     }
@@ -380,7 +450,15 @@ BilgiCategory _patchedCategory(
   required bool playableOnly,
 }) {
   if (playableOnly && !active) {
-    return BilgiCategory(id: category.id, group: category.group, name: category.name, emoji: category.emoji, subs: const [], active: false);
+    return BilgiCategory(
+      id: category.id,
+      group: category.group,
+      name: category.name,
+      emoji: category.emoji,
+      subs: const [],
+      active: false,
+      locales: category.locales,
+    );
   }
   final edit = raw is Map ? raw : const {};
   final name = edit['name'];
@@ -393,6 +471,7 @@ BilgiCategory _patchedCategory(
     emoji: emoji is String && emoji.trim().isNotEmpty ? emoji.trim() : category.emoji,
     subs: _mergedSubs(category.id, category.subs, extra, inactiveSubs, removedSubs, renames, playableOnly),
     active: active,
+    locales: category.locales,
   );
 }
 
@@ -450,6 +529,7 @@ List<BilgiCategory> _resolveAuthoritative(Map<String, dynamic> catalog, {require
         subs: subs,
         active: active,
         popular: raw['popular'] == true,
+        locales: bilgiStoredLocales(raw['locales']),
       ),
     );
   }

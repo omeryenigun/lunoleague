@@ -12,7 +12,8 @@ import 'package:kelimelig/injection.dart';
 
 Future<void> main() async {
   androidUsesLeagueAds = false;
-  androidRewardedUnitId = admobBilgiRewardedUnitId;
+  androidUsesRewardedInterstitial = true;
+  androidRewardedUnitId = admobBilgiRewardedInterstitialUnitId;
   WidgetsFlutterBinding.ensureInitialized();
   await configureDependencies();
   await registerBilgiServer();
