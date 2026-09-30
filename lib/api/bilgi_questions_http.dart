@@ -5,6 +5,7 @@ import 'package:kelimelig/api/bilgi_catalog_http.dart';
 import 'package:kelimelig/api/bilgi_count_snapshot.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_rules.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
 import 'package:postgres/postgres.dart';
 import 'package:shelf/shelf.dart';
@@ -171,6 +172,16 @@ Future<List<Map<String, dynamic>>> drawApprovedBilgiQuestions(
   Set<String> exclude = const {},
   String locale = '',
 }) async {
+  if (difficulty == bilgiMixDifficulty) {
+    return _drawMixedApproved(
+      db,
+      categoryId: categoryId,
+      subcategory: subcategory,
+      count: count,
+      exclude: exclude,
+      locale: locale,
+    );
+  }
   final categories = resolveBilgiCategories(await _closedCatalog(db), playableOnly: true);
   final picked = <Map<String, dynamic>>[];
   final seen = <String>{...exclude};
@@ -219,6 +230,70 @@ Future<List<Map<String, dynamic>>> drawApprovedBilgiQuestions(
     if (fresh == 0) break;
   }
   return picked;
+}
+
+Future<List<Map<String, dynamic>>> _drawMixedApproved(
+  Connection db, {
+  required String categoryId,
+  required String subcategory,
+  required int count,
+  required Set<String> exclude,
+  required String locale,
+}) async {
+  final picked = <Map<String, dynamic>>[];
+  final seen = <String>{...exclude};
+  final quotas = bilgiMixQuotas(count);
+  for (var i = 0; i < bilgiDifficultyLevels.length; i++) {
+    if (quotas[i] == 0) continue;
+    final batch = await drawApprovedBilgiQuestions(
+      db,
+      categoryId: categoryId,
+      subcategory: subcategory,
+      difficulty: bilgiDifficultyLevels[i],
+      count: quotas[i],
+      exclude: seen,
+      locale: locale,
+    );
+    for (final item in batch) {
+      seen.add('${item['id']}');
+      picked.add(item);
+    }
+  }
+  var guard = 0;
+  while (picked.length < count && guard < count) {
+    guard += 1;
+    var added = false;
+    final order = [for (var i = 0; i < bilgiDifficultyLevels.length; i++) i]..sort(
+        (a, b) => _mixCount(picked, bilgiDifficultyLevels[a]).compareTo(_mixCount(picked, bilgiDifficultyLevels[b])),
+      );
+    for (final index in order) {
+      if (picked.length >= count) break;
+      final batch = await drawApprovedBilgiQuestions(
+        db,
+        categoryId: categoryId,
+        subcategory: subcategory,
+        difficulty: bilgiDifficultyLevels[index],
+        count: 1,
+        exclude: seen,
+        locale: locale,
+      );
+      if (batch.isEmpty) continue;
+      seen.add('${batch.first['id']}');
+      picked.add(batch.first);
+      added = true;
+      break;
+    }
+    if (!added) break;
+  }
+  return picked;
+}
+
+int _mixCount(List<Map<String, dynamic>> picked, String difficulty) {
+  var count = 0;
+  for (final item in picked) {
+    if (item['difficulty'] == difficulty) count += 1;
+  }
+  return count;
 }
 
 Future<Response> _draw(Request request, Connection db) async {
