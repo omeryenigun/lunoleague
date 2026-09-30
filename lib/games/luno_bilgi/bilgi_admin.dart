@@ -819,13 +819,23 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
           question,
     ];
     final counts = [0, 0, 0, 0];
+    const difficulties = ['kolay', 'orta', 'zor', 'efsane'];
+    final difficultyCounts = [0, 0, 0, 0];
+    var otherDifficulty = 0;
     for (final question in rows) {
       counts[question.correct.clamp(0, 3)] += 1;
+      final slot = difficulties.indexOf(question.difficulty);
+      if (slot < 0) {
+        otherDifficulty += 1;
+      } else {
+        difficultyCounts[slot] += 1;
+      }
     }
     final total = rows.length;
-    final peak = counts.fold<int>(0, (max, count) => count > max ? count : max);
     const letters = ['A', 'B', 'C', 'D'];
     const colors = [BilgiColors.secondary, BilgiColors.primary, BilgiColors.warning, BilgiColors.accent];
+    const difficultyLabels = ['Kolay', 'Orta', 'Zor', 'Efsane'];
+    const difficultyColors = [BilgiColors.secondary, BilgiColors.warning, BilgiColors.error, BilgiColors.info];
     final subs = _categories.where((item) => item.id == _distCat).firstOrNull?.subs ?? const <String>[];
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
@@ -857,54 +867,74 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
         const SizedBox(height: 24),
         if (total == 0)
           const Text('Bu seçimde soru yok.', style: TextStyle(color: BilgiColors.muted))
-        else
-          Container(
-            padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
-            decoration: _cardDeco(),
-            child: SizedBox(
-              height: 280,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  for (var i = 0; i < 4; i++)
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            Text(
-                              '${_trInt(counts[i])}  %${(counts[i] * 100 / total).round()}',
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
-                            ),
-                            const SizedBox(height: 8),
-                            Expanded(
-                              child: Align(
-                                alignment: Alignment.bottomCenter,
-                                child: FractionallySizedBox(
-                                  heightFactor: peak == 0 ? 0 : counts[i] / peak,
-                                  widthFactor: 0.55,
-                                  child: DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      color: colors[i],
-                                      borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
-                                    ),
-                                    child: const SizedBox.expand(),
-                                  ),
-                                ),
+        else ...[
+          _distChart(counts: counts, total: total, labels: letters, colors: colors),
+          const SizedBox(height: 28),
+          const Text('Zorluk dağılımı', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 12),
+          _distChart(counts: difficultyCounts, total: total, labels: difficultyLabels, colors: difficultyColors),
+          if (otherDifficulty > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text('Diğer zorluk: ${_trInt(otherDifficulty)}', style: const TextStyle(color: BilgiColors.muted)),
+            ),
+        ],
+      ],
+    );
+  }
+
+  Widget _distChart({
+    required List<int> counts,
+    required int total,
+    required List<String> labels,
+    required List<Color> colors,
+  }) {
+    final peak = counts.fold<int>(0, (max, count) => count > max ? count : max);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+      decoration: _cardDeco(),
+      child: SizedBox(
+        height: 280,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            for (var i = 0; i < counts.length; i++)
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Text(
+                        '${_trInt(counts[i])}  %${total == 0 ? 0 : (counts[i] * 100 / total).round()}',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 8),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.bottomCenter,
+                          child: FractionallySizedBox(
+                            heightFactor: peak == 0 ? 0 : counts[i] / peak,
+                            widthFactor: 0.55,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: colors[i],
+                                borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
                               ),
+                              child: const SizedBox.expand(),
                             ),
-                            const SizedBox(height: 10),
-                            Text(letters[i], style: TextStyle(color: colors[i], fontSize: 18, fontWeight: FontWeight.w800)),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
-                ],
+                      const SizedBox(height: 10),
+                      Text(labels[i], style: TextStyle(color: colors[i], fontSize: 18, fontWeight: FontWeight.w800)),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ),
-      ],
+          ],
+        ),
+      ),
     );
   }
 

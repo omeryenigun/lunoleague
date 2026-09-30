@@ -450,6 +450,7 @@ class LunoBilgiServer {
       startedAt: _clock(),
     );
     _rounds[round.id] = round;
+    await _store.put(_games, round.id, round.toMap());
     return BilgiResult(profile: next, round: round);
   }
 
@@ -506,6 +507,15 @@ class LunoBilgiServer {
         locale: locale,
       );
     }
+    if (difficulty == bilgiMixDifficulty) {
+      return _drawMixed(
+        categoryId: categoryId,
+        subcategory: subcategory,
+        count: count,
+        exclude: exclude,
+        locale: locale,
+      );
+    }
     final blocked = exclude.toSet();
     final categories = resolveBilgiCategories(await catalog(), playableOnly: true);
     final all = (await questions())
@@ -522,6 +532,65 @@ class LunoBilgiServer {
     all.shuffle(_random);
     if (all.length > count) return all.sublist(0, count);
     return all;
+  }
+
+  Future<List<BilgiQuestion>> _drawMixed({
+    required String categoryId,
+    required String subcategory,
+    required int count,
+    required List<String> exclude,
+    required String locale,
+  }) async {
+    final blocked = exclude.toSet();
+    final categories = resolveBilgiCategories(await catalog(), playableOnly: true);
+    final buckets = {for (final level in bilgiDifficultyLevels) level: <BilgiQuestion>[]};
+    for (final question in await questions()) {
+      if (blocked.contains(question.id) || !buckets.containsKey(question.difficulty)) continue;
+      if (!bilgiPlayableQuestion(
+        question,
+        categories,
+        categoryId: categoryId,
+        subcategory: subcategory,
+        locale: locale,
+      )) {
+        continue;
+      }
+      buckets[question.difficulty]!.add(question);
+    }
+    for (final bucket in buckets.values) {
+      bucket.shuffle(_random);
+    }
+    final cursor = {for (final level in bilgiDifficultyLevels) level: 0};
+    final picked = <BilgiQuestion>[];
+    final quotas = bilgiMixQuotas(count);
+    for (var i = 0; i < bilgiDifficultyLevels.length; i++) {
+      final level = bilgiDifficultyLevels[i];
+      final bucket = buckets[level]!;
+      final take = quotas[i] < bucket.length ? quotas[i] : bucket.length;
+      picked.addAll(bucket.take(take));
+      cursor[level] = take;
+    }
+    var guard = 0;
+    while (picked.length < count && guard < count) {
+      guard += 1;
+      var added = false;
+      final order = [...bilgiDifficultyLevels]..sort((a, b) {
+          final aCount = picked.where((question) => question.difficulty == a).length;
+          final bCount = picked.where((question) => question.difficulty == b).length;
+          return aCount.compareTo(bCount);
+        });
+      for (final level in order) {
+        final bucket = buckets[level]!;
+        final index = cursor[level]!;
+        if (index >= bucket.length) continue;
+        picked.add(bucket[index]);
+        cursor[level] = index + 1;
+        added = true;
+        break;
+      }
+      if (!added) break;
+    }
+    return picked;
   }
 
   Future<void> _publishScore(BilgiRound round) async {
@@ -582,6 +651,7 @@ class LunoBilgiServer {
     if (round.index >= round.questions.length) {
       return finish(roundId);
     }
+    await _store.put(_games, round.id, round.toMap());
     return BilgiResult(round: round, profile: await profile());
   }
 
@@ -686,6 +756,35 @@ class LunoBilgiServer {
       return BilgiResult(profile: next, round: round);
     }
     return BilgiResult(profile: await profile(), round: round);
+  }
+
+  /// Adds the finished round's score again after a completed rewarded ad.
+  /// Gold and XP stay as [finish] wrote them.
+  Future<BilgiResult> doubleFinishedScore(String roundId) async {
+    final round = _rounds[roundId];
+    if (round == null || !round.finished) {
+      return const BilgiResult(message: '⚠️ Bir şeyler ters gitti. Tekrar dene.');
+    }
+    final user = await profile();
+    final cfg = await config();
+    if (user.adDoubleToday >= cfg.rewardedDoubleLimit) {
+      return const BilgiResult(message: '📅 Bugünkü hakkını kullandın.');
+    }
+    final extra = round.score;
+    if (extra <= 0) {
+      return const BilgiResult(message: '⚠️ Bir şeyler ters gitti. Tekrar dene.');
+    }
+    round.score = extra * 2;
+    final next = user.copyWith(
+      totalScore: user.totalScore + extra,
+      weekScore: user.weekScore + extra,
+      bestScore: round.score > user.bestScore ? round.score : user.bestScore,
+      adDoubleToday: user.adDoubleToday + 1,
+    );
+    await _publishScore(round);
+    await _save(next);
+    await _store.put(_games, round.id, round.toMap());
+    return BilgiResult(profile: next, round: round);
   }
 
   BilgiProfile _withBadges(BilgiProfile user) {

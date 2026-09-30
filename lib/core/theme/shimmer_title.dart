@@ -8,11 +8,16 @@ class ShimmerTitle extends StatefulWidget {
     this.text = AppConstants.appName,
     this.fontSize = 40,
     this.textAlign = TextAlign.center,
+    this.compact = false,
   });
 
   final String text;
   final double fontSize;
   final TextAlign textAlign;
+
+  /// Header size: one line, tighter tracking, lighter glow.
+  /// The opening title leaves this false.
+  final bool compact;
 
   @override
   State<ShimmerTitle> createState() => _ShimmerTitleState();
@@ -52,16 +57,23 @@ class _ShimmerTitleState extends State<ShimmerTitle>
           child: Text(
             widget.text,
             textAlign: widget.textAlign,
+            maxLines: widget.compact ? 1 : null,
+            softWrap: !widget.compact,
             style: TextStyle(
               fontSize: widget.fontSize,
               fontWeight: FontWeight.w900,
-              letterSpacing: -0.8,
-              height: 1.05,
+              letterSpacing: widget.compact ? -0.3 : -0.8,
+              height: widget.compact ? 1 : 1.05,
               color: Colors.white,
-              shadows: const [
-                Shadow(color: Color(0x662ECC71), blurRadius: 22),
-                Shadow(color: Color(0x449B59B6), blurRadius: 36),
-              ],
+              shadows: widget.compact
+                  ? const [
+                      Shadow(color: Color(0x662ECC71), blurRadius: 12),
+                      Shadow(color: Color(0x449B59B6), blurRadius: 18),
+                    ]
+                  : const [
+                      Shadow(color: Color(0x662ECC71), blurRadius: 22),
+                      Shadow(color: Color(0x449B59B6), blurRadius: 36),
+                    ],
             ),
           ),
         );
@@ -75,10 +87,12 @@ class CosmicContinueButton extends StatelessWidget {
     super.key,
     required this.label,
     required this.onPressed,
+    this.subtitle,
     this.showArrow = true,
   });
 
   final String label;
+  final String? subtitle;
   final VoidCallback? onPressed;
   final bool showArrow;
 
@@ -118,15 +132,31 @@ class CosmicContinueButton extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Flexible(
-                  child: Text(
-                    label,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: AppColors.cosmicBg,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 17,
-                      letterSpacing: 0.3,
-                    ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        label,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: AppColors.cosmicBg,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 17,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                      if (subtitle != null)
+                        Text(
+                          subtitle!,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: AppColors.cosmicBg.withValues(alpha: 0.72),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                            height: 1.2,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
                 if (showArrow) ...[

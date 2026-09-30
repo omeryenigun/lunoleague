@@ -5,6 +5,11 @@ import 'package:kelimelig/core/l10n/game_locale.dart';
 import 'package:kelimelig/core/services/ad_service.dart';
 import 'package:kelimelig/core/services/audio_manager.dart';
 import 'package:kelimelig/core/services/google_auth.dart';
+import 'package:kelimelig/data/local/key_value_store.dart';
+import 'package:kelimelig/data/local/local_game_server.dart';
+import 'package:kelimelig/data/local/scoped_store.dart';
+import 'package:kelimelig/domain/game/game_ids.dart';
+import 'package:kelimelig/domain/game/game_server.dart';
 import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_l10n.dart';
@@ -18,6 +23,23 @@ import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
 import 'package:kelimelig/injection.dart';
 
 const _countsNotice = '📡 Bağlantı hatası. İnternetini kontrol et.';
+const _adFailNotice = '📡 Bağlantı hatası. İnternetini kontrol et.';
+const _adRetryNotice = '⚠️ Bir şeyler ters gitti. Tekrar dene.';
+
+/// Shown after a completed watch: first while the reward is applied, then with the loaded amount.
+class BilgiRewardLoad {
+  const BilgiRewardLoad({
+    required this.icon,
+    required this.amount,
+    required this.caption,
+    required this.loading,
+  });
+
+  final String icon;
+  final String amount;
+  final String caption;
+  final bool loading;
+}
 
 class BilgiController extends ChangeNotifier {
   BilgiController(this.server, {this.ads});
@@ -79,6 +101,11 @@ class BilgiController extends ChangeNotifier {
   BilgiQuestion? revealQuestion;
   List<String> _badgesBeforePick = const [];
   bool scoreDoubled = false;
+  bool adWatching = false;
+  BilgiRewardLoad? rewardLoad;
+  int _rewardEpoch = 0;
+  bool _alive = true;
+  bool _adLaunching = false;
   List<String> newBadgeIds = const [];
   bool notifyOn = true;
   bool soundOn = true;
@@ -112,6 +139,9 @@ class BilgiController extends ChangeNotifier {
         'shop',
         'group',
         'room',
+        'result',
+        'history',
+        'login',
       }.contains(page);
 
   Future<void> retry() async {
@@ -289,7 +319,7 @@ class BilgiController extends ChangeNotifier {
   }
 
   bool _playDifficulty(String value) {
-    return value == 'kolay' || value == 'orta' || value == 'zor' || value == 'efsane';
+    return value == 'kolay' || value == 'orta' || value == 'zor' || value == 'efsane' || value == bilgiMixDifficulty;
   }
 
   void _preparePlaySettings() {
@@ -453,9 +483,7 @@ class BilgiController extends ChangeNotifier {
     profile = result.profile ?? profile;
     if (result.message == 'ad') {
       _clearRoundLoading();
-      adLeft = config.preGameAdSeconds;
-      open('ad');
-      _armAd();
+      _openPreGameAd();
       return;
     }
     if (result.message != null) {
@@ -549,33 +577,107 @@ class BilgiController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _armAd() {
-    _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) async {
-      if (page != 'ad') return;
-      adLeft -= 1;
-      if (adLeft > 0) {
-        notifyListeners();
-        return;
-      }
-      _timer?.cancel();
-      final user = profile;
-      final played = user == null ? false : await (ads?.showRewarded(user.id) ?? Future.value(false));
-      if (!played) {
-        notice = '📡 Bağlantı hatası. İnternetini kontrol et.';
-        if (stack.isNotEmpty && stack.last == 'ad') stack.removeLast();
-        notifyListeners();
-        return;
-      }
-      if (stack.isNotEmpty && stack.last == 'ad') stack.removeLast();
-      final pending = _pendingShared;
-      if (pending != null) {
-        _pendingShared = null;
-        await _startShared(pending, adCleared: true);
-        return;
-      }
-      await start(adCleared: true);
-    });
+  void _openPreGameAd() {
+    if (kIsWeb) {
+      _leaveUnplayableAd();
+      return;
+    }
+    if (_adLaunching) return;
+    _adLaunching = true;
+    unawaited(_playPreGameAd());
+  }
+
+  /// Web and other surfaces with no playable ad leave the countdown. No reward is granted.
+  void skipUnplayableAd() {
+    if (!kIsWeb) return;
+    _leaveUnplayableAd();
+  }
+
+  void _leaveUnplayableAd() {
+    _pendingShared = null;
+    _adLaunching = false;
+    notice = _adFailNotice;
+    if (stack.isNotEmpty && stack.last == 'ad') stack.removeLast();
+    notifyListeners();
+  }
+
+  Future<void> _playPreGameAd() async {
+    final user = profile;
+    var played = false;
+    try {
+      played = user == null ? false : await _playAd();
+    } catch (_) {
+      played = false;
+    } finally {
+      _adLaunching = false;
+    }
+    if (!_alive) return;
+    if (!played) {
+      _leaveUnplayableAd();
+      return;
+    }
+    if (stack.isNotEmpty && stack.last == 'ad') stack.removeLast();
+    final pending = _pendingShared;
+    if (pending != null) {
+      _pendingShared = null;
+      await _startShared(pending, adCleared: true);
+      return;
+    }
+    await start(adCleared: true);
+  }
+
+  Future<bool> _playAd() async {
+    final user = profile;
+    if (user == null || user.id.isEmpty) return false;
+    final service = ads;
+    if (service == null) return false;
+    try {
+      return await service.showRewarded(user.id);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _adFailed({bool connection = false}) {
+    notice = kIsWeb || connection ? _adFailNotice : _adRetryNotice;
+    notifyListeners();
+  }
+
+  Future<void> _showRewardLoad({
+    required String icon,
+    required String Function() amount,
+    required String Function() caption,
+    required Future<bool> Function() grant,
+    bool leaveRewardPage = false,
+  }) async {
+    final epoch = ++_rewardEpoch;
+    rewardLoad = BilgiRewardLoad(icon: icon, amount: amount(), caption: t('ad_reward_loading'), loading: true);
+    notifyListeners();
+    final pending = grant();
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    final ok = await pending;
+    if (!_alive || epoch != _rewardEpoch) return;
+    if (!ok) {
+      rewardLoad = null;
+      notifyListeners();
+      return;
+    }
+    rewardLoad = BilgiRewardLoad(icon: icon, amount: amount(), caption: caption(), loading: false);
+    notifyListeners();
+    await Future<void>.delayed(const Duration(milliseconds: 1100));
+    if (!_alive || epoch != _rewardEpoch) return;
+    rewardLoad = null;
+    if (leaveRewardPage && page == 'reward') {
+      back();
+      return;
+    }
+    notifyListeners();
+  }
+
+  void dismissRewardLoad() {
+    _rewardEpoch++;
+    rewardLoad = null;
+    if (_alive) notifyListeners();
   }
 
   void _playAnswerSound(bool right) {
@@ -667,7 +769,8 @@ class BilgiController extends ChangeNotifier {
     profile = result.profile ?? profile;
     round = result.round ?? live;
     if (result.message == 'joker') {
-      open('joker');
+      notice = null;
+      notifyListeners();
       return;
     }
     if (type == 'time' && result.message == null) pauseLeft = 10;
@@ -693,21 +796,43 @@ class BilgiController extends ChangeNotifier {
   }
 
   Future<void> doubleResultScore() async {
-    if (scoreDoubled) return;
+    if (scoreDoubled || adWatching) return;
     final user = profile;
-    if (user == null) return;
-    final played = await (ads?.showRewarded(user.id) ?? Future.value(false));
-    if (!played) {
-      notice = '📡 Bağlantı hatası. İnternetini kontrol et.';
+    final live = round;
+    if (user == null || live == null) return;
+    if (user.adDoubleToday >= config.rewardedDoubleLimit) {
+      notice = '📅 Bugünkü hakkını kullandın.';
       notifyListeners();
       return;
     }
-    final live = round;
-    if (live == null || scoreDoubled) return;
-    live.score *= 2;
-    scoreDoubled = true;
-    notice = null;
+    final extra = live.score;
+    if (extra <= 0) return;
+    adWatching = true;
     notifyListeners();
+    final played = await _playAd();
+    adWatching = false;
+    if (!_alive) return;
+    if (!played) {
+      _adFailed(connection: true);
+      return;
+    }
+    await _showRewardLoad(
+      icon: '⭐',
+      amount: () => '$extra',
+      caption: () => '+$extra',
+      grant: () async {
+        final result = await server.doubleFinishedScore(live.id);
+        profile = result.profile ?? profile;
+        if (result.round != null) round = result.round;
+        if (result.message != null || result.round == null) {
+          notice = result.message ?? _adRetryNotice;
+          return false;
+        }
+        scoreDoubled = true;
+        notice = null;
+        return true;
+      },
+    );
   }
 
   void replaySetup() {
@@ -726,17 +851,42 @@ class BilgiController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> doubleDailyReward() async {
-    if (!rewardReady()) return;
+  Future<bool> doubleDailyReward() async {
+    if (!rewardReady() || adWatching) return false;
     final user = profile;
-    if (user == null) return;
-    final played = await (ads?.showRewarded(user.id) ?? Future.value(false));
+    if (user == null) return false;
+    final parts = _doubledReward();
+    adWatching = true;
+    notifyListeners();
+    final played = await _playAd();
+    adWatching = false;
+    if (!_alive) return false;
     if (!played) {
-      notice = '📡 Bağlantı hatası. İnternetini kontrol et.';
-      notifyListeners();
-      return;
+      _adFailed(connection: true);
+      return false;
     }
-    await claimDaily(doubled: true);
+    var claimed = false;
+    await _showRewardLoad(
+      icon: parts.icon,
+      amount: () => parts.amount,
+      caption: () => '${parts.amount} ${parts.unit}',
+      leaveRewardPage: true,
+      grant: () async {
+        claimed = await claimDaily(doubled: true);
+        return claimed;
+      },
+    );
+    return claimed;
+  }
+
+  ({String icon, String amount, String unit}) _doubledReward() {
+    final index = rewardIndex();
+    final gold = dayRewardAmount(config.dailyGold, index) * 2;
+    final diamond = dayRewardAmount(config.dailyDiamond, index) * 2;
+    final joker = dayRewardAmount(config.dailyJoker, index) * 2;
+    if (diamond > 0) return (icon: '💎', amount: '$diamond', unit: t('diamond'));
+    if (joker > 0) return (icon: '🎯', amount: '$joker', unit: t('joker'));
+    return (icon: '🪙', amount: '$gold', unit: t('gold'));
   }
 
   Future<void> buyJokerSet() async {
@@ -752,16 +902,13 @@ class BilgiController extends ChangeNotifier {
     await buyJoker('time');
   }
 
-  Future<void> claimDaily({bool doubled = false}) async {
+  Future<bool> claimDaily({bool doubled = false}) async {
     final result = await server.claimDaily(doubled: doubled);
     profile = result.profile ?? profile;
     notice = result.message;
-    if (result.ok) {
-      if (page == 'reward') back();
-    } else {
-      open('reward');
-    }
+    if (!result.ok && page != 'reward') open('reward');
     notifyListeners();
+    return result.ok;
   }
 
   Future<void> buyJoker(String type) async {
@@ -780,36 +927,85 @@ class BilgiController extends ChangeNotifier {
   }
 
   Future<void> watchFor(String kind) async {
+    if (adWatching) return;
     final user = profile;
     if (user == null) return;
-    final goldBefore = user.gold;
-    final played = await (ads?.showRewarded(user.id) ?? Future.value(false));
-    if (!played) {
-      notice = kIsWeb
-          ? '📡 Bağlantı hatası. İnternetini kontrol et.'
-          : '⚠️ Bir şeyler ters gitti. Tekrar dene.';
+    final blocked = _adLimitMessage(kind);
+    if (blocked != null) {
+      notice = blocked;
       notifyListeners();
       return;
     }
-    final result = await server.grantAd(kind: kind);
-    profile = result.profile ?? profile;
-    notice = result.message;
-    if (kind == 'gold' && result.message == null) {
-      final added = (profile?.gold ?? goldBefore) - goldBefore;
-      if (added > 0) {
-        notice = t('ad_loaded').replaceAll('{n}', '$added');
-      }
-    }
+    final goldBefore = user.gold;
+    final icon = switch (kind) {
+      'joker' => '🎯',
+      'life' => '❤️',
+      _ => '🪙',
+    };
+    var amount = switch (kind) {
+      'joker' => '1',
+      'life' => '1',
+      _ => '${config.rewardedGold}',
+    };
+    var caption = switch (kind) {
+      'joker' => 'Yarım joker',
+      'life' => '+1 can',
+      _ => t('ad_loaded').replaceAll('{n}', amount),
+    };
+    adWatching = true;
     notifyListeners();
+    final played = await _playAd();
+    adWatching = false;
+    if (!_alive) return;
+    if (!played) {
+      _adFailed();
+      return;
+    }
+    await _showRewardLoad(
+      icon: icon,
+      amount: () => amount,
+      caption: () => caption,
+      grant: () async {
+        final result = await server.grantAd(kind: kind);
+        profile = result.profile ?? profile;
+        notice = result.message;
+        if (result.message != null) return false;
+        if (kind == 'gold') {
+          final added = (profile?.gold ?? goldBefore) - goldBefore;
+          if (added <= 0) return false;
+          amount = '$added';
+          caption = t('ad_loaded').replaceAll('{n}', amount);
+          notice = caption;
+        }
+        return true;
+      },
+    );
+  }
+
+  String? _adLimitMessage(String kind) {
+    final user = profile;
+    if (user == null) return _adRetryNotice;
+    final hit = switch (kind) {
+      'gold' => user.adGoldToday >= config.rewardedGoldLimit,
+      'joker' => user.adJokerToday >= config.rewardedJokerLimit,
+      'life' => user.adLifeToday >= config.rewardedLifeLimit,
+      _ => false,
+    };
+    if (!hit) return null;
+    return '📅 Bugünkü hakkını kullandın.';
   }
 
   /// Watch the Bilgi rewarded interstitial, then start one gunluk round.
   /// Completing the ad only grants a start pass — not gold, joker, or life.
   Future<void> startGunlukWithAd() async {
-    if (busy) return;
+    if (busy || adWatching) return;
     final user = profile;
     if (user == null) return;
-    final played = await (ads?.showRewarded(user.id) ?? Future.value(false));
+    adWatching = true;
+    notifyListeners();
+    final played = await _playAd();
+    adWatching = false;
+    if (!_alive) return;
     if (!played) {
       // Stay on daily with the same quota message; do not start.
       notifyListeners();
@@ -830,9 +1026,7 @@ class BilgiController extends ChangeNotifier {
     profile = result.profile ?? profile;
     round = result.round;
     if (result.message == 'ad') {
-      adLeft = config.preGameAdSeconds;
-      open('ad');
-      _armAd();
+      _openPreGameAd();
       return;
     }
     notice = result.round?.waiting == true ? '🔍 Rakip aranıyor...' : result.message;
@@ -997,9 +1191,7 @@ class BilgiController extends ChangeNotifier {
     profile = result.profile ?? profile;
     if (result.message == 'ad') {
       _pendingShared = sync;
-      adLeft = config.preGameAdSeconds;
-      open('ad');
-      _armAd();
+      _openPreGameAd();
       return;
     }
     if (result.message != null || result.round == null) {
@@ -1051,14 +1243,36 @@ class BilgiController extends ChangeNotifier {
 
   Future<void> loginGoogle() async {
     try {
-      final account = await GoogleAuth().signIn();
+      final account = await sl<GoogleAuth>().signIn();
       final email = account?.email?.trim() ?? '';
       if (account == null || email.isEmpty) {
-        notice = '⚠️ Bir şeyler ters gitti. Tekrar dene.';
+        notice = account == null ? null : '⚠️ Bir şeyler ters gitti. Tekrar dene.';
         notifyListeners();
         return;
       }
       final result = await server.loginSocial(email: email, username: account.displayName);
+      profile = result.profile ?? profile;
+      notice = result.message;
+      if (result.ok) tab('home');
+      notifyListeners();
+    } catch (_) {
+      notice = '⚠️ Bir şeyler ters gitti. Tekrar dene.';
+      notifyListeners();
+    }
+  }
+
+  /// Same League call as AuthCubit.apple: GameServer.signInWithApple, then the Bilgi profile.
+  Future<void> loginApple() async {
+    try {
+      final GameServer game = sl.isRegistered<GameServer>()
+          ? sl<GameServer>()
+          : LocalGameServer(ScopedKeyValueStore(sl<KeyValueStore>(), GameIds.lunoLeague));
+      final user = await game.signInWithApple();
+      final email = user.email?.trim() ?? '';
+      final result = await server.loginSocial(
+        email: email.contains('@') ? email : 'apple-${user.id}@players.luno',
+        username: user.displayName,
+      );
       profile = result.profile ?? profile;
       notice = result.message;
       if (result.ok) tab('home');
@@ -1150,6 +1364,8 @@ class BilgiController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _alive = false;
+    _rewardEpoch++;
     _timer?.cancel();
     super.dispose();
   }

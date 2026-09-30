@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:kelimelig/core/constants/admob.dart';
+import 'package:kelimelig/core/services/rewarded_fullscreen_gate.dart';
 
 class AdService {
   RewardedAd? _cachedRewarded;
@@ -75,33 +76,41 @@ class AdService {
   }
 
   Future<RewardedAd?> _loadRewarded(String unitId) async {
-    final loaded = Completer<RewardedAd?>();
-    await RewardedAd.load(
-      adUnitId: unitId,
-      request: const AdRequest(),
-      rewardedAdLoadCallback: RewardedAdLoadCallback(
-        onAdLoaded: loaded.complete,
-        onAdFailedToLoad: (_) {
-          if (!loaded.isCompleted) loaded.complete(null);
-        },
-      ),
-    );
-    return loaded.future;
+    try {
+      final loaded = Completer<RewardedAd?>();
+      await RewardedAd.load(
+        adUnitId: unitId,
+        request: const AdRequest(),
+        rewardedAdLoadCallback: RewardedAdLoadCallback(
+          onAdLoaded: loaded.complete,
+          onAdFailedToLoad: (_) {
+            if (!loaded.isCompleted) loaded.complete(null);
+          },
+        ),
+      );
+      return await loaded.future;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<RewardedInterstitialAd?> _loadInterstitial(String unitId) async {
-    final loaded = Completer<RewardedInterstitialAd?>();
-    await RewardedInterstitialAd.load(
-      adUnitId: unitId,
-      request: const AdRequest(),
-      rewardedInterstitialAdLoadCallback: RewardedInterstitialAdLoadCallback(
-        onAdLoaded: loaded.complete,
-        onAdFailedToLoad: (_) {
-          if (!loaded.isCompleted) loaded.complete(null);
-        },
-      ),
-    );
-    return loaded.future;
+    try {
+      final loaded = Completer<RewardedInterstitialAd?>();
+      await RewardedInterstitialAd.load(
+        adUnitId: unitId,
+        request: const AdRequest(),
+        rewardedInterstitialAdLoadCallback: RewardedInterstitialAdLoadCallback(
+          onAdLoaded: loaded.complete,
+          onAdFailedToLoad: (_) {
+            if (!loaded.isCompleted) loaded.complete(null);
+          },
+        ),
+      );
+      return await loaded.future;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<RewardedAd?> _takeRewarded() async {
@@ -142,69 +151,131 @@ class AdService {
 
   Future<bool> showRewarded(String userId, {String? customData}) async {
     if (kIsWeb || userId.isEmpty) return false;
-    await _ensureSdk();
-    if (_interstitialFormat) {
-      return _showInterstitial(userId, customData: customData);
+    try {
+      await _ensureSdk();
+      if (_interstitialFormat) {
+        return await _showInterstitial(userId, customData: customData);
+      }
+      return await _showRewardedVideo(userId, customData: customData);
+    } catch (_) {
+      return false;
     }
-    return _showRewardedVideo(userId, customData: customData);
   }
 
   Future<bool> _showRewardedVideo(String userId, {String? customData}) async {
     final ad = await _takeRewarded();
     if (ad == null) return false;
     unawaited(_preload());
-    await ad.setServerSideOptions(
-      ServerSideVerificationOptions(userId: userId, customData: customData),
-    );
-    // Android 15 draws full-screen ads under the navigation bar, which
-    // covers the close button. Immersive mode hides that bar for the ad.
-    await ad.setImmersiveMode(true);
-    var rewarded = false;
-    final closed = Completer<bool>();
-    ad.fullScreenContentCallback = FullScreenContentCallback(
-      onAdDismissedFullScreenContent: (ad) {
-        ad.dispose();
-        if (!closed.isCompleted) closed.complete(rewarded);
+    try {
+      await ad.setServerSideOptions(
+        ServerSideVerificationOptions(userId: userId, customData: customData),
+      );
+      // Android 15 draws full-screen ads under the navigation bar, which
+      // covers the close button. Immersive mode hides that bar for the ad.
+      await ad.setImmersiveMode(true);
+    } catch (_) {
+      ad.dispose();
+      return false;
+    }
+    return _showAndWait(
+      listen: (gate, release) {
+        ad.fullScreenContentCallback = FullScreenContentCallback(
+          onAdShowedFullScreenContent: (_) => gate.onShowed(),
+          onAdDismissedFullScreenContent: (_) {
+            // The reward callback can land just after dismiss. The ad is
+            // already closed; wait briefly so a late reward still counts,
+            // then let the activity finish before dispose.
+            Future<void>.delayed(const Duration(milliseconds: 300), () {
+              gate.onDismissed();
+              release(delay: true);
+            });
+          },
+          onAdFailedToShowFullScreenContent: (_, _) {
+            release(delay: false);
+            gate.onFailedToShow();
+          },
+        );
       },
-      onAdFailedToShowFullScreenContent: (ad, _) {
-        ad.dispose();
-        if (!closed.isCompleted) closed.complete(false);
-      },
+      show: (gate) => ad.show(
+        onUserEarnedReward: (_, _) => gate.onUserEarnedReward(),
+      ),
+      dispose: ad.dispose,
     );
-    await ad.show(
-      onUserEarnedReward: (_, _) {
-        rewarded = true;
-      },
-    );
-    return closed.future;
   }
 
   Future<bool> _showInterstitial(String userId, {String? customData}) async {
     final ad = await _takeInterstitial();
     if (ad == null) return false;
     unawaited(_preload());
-    await ad.setServerSideOptions(
-      ServerSideVerificationOptions(userId: userId, customData: customData),
-    );
-    await ad.setImmersiveMode(true);
-    var rewarded = false;
-    final closed = Completer<bool>();
-    ad.fullScreenContentCallback = FullScreenContentCallback(
-      onAdDismissedFullScreenContent: (ad) {
-        ad.dispose();
-        if (!closed.isCompleted) closed.complete(rewarded);
+    try {
+      await ad.setServerSideOptions(
+        ServerSideVerificationOptions(userId: userId, customData: customData),
+      );
+      await ad.setImmersiveMode(true);
+    } catch (_) {
+      ad.dispose();
+      return false;
+    }
+    return _showAndWait(
+      listen: (gate, release) {
+        ad.fullScreenContentCallback = FullScreenContentCallback(
+          onAdShowedFullScreenContent: (_) => gate.onShowed(),
+          onAdDismissedFullScreenContent: (_) {
+            // The reward callback can land just after dismiss. The ad is
+            // already closed; wait briefly so a late reward still counts,
+            // then let the activity finish before dispose.
+            Future<void>.delayed(const Duration(milliseconds: 300), () {
+              gate.onDismissed();
+              release(delay: true);
+            });
+          },
+          onAdFailedToShowFullScreenContent: (_, _) {
+            release(delay: false);
+            gate.onFailedToShow();
+          },
+        );
       },
-      onAdFailedToShowFullScreenContent: (ad, _) {
-        ad.dispose();
-        if (!closed.isCompleted) closed.complete(false);
-      },
+      show: (gate) => ad.show(
+        onUserEarnedReward: (_, _) => gate.onUserEarnedReward(),
+      ),
+      dispose: ad.dispose,
     );
-    await ad.show(
-      onUserEarnedReward: (_, _) {
-        rewarded = true;
-      },
-    );
-    return closed.future;
+  }
+
+  /// Presents the ad and waits until it is dismissed.
+  ///
+  /// Dispose runs after dismiss so the ad activity can finish. Disposing
+  /// inside the dismiss callback can leave a fullscreen overlay that has no
+  /// close control.
+  Future<bool> _showAndWait({
+    required void Function(
+      RewardedFullscreenGate gate,
+      void Function({required bool delay}) release,
+    ) listen,
+    required Future<void> Function(RewardedFullscreenGate gate) show,
+    required void Function() dispose,
+  }) async {
+    final gate = RewardedFullscreenGate();
+    var released = false;
+    void release({required bool delay}) {
+      if (released) return;
+      released = true;
+      if (!delay) {
+        dispose();
+        return;
+      }
+      Future<void>.delayed(const Duration(milliseconds: 200), dispose);
+    }
+
+    listen(gate, release);
+    try {
+      await show(gate);
+    } catch (_) {
+      release(delay: false);
+      gate.onFailedToShow();
+      return false;
+    }
+    return gate.done;
   }
 }
 

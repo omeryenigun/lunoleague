@@ -9,7 +9,6 @@ class BilgiLanguagePage extends StatefulWidget {
   const BilgiLanguagePage({
     super.key,
     required this.selectedId,
-    required this.continueLabel,
     required this.fromSettings,
     required this.onPreview,
     required this.onConfirm,
@@ -17,7 +16,6 @@ class BilgiLanguagePage extends StatefulWidget {
   });
 
   final String selectedId;
-  final String continueLabel;
   final bool fromSettings;
   final ValueChanged<String> onPreview;
   final VoidCallback onConfirm;
@@ -80,7 +78,7 @@ class _BilgiLanguagePageState extends State<BilgiLanguagePage>
                   Expanded(
                     child: ListView(
                       children: [
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 36),
                         // Same path as _BilgiLogo in bilgi_screen.dart.
                         // errorBuilder hides Flutter's red asset error (e.g.
                         // stale web AssetManifest.bin.json) so the page stays clean.
@@ -95,10 +93,21 @@ class _BilgiLanguagePageState extends State<BilgiLanguagePage>
                                 const SizedBox(width: 72, height: 72),
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 20),
                         ShimmerTitle(
-                          text: bilgiT(selected, 'game_name'),
+                          text: bilgiT('tr', 'game_name'),
                           fontSize: 32,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          bilgiT('en', 'game_name'),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: BilgiColors.text.withValues(alpha: 0.7),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 18,
+                            letterSpacing: 0.2,
+                          ),
                         ),
                         const SizedBox(height: 10),
                         Container(
@@ -143,7 +152,8 @@ class _BilgiLanguagePageState extends State<BilgiLanguagePage>
                     ),
                   ),
                   CosmicContinueButton(
-                    label: widget.continueLabel,
+                    label: bilgiT('tr', 'continue'),
+                    subtitle: bilgiT('en', 'continue'),
                     showArrow: false,
                     onPressed: widget.onConfirm,
                   ),

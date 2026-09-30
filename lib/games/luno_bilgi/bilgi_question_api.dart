@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:kelimelig/core/config/api_config.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_rules.dart';
 
 class BilgiActiveSet {
   const BilgiActiveSet({required this.categories, required this.subs});
@@ -32,7 +33,7 @@ class BilgiBankCounts {
   final Map<String, int> slices;
 
   int pool(String categoryId, String sub, String difficulty) {
-    final diff = difficulty == 'hepsi' ? '' : difficulty;
+    final diff = difficulty == 'hepsi' || difficulty == bilgiMixDifficulty ? '' : difficulty;
     if (diff.isEmpty) {
       if (sub.isEmpty) return categories[categoryId] ?? 0;
       return subs['$categoryId|$sub'] ?? 0;

@@ -49,6 +49,98 @@ bool bilgiNamesReady(Map<String, String> labels, String scope, String key, {List
   return true;
 }
 
+/// Türkçe ve her çeviri dört şık taşıyorsa harf kaydırılabilir.
+bool bilgiLettersRotatable(BilgiQuestion question) {
+  if (question.options.length != 4) return false;
+  if (question.correct < 0 || question.correct > 3) return false;
+  for (final row in question.translations.values) {
+    if (row.options.length != 4) return false;
+  }
+  return true;
+}
+
+/// Doğru cümleyi [to] harfine alır. Aynı dönüş her dilin şık listesine uygulanır.
+/// Metin, açıklama ve durum değişmez. Dört şık yoksa null.
+BilgiQuestion? bilgiMoveCorrectOption(BilgiQuestion question, int to) {
+  if (!bilgiLettersRotatable(question) || to < 0 || to > 3) return null;
+  final from = question.correct;
+  if (from == to) return question;
+  final shift = (to - from) % 4;
+  final delta = shift < 0 ? shift + 4 : shift;
+  List<String> turn(List<String> options) {
+    final next = List<String>.filled(4, '');
+    for (var i = 0; i < 4; i++) {
+      next[(i + delta) % 4] = options[i];
+    }
+    return next;
+  }
+
+  return question.copyWith(
+    options: turn(question.options),
+    correct: to,
+    translations: {
+      for (final entry in question.translations.entries)
+        entry.key: BilgiTranslation(
+          text: entry.value.text,
+          options: turn(entry.value.options),
+          explanation: entry.value.explanation,
+        ),
+    },
+  );
+}
+
+/// Her alt kategoride doğru harf yaklaşık dörtte bir olsun. Değişen soruları döner.
+/// Etiketi olmayan sorular, kategorinin etiketsiz kümesinde dengelenir.
+List<BilgiQuestion> bilgiBalanceAnswerLetters(Iterable<BilgiQuestion> questions) {
+  final latest = <String, BilgiQuestion>{for (final question in questions) question.id: question};
+  final groups = <String, List<String>>{};
+  for (final question in questions) {
+    final tags = [for (final tag in question.tags) if (tag.trim().isNotEmpty) tag.trim()];
+    final keys = tags.isEmpty ? ['${question.categoryId}|'] : [for (final tag in tags) '${question.categoryId}|$tag'];
+    for (final key in keys) {
+      groups.putIfAbsent(key, () => []).add(question.id);
+    }
+  }
+  final changed = <String, BilgiQuestion>{};
+  for (final ids in groups.values) {
+    for (final moved in _balanceLetterGroup([for (final id in ids) latest[id]!])) {
+      latest[moved.id] = moved;
+      changed[moved.id] = moved;
+    }
+  }
+  return changed.values.toList();
+}
+
+List<BilgiQuestion> _balanceLetterGroup(List<BilgiQuestion> group) {
+  final total = group.length;
+  final base = total ~/ 4;
+  final extra = total % 4;
+  final need = [for (var i = 0; i < 4; i++) base + (i < extra ? 1 : 0)];
+  for (final question in group) {
+    need[question.correct.clamp(0, 3)] -= 1;
+  }
+  final changed = <BilgiQuestion>[];
+  for (final question in group) {
+    if (!bilgiLettersRotatable(question)) continue;
+    final from = question.correct;
+    if (need[from] >= 0) continue;
+    var to = -1;
+    for (var i = 0; i < 4; i++) {
+      if (need[i] > 0) {
+        to = i;
+        break;
+      }
+    }
+    if (to < 0) continue;
+    final moved = bilgiMoveCorrectOption(question, to);
+    if (moved == null) continue;
+    changed.add(moved);
+    need[from] += 1;
+    need[to] -= 1;
+  }
+  return changed;
+}
+
 class BilgiQuestion {
   const BilgiQuestion({
     required this.id,

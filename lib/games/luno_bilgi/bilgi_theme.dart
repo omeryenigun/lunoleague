@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:kelimelig/core/theme/shimmer_title.dart';
 
 class BilgiColors {
   static const primary = Color(0xFF6C3CE9);
@@ -43,6 +44,7 @@ class BilgiTopBar extends StatelessWidget {
     required this.title,
     this.onBack,
     this.onHome,
+    this.leading,
     this.trailing,
     this.titleAlign = TextAlign.center,
   });
@@ -50,60 +52,65 @@ class BilgiTopBar extends StatelessWidget {
   final String title;
   final VoidCallback? onBack;
   final VoidCallback? onHome;
+  final Widget? leading;
   final Widget? trailing;
   final TextAlign titleAlign;
 
   @override
   Widget build(BuildContext context) {
-    final leading = onBack != null
-        ? _IconButton(icon: Icons.arrow_back_rounded, onTap: onBack!)
-        : onHome != null
-            ? _IconButton(icon: Icons.arrow_back_rounded, onTap: onHome!)
-            : const SizedBox(width: 40, height: 40);
-    final titleStyle = const TextStyle(fontSize: 18, fontWeight: FontWeight.w700);
-    final rewards = Flexible(
-      child: Align(
-        alignment: Alignment.centerRight,
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.centerRight,
-          child: trailing ?? const SizedBox(width: 40, height: 40),
-        ),
+    final leadingSlot = leading ??
+        (onBack != null
+            ? _IconButton(icon: Icons.arrow_back_rounded, onTap: onBack!)
+            : onHome != null
+                ? _IconButton(icon: Icons.arrow_back_rounded, onTap: onHome!)
+                : const SizedBox(width: 40, height: 40));
+    final leftTitle = titleAlign == TextAlign.left || titleAlign == TextAlign.start;
+    final titleSlot = Expanded(
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: leftTitle ? Alignment.centerLeft : Alignment.center,
+        child: BilgiHeaderTitle(title, align: leftTitle ? TextAlign.left : TextAlign.center),
       ),
     );
-    final leftTitle = titleAlign == TextAlign.left || titleAlign == TextAlign.start;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
       child: SizedBox(
         height: 40,
-        child: leftTitle
-            ? Row(
-                children: [
-                  leading,
-                  const SizedBox(width: 10),
-                  Text(title, style: titleStyle),
-                  const Spacer(),
-                  rewards,
-                ],
-              )
-            : Stack(
-                alignment: Alignment.center,
-                children: [
-                  Text(
-                    title,
-                    textAlign: TextAlign.center,
-                    style: titleStyle,
-                  ),
-                  Row(
-                    children: [
-                      leading,
-                      const Spacer(),
-                      rewards,
-                    ],
-                  ),
-                ],
+        child: Row(
+          children: [
+            leadingSlot,
+            const SizedBox(width: 10),
+            titleSlot,
+            const SizedBox(width: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 210),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: trailing ?? const SizedBox(width: 40, height: 40),
               ),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+/// Compact colorful title for Bilgi headers. Opening page keeps [ShimmerTitle] at 32.
+class BilgiHeaderTitle extends StatelessWidget {
+  const BilgiHeaderTitle(this.text, {super.key, this.align = TextAlign.center});
+
+  final String text;
+  final TextAlign align;
+
+  @override
+  Widget build(BuildContext context) {
+    return ShimmerTitle(
+      text: text,
+      fontSize: 24,
+      textAlign: align,
+      compact: true,
     );
   }
 }

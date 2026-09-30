@@ -11,6 +11,12 @@ import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_trial_questions.dart';
 
 void main() {
+  test('a mixed draw splits the count across four difficulties', () {
+    expect(bilgiMixQuotas(10), [3, 3, 2, 2]);
+    expect(bilgiMixQuotas(8), [2, 2, 2, 2]);
+    expect(bilgiMixQuotas(1), [1, 0, 0, 0]);
+  });
+
   test('score gold xp and lives follow the bilgi rules', () {
     final scored = scoreQuestion(
       difficulty: 'orta',
@@ -50,6 +56,48 @@ void main() {
     final second = await server.claimDaily();
     expect(second.message, '📅 Bugünkü hakkını kullandın.');
     expect(DateKeys.dayKey(clock), '2026-09-28');
+  });
+
+  test('rewarded ad gold is the configured amount', () async {
+    final server = LunoBilgiServer(MemoryKeyValueStore());
+    final cfg = await server.config();
+    final before = (await server.profile()).gold;
+    final granted = await server.grantAd(kind: 'gold');
+    expect(granted.message, isNull);
+    expect(granted.profile!.gold, before + cfg.rewardedGold);
+    expect(granted.profile!.adGoldToday, 1);
+  });
+
+  test('a finished score doubles only after the rewarded path', () async {
+    final server = LunoBilgiServer(MemoryKeyValueStore());
+    final question = BilgiQuestion(
+      id: 'q1',
+      categoryId: 'genel',
+      text: 'Soru',
+      options: const ['A', 'B', 'C', 'D'],
+      correct: 0,
+      difficulty: 'kolay',
+      explanation: 'aciklama',
+    );
+    final started = await server.startRound(
+      modeId: 'sakin',
+      categoryId: tumuKarmaId,
+      fixedQuestions: [question],
+      questionCount: 1,
+    );
+    expect(started.round, isNotNull);
+    final round = started.round!;
+    await server.answer(roundId: round.id, option: 0, timeLeft: 10);
+    final finished = await server.finish(round.id);
+    final score = finished.round!.score;
+    final total = finished.profile!.totalScore;
+    expect(score, greaterThan(0));
+    final doubled = await server.doubleFinishedScore(round.id);
+    expect(doubled.message, isNull);
+    expect(doubled.round!.score, score * 2);
+    expect(doubled.profile!.totalScore, total + score);
+    expect(doubled.profile!.gold, finished.profile!.gold);
+    expect(doubled.profile!.adDoubleToday, 1);
   });
 
   test('ensureSeed removes leftover trial questions and does not put them back', () async {
@@ -467,6 +515,83 @@ void main() {
     expect(bilgiQuestionLanguagesReady(bare, locales: const ['tr']), isTrue);
     expect(bilgiNamesReady(const {}, 'category', 'genel', locales: const ['tr']), isTrue);
     expect(bilgiExtraLocales(const ['tr', 'de']), ['de']);
+    final shifted = bilgiMoveCorrectOption(
+      const BilgiQuestion(
+        id: 'capital',
+        categoryId: 'cografya',
+        text: 'Başkent?',
+        options: ['Ankara', 'İstanbul', 'İzmir', 'Bursa'],
+        correct: 0,
+        difficulty: 'kolay',
+        explanation: 'Çünkü',
+        translations: {
+          'en': BilgiTranslation(
+            text: 'Capital?',
+            options: ['Ankara', 'Istanbul', 'Izmir', 'Bursa'],
+            explanation: 'Because',
+          ),
+        },
+      ),
+      2,
+    );
+    expect(shifted, isNotNull);
+    expect(shifted!.correct, 2);
+    expect(shifted.options[2], 'Ankara');
+    expect(shifted.translations['en']!.options[2], 'Ankara');
+    expect(shifted.text, 'Başkent?');
+    expect(shifted.explanation, 'Çünkü');
+    expect(shifted.translations['en']!.text, 'Capital?');
+    expect(
+      bilgiMoveCorrectOption(
+        const BilgiQuestion(
+          id: 'short',
+          categoryId: 'cografya',
+          text: 'Başkent?',
+          options: ['Ankara', 'İstanbul', 'İzmir', 'Bursa'],
+          correct: 0,
+          difficulty: 'kolay',
+          explanation: 'Çünkü',
+          translations: {
+            'en': BilgiTranslation(text: 'Capital?', options: ['Ankara', 'Istanbul', 'Izmir'], explanation: 'Because'),
+          },
+        ),
+        2,
+      ),
+      isNull,
+    );
+    final balanced = bilgiBalanceAnswerLetters([
+      for (var i = 0; i < 4; i++)
+        BilgiQuestion(
+          id: 'q$i',
+          categoryId: 'felsefe',
+          text: 'Soru $i',
+          options: ['Doğru $i', 'Yanlış', 'Başka', 'Son'],
+          correct: 0,
+          difficulty: 'kolay',
+          explanation: 'Çünkü',
+        ),
+    ]);
+    expect(balanced, hasLength(3));
+    expect(balanced.map((question) => question.correct).toList(), [1, 2, 3]);
+    expect(balanced.every((question) => question.options[question.correct] == 'Doğru ${question.id.substring(1)}'), isTrue);
+    final bySub = bilgiBalanceAnswerLetters([
+      for (final tag in ['Antik', 'Modern'])
+        for (var i = 0; i < 4; i++)
+          BilgiQuestion(
+            id: '$tag$i',
+            categoryId: 'felsefe',
+            text: 'Soru $tag $i',
+            options: ['Doğru', 'Yanlış', 'Başka', 'Son'],
+            correct: 0,
+            difficulty: 'kolay',
+            explanation: 'Çünkü',
+            tags: [tag],
+          ),
+    ]);
+    for (final tag in ['Antik', 'Modern']) {
+      final letters = bySub.where((question) => question.tags.contains(tag)).map((question) => question.correct).toList();
+      expect(letters, [1, 2, 3]);
+    }
     expect(bilgiPendingApprovalReady(bare), isFalse);
     expect(bilgiPendingApprovalReady(full), isTrue);
     final approved = bilgiQuestionWithReviewStatus(full, 'approved');

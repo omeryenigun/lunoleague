@@ -25,6 +25,18 @@ int difficultyPoints(
   };
 }
 
+const bilgiMixDifficulty = 'karisik';
+
+const bilgiDifficultyLevels = ['kolay', 'orta', 'zor', 'efsane'];
+
+/// Shares [count] across the four difficulties. The first remainder levels get one extra.
+List<int> bilgiMixQuotas(int count) {
+  if (count <= 0) return const [0, 0, 0, 0];
+  final base = count ~/ 4;
+  final extra = count % 4;
+  return [for (var i = 0; i < 4; i++) base + (i < extra ? 1 : 0)];
+}
+
 int difficultySeconds(String difficulty) {
   return switch (difficulty) {
     'orta' => 15,

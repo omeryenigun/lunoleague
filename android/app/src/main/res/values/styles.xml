@@ -15,9 +15,12 @@
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowBackground">?android:colorBackground</item>
     </style>
-    <!-- Keeps the rewarded-ad close button out from under the system bars. -->
+    <!-- Android 15 draws full-screen ads under the system bars and covers the
+         close button. Opt out of that edge-to-edge enforcement and keep the
+         close control inside the window. -->
     <style name="AdTheme" parent="@android:style/Theme.Translucent.NoTitleBar">
         <item name="android:windowOptOutEdgeToEdgeEnforcement" tools:targetApi="35">true</item>
         <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="27">shortEdges</item>
+        <item name="android:fitsSystemWindows">true</item>
     </style>
 </resources>
