@@ -206,7 +206,7 @@ const bilgiCategories = <BilgiCategory>[
   BilgiCategory(id: 'dunya_kultur', group: 'A. Temel Bilgi', name: 'Dünya Kültürleri', emoji: '🌏', subs: ['Gelenekler', 'Bayramlar']),
   BilgiCategory(id: 'cografya', group: 'A. Temel Bilgi', name: 'Coğrafya', emoji: '🌍', subs: ['Ülkeler', 'Nehirler']),
   BilgiCategory(id: 'doga', group: 'A. Temel Bilgi', name: 'Doğa ve Çevre', emoji: '🌿', subs: ['Bitkiler', 'İklim']),
-  BilgiCategory(id: 'uzay', group: 'A. Temel Bilgi', name: 'Uzay ve Astronomi', emoji: '🚀', subs: ['Gezegenler', 'Gökyüzü']),
+  BilgiCategory(id: 'uzay', group: 'A. Temel Bilgi', name: 'Uzay ve Astronomi', emoji: '🚀', subs: ['Güneş Sistemi', 'Gökyüzü']),
   BilgiCategory(id: 'deniz', group: 'A. Temel Bilgi', name: 'Deniz ve Okyanus', emoji: '🌊', subs: ['Okyanuslar', 'Deniz Canlıları']),
   BilgiCategory(id: 'afet', group: 'A. Temel Bilgi', name: 'Doğal Afetler', emoji: '🌋', subs: ['Deprem', 'İklim Olayları']),
   BilgiCategory(id: 'tas', group: 'A. Temel Bilgi', name: 'Değerli Taşlar', emoji: '💎', subs: ['Elmas', 'Madenler']),

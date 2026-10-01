@@ -61,6 +61,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   var _moveSub = '';
   final _selectedIds = <String>{};
   var _bulkBusy = false;
+  var _bulkStatusOpen = false;
   var _formSerial = 0;
   String? _translatingId;
   BilgiQuestion? _editing;
@@ -1198,6 +1199,68 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   bool _pendingReady(BilgiQuestion question) =>
       bilgiPendingApprovalReady(question, locales: _publishLocales(question.categoryId));
 
+  Future<void> _applyBulkStatus(String status) async {
+    if (_bulkBusy) return;
+    if (_selectedIds.isEmpty) {
+      setState(() => _note = 'Önce soru seç.');
+      return;
+    }
+    const labels = {
+      'approved': 'Onaylı',
+      'pending': 'Bekleyen',
+      'draft': 'Taslak',
+      'rejected': 'Reddedilen',
+    };
+    if (!labels.containsKey(status)) return;
+    final chosen = _questions.where((question) => _selectedIds.contains(question.id)).toList();
+    final changed = <BilgiQuestion>[];
+    var blocked = 0;
+    for (final question in chosen) {
+      if (status == 'approved' && !_questionReady(question)) {
+        blocked++;
+        continue;
+      }
+      if (question.status == status) continue;
+      changed.add(bilgiQuestionWithReviewStatus(question, status));
+    }
+    if (changed.isEmpty) {
+      setState(() {
+        _bulkStatusOpen = false;
+        _note = blocked == 0
+            ? 'Seçili sorular zaten bu durumda.'
+            : '$blocked soru tercümesi tamam olmadığı için onaylanmadı.';
+      });
+      return;
+    }
+    setState(() => _bulkBusy = true);
+    try {
+      await _saveRemote(changed);
+    } on StateError catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _bulkBusy = false;
+        _note = error.message;
+      });
+      return;
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _bulkBusy = false;
+        _note = 'Durum kaydedilemedi.';
+      });
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _bulkBusy = false;
+      _bulkStatusOpen = false;
+      _note = blocked == 0
+          ? '${changed.length} sorunun durumu ${labels[status]} oldu.'
+          : '${changed.length} sorunun durumu ${labels[status]} oldu. $blocked soru tercümesi tamam olmadığı için onaylanmadı.';
+    });
+    await _load();
+  }
+
   Future<void> _translateSelected() async {
     if (_bulkBusy) return;
     if (_selectedIds.isEmpty) {
@@ -1383,6 +1446,16 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                   ),
                   _primary('Kategoriyi değiştir', () { _applyBulkCategory(); }),
                   _primary('Seçilenleri çevir', () { _translateSelected(); }),
+                  _primary('Toplu durum güncelle', () {
+                    if (_bulkBusy) return;
+                    setState(() => _bulkStatusOpen = !_bulkStatusOpen);
+                  }),
+                  if (_bulkStatusOpen) ...[
+                    _ghost('Onaylı', () { _applyBulkStatus('approved'); }),
+                    _ghost('Bekleyen', () { _applyBulkStatus('pending'); }),
+                    _ghost('Taslak', () { _applyBulkStatus('draft'); }),
+                    _ghost('Reddedilen', () { _applyBulkStatus('rejected'); }),
+                  ],
                   _solid('Seçimi sil', BilgiColors.error, Colors.white, () { _deleteSelected(); }),
                 ],
               ),

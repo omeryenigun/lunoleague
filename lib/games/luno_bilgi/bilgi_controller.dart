@@ -247,7 +247,7 @@ class BilgiController extends ChangeNotifier {
       } else {
         stack
           ..clear()
-          ..add('settings');
+          ..add('profile');
       }
       notifyListeners();
       await loadCategoryCounts();

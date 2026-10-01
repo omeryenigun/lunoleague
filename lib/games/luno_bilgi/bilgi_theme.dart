@@ -46,7 +46,7 @@ class BilgiTopBar extends StatelessWidget {
     this.onHome,
     this.leading,
     this.trailing,
-    this.titleAlign = TextAlign.center,
+    this.titleAlign = TextAlign.left,
   });
 
   final String title;
@@ -58,12 +58,14 @@ class BilgiTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final leadingSlot = leading ??
-        (onBack != null
-            ? _IconButton(icon: Icons.arrow_back_rounded, onTap: onBack!)
-            : onHome != null
-                ? _IconButton(icon: Icons.arrow_back_rounded, onTap: onHome!)
-                : const SizedBox(width: 40, height: 40));
+    final mark = leading ??
+        const Image(
+          image: AssetImage('assets/images/luno_bilgi_logo.png'),
+          width: 40,
+          height: 40,
+          fit: BoxFit.contain,
+        );
+    final back = onBack ?? onHome;
     final leftTitle = titleAlign == TextAlign.left || titleAlign == TextAlign.start;
     final titleSlot = Expanded(
       child: FittedBox(
@@ -78,18 +80,24 @@ class BilgiTopBar extends StatelessWidget {
         height: 40,
         child: Row(
           children: [
-            leadingSlot,
+            if (back != null) ...[
+              _IconButton(icon: Icons.arrow_back_rounded, onTap: back),
+              const SizedBox(width: 6),
+            ],
+            mark,
             const SizedBox(width: 10),
             titleSlot,
-            const SizedBox(width: 8),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 210),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerRight,
-                child: trailing ?? const SizedBox(width: 40, height: 40),
+            if (trailing != null) ...[
+              const SizedBox(width: 8),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 210),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: trailing,
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -208,9 +216,8 @@ class BilgiBottomNav extends StatelessWidget {
     required this.current,
     required this.onSelect,
     this.home = 'Ana Sayfa',
-    this.play = 'Oyna',
+    this.play = 'Bilgini Sına',
     this.league = 'Lig',
-    this.settings = 'Ayarlar',
     this.profile = 'Profil',
     this.shop = 'Mağaza',
   });
@@ -220,7 +227,6 @@ class BilgiBottomNav extends StatelessWidget {
   final String home;
   final String play;
   final String league;
-  final String settings;
   final String profile;
   final String shop;
 
@@ -233,12 +239,10 @@ class BilgiBottomNav extends StatelessWidget {
       ),
       padding: const EdgeInsets.fromLTRB(0, 10, 0, 16),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           _Nav('home', '🏠', home, current, onSelect),
           _Nav('play', '🎮', play, current, onSelect),
           _Nav('league', '🏆', league, current, onSelect),
-          _Nav('settings', '⚙️', settings, current, onSelect),
           _Nav('profile', '👤', profile, current, onSelect),
           _Nav('shop', '🛒', shop, current, onSelect),
         ],
@@ -260,17 +264,29 @@ class _Nav extends StatelessWidget {
   Widget build(BuildContext context) {
     final active = current == id;
     final color = active ? BilgiColors.primary : BilgiColors.muted;
-    return InkWell(
-      onTap: () => onSelect(id),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(icon, style: const TextStyle(fontSize: 20)),
-            const SizedBox(height: 4),
-            Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color)),
-          ],
+    return Expanded(
+      child: InkWell(
+        onTap: () => onSelect(id),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: Center(child: Text(icon, style: const TextStyle(fontSize: 20, height: 1))),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 10, height: 1.15, fontWeight: FontWeight.w600, color: color),
+              ),
+            ],
+          ),
         ),
       ),
     );

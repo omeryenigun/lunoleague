@@ -1,8 +1,11 @@
 import 'dart:math' as math;
 
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:kelimelig/core/l10n/game_locale.dart';
 import 'package:kelimelig/core/constants/game_version.dart';
 import 'package:kelimelig/core/services/ad_service.dart';
@@ -142,7 +145,6 @@ class _BilgiScreenState extends State<BilgiScreen> {
             home: _game.t('home'),
             play: _game.t('play'),
             league: _game.t('league'),
-            settings: _game.t('settings'),
             profile: _game.t('profile'),
             shop: _game.t('shop'),
           ),
@@ -179,7 +181,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
       'daily' => _daily(),
       'event' => _events(),
       'language' => _language(),
-      'settings' => _settings(user!),
+      'settings' => _settings(),
       'achievements' => _achievements(user!),
       'history' => _history(),
       'login' => _auth(register: false),
@@ -200,294 +202,495 @@ class _BilgiScreenState extends State<BilgiScreen> {
   Widget _home(BilgiProfile user) {
     final ready = _game.rewardReady();
     final reward = _game.rewardLabel(_game.rewardIndex());
-    final free = !_game.server.needsAd(user, _game.config);
     final solo = bilgiModes.where((mode) => mode.group == 'solo').toList();
     final popular = [for (final category in _game.categories) if (category.popular) category];
     final dailyLine = ready
         ? (user.streak > 0 ? _fill('streak_line', {'n': '${user.streak}', 'reward': reward}) : reward)
         : _fill('reward_tomorrow', {'reward': reward});
-    return ListView(
-      padding: const EdgeInsets.only(bottom: 24),
+    const bannerShadow = BoxShadow(color: Color.fromRGBO(0, 0, 0, 0.3), blurRadius: 24, offset: Offset(0, 8));
+    const cardShadow = BoxShadow(color: Color.fromRGBO(0, 0, 0, 0.25), blurRadius: 20, offset: Offset(0, 8));
+    const hairline = Color.fromRGBO(255, 255, 255, 0.1);
+    return Stack(
+      fit: StackFit.expand,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-          child: Row(
-            children: [
-              _BilgiLogo(size: 44, semanticLabel: _game.t('game_name')),
-              const SizedBox(width: 10),
-              Expanded(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: BilgiHeaderTitle(_game.t('game_name'), align: TextAlign.left),
-                ),
-              ),
-              const SizedBox(width: 8),
-              BilgiStatChip(icon: '🪙', value: _grouped(user.gold)),
-              const SizedBox(width: 10),
-              BilgiStatChip(icon: '💎', value: _grouped(user.diamond)),
-            ],
-          ),
-        ),
-        if (_game.notice != null) _note(_game.notice!),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        const Positioned.fill(
           child: DecoratedBox(
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [BilgiColors.primary, BilgiColors.primaryLight],
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF0B0E14), Color(0xFF2A1B3D)],
               ),
-              borderRadius: BorderRadius.circular(bilgiRadius),
             ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          ready ? '🎁 ${_game.t('reward_ready')}' : '🎁 ${_game.t('reward_title')}',
-                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          ),
+        ),
+        const Positioned(
+          top: -80,
+          left: -80,
+          child: _BilgiHomeGlow(color: Color(0xFF7B61FF), size: 250, opacity: 0.25),
+        ),
+        const Positioned(
+          bottom: 50,
+          right: -80,
+          child: _BilgiHomeGlow(color: Color(0xFFE91E63), size: 300, opacity: 0.18),
+        ),
+        Column(
+          children: [
+            _homeHeader(user),
+            Expanded(
+              child: ScrollConfiguration(
+                behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+                child: ListView(
+                  padding: const EdgeInsets.only(bottom: 20),
+                  children: [
+                    if (_game.notice != null) _note(_game.notice!),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFF6D4AFF), Color(0xFF8B5CF6)],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: hairline),
+                          boxShadow: const [bannerShadow],
                         ),
-                        const SizedBox(height: 4),
-                        Text(dailyLine, style: const TextStyle(fontSize: 12, color: Color(0xE6FFFFFF))),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  TextButton(
-                    style: TextButton.styleFrom(
-                      backgroundColor: const Color(0x40FFFFFF),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    onPressed: () => _game.open('reward'),
-                    child: Text(_game.t('claim'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: BilgiColors.card,
-              borderRadius: BorderRadius.circular(bilgiRadius),
-              border: Border.all(color: BilgiColors.secondary, width: 2),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Wrap(
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          spacing: 8,
-                          children: [
-                            Text('🎮 ${_game.t('free_play')}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-                            if (free)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: BilgiColors.secondary,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Text(
-                                  _game.t('ready_badge'),
-                                  style: const TextStyle(color: BilgiColors.bg, fontSize: 10, fontWeight: FontWeight.w800),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      ready ? '🎁 ${_game.t('reward_ready')}' : '🎁 ${_game.t('reward_title')}',
+                                      style: _homeInter(size: 14, weight: FontWeight.w700),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      dailyLine,
+                                      style: _homeInter(
+                                        size: 11,
+                                        weight: FontWeight.w500,
+                                        color: const Color.fromRGBO(255, 255, 255, 0.85),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          free ? _game.t('free_today') : _game.t('free_ad'),
-                          style: const TextStyle(fontSize: 12, color: BilgiColors.muted),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  TextButton(
-                    style: TextButton.styleFrom(
-                      backgroundColor: BilgiColors.secondary,
-                      foregroundColor: BilgiColors.bg,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    onPressed: () {
-                      _game.modeId = 'hizli';
-                      _game.categoryId = tumuKarmaId;
-                      _game.difficulty = 'hepsi';
-                      _game.start();
-                    },
-                    child: Text(_game.t('play'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        _sectionTitle(_game.t('quick_start'), _game.t('see_all'), () => _game.tab('play')),
-        GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: 1.55,
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-          children: [
-            for (final mode in solo)
-              Material(
-                color: BilgiColors.card,
-                borderRadius: BorderRadius.circular(bilgiRadius),
-                child: InkWell(
-                  onTap: () => _game.selectMode(mode.id),
-                  borderRadius: BorderRadius.circular(bilgiRadius),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(mode.emoji, style: const TextStyle(fontSize: 28)),
-                        const Spacer(),
-                        Text(_game.t('mode_${mode.id}'), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 4),
-                        Text(_modeLine(mode), style: const TextStyle(fontSize: 11, color: BilgiColors.muted)),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-        if (popular.isNotEmpty) ...[
-          _sectionTitle(_game.t('popular'), _game.t('see_all'), () => _game.open('categories')),
-          SizedBox(
-            height: 96,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-              children: [
-                for (final category in popular)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 12),
-                    child: Material(
-                      color: BilgiColors.card,
-                      borderRadius: BorderRadius.circular(10),
-                      child: InkWell(
-                        onTap: () => _game.selectCategory(category.id),
-                        borderRadius: BorderRadius.circular(10),
-                        child: SizedBox(
-                          width: 90,
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(category.emoji, style: const TextStyle(fontSize: 24)),
-                              const SizedBox(height: 6),
-                              Text(
-                                _game.categoryLabel(category.id, category.name),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                              const SizedBox(width: 12),
+                              _homePillButton(
+                                label: _game.t('claim'),
+                                onTap: () => _game.open('reward'),
+                                background: const Color.fromRGBO(255, 255, 255, 0.2),
+                                foreground: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                               ),
                             ],
                           ),
                         ),
                       ),
                     ),
-                  ),
-              ],
-            ),
-          ),
-        ],
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [BilgiColors.primary, BilgiColors.primaryLight],
-              ),
-              borderRadius: BorderRadius.circular(bilgiRadius),
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () => _game.open('categories'),
-                borderRadius: BorderRadius.circular(bilgiRadius),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  child: Text(
-                    '📚 ${_fill('see_categories', {'n': '${_game.categories.length}'})}',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-                  ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFF059669), Color(0xFF10B981)],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: hairline),
+                          boxShadow: const [bannerShadow],
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  _game.t('free_play'),
+                                  style: _homeInter(size: 14, weight: FontWeight.w700),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              _homePillButton(
+                                label: _game.t('play_now'),
+                                onTap: () {
+                                  _game.modeId = 'hizli';
+                                  _game.categoryId = tumuKarmaId;
+                                  _game.difficulty = 'hepsi';
+                                  _game.start();
+                                },
+                                background: Colors.white,
+                                foreground: const Color(0xFF059669),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    _sectionTitle(_game.t('quick_start'), _game.t('see_all'), () => _game.tab('play')),
+                    GridView.count(
+                      crossAxisCount: 2,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      childAspectRatio: 1.5,
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                      children: [
+                        for (final mode in solo)
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: _quickStartGradient(mode.id),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: hairline),
+                              boxShadow: const [cardShadow],
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              borderRadius: BorderRadius.circular(12),
+                              clipBehavior: Clip.antiAlias,
+                              child: InkWell(
+                                onTap: () => _game.selectMode(mode.id),
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    Positioned(
+                                      top: 12,
+                                      right: 12,
+                                      child: Opacity(
+                                        opacity: 0.25,
+                                        child: Text(mode.emoji, style: const TextStyle(fontSize: 28, height: 1, color: Colors.white)),
+                                      ),
+                                    ),
+                                    Padding(
+                                      padding: const EdgeInsets.all(16),
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.end,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            _game.t('mode_${mode.id}'),
+                                            style: _homeInter(size: 14, weight: FontWeight.w700),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            _modeLine(mode),
+                                            style: _homeInter(
+                                              size: 11,
+                                              weight: FontWeight.w500,
+                                              color: const Color.fromRGBO(255, 255, 255, 0.85),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    if (popular.isNotEmpty) ...[
+                      _sectionTitle(
+                        _game.t('popular'),
+                        _game.t('see_all'),
+                        () => _game.open('categories'),
+                        accent: const Color(0xFFE91E63),
+                      ),
+                      GridView.count(
+                        crossAxisCount: 4,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        crossAxisSpacing: 10,
+                        mainAxisSpacing: 10,
+                        childAspectRatio: 0.82,
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                        children: [
+                          for (final category in popular)
+                            DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: const Color.fromRGBO(255, 255, 255, 0.04),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color.fromRGBO(255, 255, 255, 0.08)),
+                                boxShadow: const [
+                                  BoxShadow(color: Color.fromRGBO(0, 0, 0, 0.15), blurRadius: 12, offset: Offset(0, 4)),
+                                ],
+                              ),
+                              child: Material(
+                                color: Colors.transparent,
+                                borderRadius: BorderRadius.circular(12),
+                                clipBehavior: Clip.antiAlias,
+                                child: InkWell(
+                                  onTap: () => _game.selectCategory(category.id),
+                                  child: Padding(
+                                    padding: const EdgeInsets.fromLTRB(8, 12, 8, 12),
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Container(
+                                          width: 32,
+                                          height: 32,
+                                          alignment: Alignment.center,
+                                          decoration: const BoxDecoration(
+                                            color: Color.fromRGBO(255, 255, 255, 0.08),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Text(category.emoji, style: const TextStyle(fontSize: 14, height: 1)),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          _game.categoryLabel(category.id, category.name),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          textAlign: TextAlign.center,
+                                          style: _homeInter(
+                                            size: 10,
+                                            weight: FontWeight.w600,
+                                            color: const Color(0xFF8B949E),
+                                            height: 1.15,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(20, popular.isNotEmpty ? 24 : 20, 20, 0),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: const Color.fromRGBO(123, 97, 255, 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color.fromRGBO(123, 97, 255, 0.5)),
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
+                          clipBehavior: Clip.antiAlias,
+                          child: InkWell(
+                            onTap: () => _game.open('categories'),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+                              child: Text(
+                                '📚 ${_fill('see_categories', {'n': '${_game.categories.length}'})}',
+                                textAlign: TextAlign.center,
+                                style: _homeInter(size: 13, weight: FontWeight.w600, color: const Color(0xFF9B85FF)),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFFF472B6), Color(0xFFFB923C)],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color.fromRGBO(255, 255, 255, 0.2)),
+                          boxShadow: const [
+                            BoxShadow(color: Color.fromRGBO(244, 114, 182, 0.3), blurRadius: 24, offset: Offset(0, 8)),
+                          ],
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color.fromRGBO(255, 255, 255, 0.25),
+                                        borderRadius: BorderRadius.circular(50),
+                                      ),
+                                      child: Text(
+                                        _game.t('weekly'),
+                                        style: _homeInter(size: 10, weight: FontWeight.w700),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      '🏆 ${_game.t('league_started')}',
+                                      style: _homeInter(size: 16, weight: FontWeight.w800),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      _game.t('league_prize'),
+                                      style: _homeInter(
+                                        size: 11,
+                                        weight: FontWeight.w500,
+                                        color: const Color.fromRGBO(255, 255, 255, 0.95),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              _homePillButton(
+                                label: _game.t('join'),
+                                onTap: () => _game.tab('league'),
+                                background: Colors.white,
+                                foreground: const Color(0xFFBE185D),
+                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                                fontSize: 13,
+                                shadow: const BoxShadow(
+                                  color: Color.fromRGBO(0, 0, 0, 0.15),
+                                  blurRadius: 12,
+                                  offset: Offset(0, 4),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  TextStyle _homeInter({
+    double size = 14,
+    FontWeight weight = FontWeight.w500,
+    Color color = Colors.white,
+    double? height,
+  }) {
+    return GoogleFonts.inter(fontSize: size, fontWeight: weight, color: color, height: height);
+  }
+
+  Widget _homeHeader(BilgiProfile user) {
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: DecoratedBox(
+          decoration: const BoxDecoration(
+            color: Color.fromRGBO(11, 14, 20, 0.45),
+            border: Border(bottom: BorderSide(color: Color.fromRGBO(255, 255, 255, 0.08))),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color.fromRGBO(255, 255, 255, 0.15)),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: _BilgiLogo(size: 36, semanticLabel: _game.t('game_name')),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: BilgiHeaderTitle(_game.t('game_name'), align: TextAlign.left),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 220),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: _homeStatPills(user),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [BilgiColors.accent, Color(0xFFFF8FAB)],
+      ),
+    );
+  }
+
+  Widget _homeStatPills(BilgiProfile user) {
+    final items = _balanceItems(user);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < items.length; i++) ...[
+          if (i > 0) const SizedBox(width: 8),
+          Semantics(
+            container: true,
+            label: '${items[i].name} ${items[i].count}',
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 44),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color.fromRGBO(255, 255, 255, 0.06),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color.fromRGBO(255, 255, 255, 0.08)),
               ),
-              borderRadius: BorderRadius.circular(bilgiRadius),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0x40FFFFFF),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(_game.t('weekly'), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
-                  ),
-                  const SizedBox(height: 10),
-                  Text('🏆 ${_game.t('league_started')}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 6),
-                  Text(
-                    _game.t('league_prize'),
-                    style: const TextStyle(fontSize: 12, color: Color(0xE6FFFFFF)),
-                  ),
-                  const SizedBox(height: 14),
-                  TextButton(
-                    style: TextButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: BilgiColors.accent,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    onPressed: () => _game.tab('league'),
-                    child: Text(_game.t('join'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
-                  ),
+                  Text(items[i].icon, style: const TextStyle(fontSize: 12, height: 1)),
+                  const SizedBox(height: 2),
+                  Text(items[i].count, maxLines: 1, style: _homeInter(size: 11, weight: FontWeight.w700)),
                 ],
               ),
             ),
           ),
-        ),
+        ],
       ],
+    );
+  }
+
+  Widget _homePillButton({
+    required String label,
+    required VoidCallback onTap,
+    required Color background,
+    required Color foreground,
+    required EdgeInsets padding,
+    double fontSize = 12,
+    BoxShadow? shadow,
+  }) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(50),
+        boxShadow: shadow == null ? null : [shadow],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(50),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: padding,
+            child: Text(label, style: _homeInter(size: fontSize, weight: FontWeight.w700, color: foreground)),
+          ),
+        ),
+      ),
     );
   }
 
@@ -506,22 +709,37 @@ class _BilgiScreenState extends State<BilgiScreen> {
     return '$count • ${_fill('seconds', {'n': '${mode.seconds}'})}';
   }
 
-  Widget _wallet(BilgiProfile? user) {
-    if (user == null) return const SizedBox(width: 40);
+  LinearGradient _quickStartGradient(String id) {
+    const begin = Alignment.topLeft;
+    const end = Alignment.bottomRight;
+    return switch (id) {
+      'hizli' => const LinearGradient(begin: begin, end: end, colors: [Color(0xFF0F766E), Color(0xFF14B8A6)]),
+      'klasik' => const LinearGradient(begin: begin, end: end, colors: [Color(0xFF6D28D9), Color(0xFF8B5CF6)]),
+      'maraton' => const LinearGradient(begin: begin, end: end, colors: [Color(0xFFBE185D), Color(0xFFEC4899)]),
+      'sakin' => const LinearGradient(begin: begin, end: end, colors: [Color(0xFFB45309), Color(0xFFF59E0B)]),
+      _ => const LinearGradient(begin: begin, end: end, colors: [BilgiColors.card, BilgiColors.card]),
+    };
+  }
+
+  List<_BalanceStat> _balanceItems(BilgiProfile user, {bool shop = false}) {
     final jokers = user.jokers.values.fold<int>(0, (sum, count) => sum + count);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        BilgiStatChip(icon: '🪙', value: _grouped(user.gold)),
-        const SizedBox(width: 6),
-        BilgiStatChip(icon: '💎', value: _grouped(user.diamond)),
-        const SizedBox(width: 6),
-        if (_game.config.livesEnabled) ...[
-          BilgiStatChip(icon: '❤️', value: '${user.lives}'),
-          const SizedBox(width: 6),
-        ],
-        BilgiStatChip(icon: '🃏', value: '$jokers'),
-      ],
+    final gold = _BalanceStat('🪙', _grouped(user.gold), _game.t('bal_gold'));
+    final diamond = _BalanceStat('💎', _grouped(user.diamond), _game.t('bal_diamond'));
+    final lives = _BalanceStat('❤️', _grouped(user.lives), _game.t('bal_lives'));
+    final joker = _BalanceStat('🃏', _grouped(jokers), _game.t('bal_joker'));
+    if (shop) return [lives, gold, joker, diamond];
+    return [gold, diamond, lives, joker];
+  }
+
+  Widget? _headerBalances([BilgiProfile? user]) {
+    final profile = user ?? _game.profile;
+    if (profile == null) return null;
+    return _PlayerBalanceRow(
+      items: _balanceItems(profile),
+      dense: true,
+      compactText: true,
+      showNames: false,
+      expand: false,
     );
   }
 
@@ -535,16 +753,38 @@ class _BilgiScreenState extends State<BilgiScreen> {
     return out.toString();
   }
 
-  Widget _sectionTitle(String title, String action, VoidCallback onTap) {
+  Widget _sectionTitle(String title, String action, VoidCallback onTap, {Color accent = const Color(0xFF7B61FF)}) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 12, 12),
+      padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
       child: Row(
         children: [
-          Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-          const Spacer(),
-          TextButton(
-            onPressed: onTap,
-            child: Text(action, style: const TextStyle(color: BilgiColors.primary, fontWeight: FontWeight.w600, fontSize: 13)),
+          Container(
+            width: 4,
+            height: 16,
+            decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(2)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(title, style: _homeInter(size: 15, weight: FontWeight.w700)),
+          ),
+          Material(
+            color: const Color.fromRGBO(123, 97, 255, 0.15),
+            borderRadius: BorderRadius.circular(50),
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(50),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(action, style: _homeInter(size: 12, weight: FontWeight.w600, color: const Color(0xFF9B85FF))),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.arrow_forward_rounded, size: 12, color: Color(0xFF9B85FF)),
+                  ],
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -559,11 +799,29 @@ class _BilgiScreenState extends State<BilgiScreen> {
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
-        BilgiTopBar(
-          title: _game.t('page_play'),
-          titleAlign: TextAlign.left,
-          leading: const _BilgiLogo(size: 40),
-          trailing: _wallet(_game.profile),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 10, 4),
+          child: Row(
+            children: [
+              const _BilgiLogo(size: 40),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 6,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: BilgiHeaderTitle(_game.t('page_play'), align: TextAlign.left),
+                  ),
+                ),
+              ),
+              if (_headerBalances() != null) ...[
+                const SizedBox(width: 6),
+                _headerBalances()!,
+              ],
+            ],
+          ),
         ),
         if (_game.notice != null) _note(_game.notice!),
         _playHeading(_game.t('play_solo')),
@@ -602,12 +860,11 @@ class _BilgiScreenState extends State<BilgiScreen> {
 
   Widget _modeCard(BilgiMode mode) {
     final badge = switch (mode.id) {
-      'hizli' => _game.t('badge_free'),
-      'duello' => _game.t('badge_popular'),
+      'hizli' || 'duello' => _game.t('badge_popular'),
       'gunluk' => _game.t('badge_daily'),
       _ => null,
     };
-    final badgeColor = mode.id == 'duello' ? const Color(0xFFFF5C93) : BilgiColors.secondary;
+    final badgeColor = mode.id == 'hizli' || mode.id == 'duello' ? const Color(0xFFFF5C93) : BilgiColors.secondary;
     return _playRow(
       title: _game.t('mode_${mode.id}'),
       subtitle: _game.t('mode_blurb_${mode.id}'),
@@ -685,7 +942,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
     final query = _categoryQuery.text.trim().toLowerCase();
     return Column(
       children: [
-        BilgiTopBar(title: _game.t('page_categories'), onBack: _game.back),
+        BilgiTopBar(title: _game.t('page_categories'), onBack: _game.back, trailing: _headerBalances()),
         if (_game.notice != null) _note(_game.notice!),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
@@ -828,7 +1085,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
     final heroSub = subs.isEmpty ? heroCount : '$heroCount • ${_fill('subs_n', {'n': '${subs.length}'})}';
     return Column(
       children: [
-        BilgiTopBar(title: _game.t('page_detail'), onBack: _game.back),
+        BilgiTopBar(title: _game.t('page_detail'), onBack: _game.back, trailing: _headerBalances()),
         Expanded(
           child: ListView(
             padding: const EdgeInsets.only(bottom: 24),
@@ -896,7 +1153,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
     final countMismatch = playable != _game.questionChoice ? _fill('q_count', {'n': '$playable'}) : null;
     return Column(
       children: [
-        BilgiTopBar(title: _game.t('page_setup'), onBack: _game.back),
+        BilgiTopBar(title: _game.t('page_setup'), onBack: _game.back, trailing: _headerBalances()),
         Expanded(
           child: ListView(
             padding: const EdgeInsets.only(bottom: 12),
@@ -1538,7 +1795,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              BilgiStatChip(icon: '🪙', value: _grouped(user.gold)),
+              _headerBalances(user)!,
             ],
           ),
         ),
@@ -1624,7 +1881,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
-        BilgiTopBar(title: _game.t('profile')),
+        BilgiTopBar(title: _game.t('profile'), trailing: _headerBalances(user)),
         Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
@@ -1665,6 +1922,8 @@ class _BilgiScreenState extends State<BilgiScreen> {
                 ),
                 child: Text(user.title.toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
               ),
+              const SizedBox(height: 16),
+              _PlayerBalanceRow(items: _balanceItems(user)),
               const SizedBox(height: 16),
               Row(
                 children: [
@@ -1749,9 +2008,35 @@ class _BilgiScreenState extends State<BilgiScreen> {
             ),
           ),
         ),
+        ..._settingsSections(),
         const SizedBox(height: 16),
         _adBanner(),
       ],
+    );
+  }
+
+  Widget _shopHeader(BilgiProfile user) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+      child: Row(
+        children: [
+          const _BilgiLogo(size: 40),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 5,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: BilgiHeaderTitle(_game.t('page_shop'), align: TextAlign.left),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          _headerBalances(user)!,
+        ],
+      ),
     );
   }
 
@@ -1763,12 +2048,8 @@ class _BilgiScreenState extends State<BilgiScreen> {
     ];
     return ListView(
       children: [
-        BilgiTopBar(title: _game.t('page_shop')),
+        _shopHeader(user),
         if (_game.notice != null) _note(_game.notice!),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Text('🪙 ${user.gold}   💎 ${user.diamond}', style: const TextStyle(fontWeight: FontWeight.w800)),
-        ),
         for (final pack in packs)
           _tile('💳', pack.$1, '${pack.$2} • Play makbuzu gerekir', () {
             _game.notice = pack.$1 == 'Luno Plus'
@@ -1789,7 +2070,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
   Widget _duel() {
     return ListView(
       children: [
-        BilgiTopBar(title: _game.t('page_duel'), onBack: _game.back),
+        BilgiTopBar(title: _game.t('page_duel'), onBack: _game.back, trailing: _headerBalances()),
         if (_game.notice != null) _note(_game.notice!),
         const Padding(
           padding: EdgeInsets.all(20),
@@ -1803,7 +2084,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
   Widget _group() {
     return ListView(
       children: [
-        BilgiTopBar(title: _game.t('page_group'), onBack: _game.back),
+        BilgiTopBar(title: _game.t('page_group'), onBack: _game.back, trailing: _headerBalances()),
         _tile('➕', 'Grup kur', 'Kod oluştur • 20 soru', () => _game.makeRoom('grup')),
         _joinForm(),
       ],
@@ -1819,7 +2100,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
     };
     return ListView(
       children: [
-        BilgiTopBar(title: title, onBack: _game.back),
+        BilgiTopBar(title: title, onBack: _game.back, trailing: _headerBalances()),
         if (_game.notice != null) _note(_game.notice!),
         if (room == null)
           _tile('🔒', 'Oda kur', 'Kod üret', () => _game.makeRoom('oda'))
@@ -1875,7 +2156,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
     final used = _game.dailyQuestionUsed;
     return ListView(
       children: [
-        BilgiTopBar(title: _game.t('page_daily'), onBack: _game.back),
+        BilgiTopBar(title: _game.t('page_daily'), onBack: _game.back, trailing: _headerBalances()),
         if (_game.notice != null) _note(_game.notice!),
         const Padding(
           padding: EdgeInsets.all(20),
@@ -1911,7 +2192,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
   Widget _events() {
     return ListView(
       children: [
-        BilgiTopBar(title: _game.t('page_events'), onBack: _game.back),
+        BilgiTopBar(title: _game.t('page_events'), onBack: _game.back, trailing: _headerBalances()),
         if (_game.eventRows.isEmpty)
           Padding(padding: const EdgeInsets.all(20), child: Text(_game.t('no_events')))
         else
@@ -1939,63 +2220,80 @@ class _BilgiScreenState extends State<BilgiScreen> {
     );
   }
 
-  Widget _settings(BilgiProfile user) {
+  Widget _settings() {
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
         BilgiTopBar(
           title: _game.t('settings'),
+          titleAlign: TextAlign.left,
           leading: const _BilgiLogo(size: 40),
+          trailing: _headerBalances(),
         ),
         if (_game.notice != null) _note(_game.notice!),
-        _sectionLabel(_game.t('language')),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: _card(
-            child: _menuRow(
-              '🌐',
-              _game.t('language'),
-              GameLocale.resolve(user.locale).nativeName,
-              () => _game.open('language'),
-              last: true,
-              valueSize: 14,
-            ),
-          ),
-        ),
-        _sectionLabel(_game.t('preferences')),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: _card(
-            child: Column(
-              children: [
-                _toggleRow('🔔', _game.t('notifications'), _game.notifyOn, _game.toggleNotify),
-                _toggleRow('🔊', _game.t('sound'), _game.soundOn, _game.toggleSound),
-                _toggleRow('🌙', _game.t('dark'), true, null, last: true),
-              ],
-            ),
-          ),
-        ),
-        _sectionLabel(_game.t('support')),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: _card(
-            child: Column(
-              children: [
-                _menuRow('❓', _game.t('help'), _game.t('how_to'), () => _game.open('howto')),
-                _menuRow('ℹ️', _game.t('about'), gameVersionCode, null, last: true),
-              ],
-            ),
-          ),
-        ),
+        ..._settingsSections(heading: false),
       ],
     );
+  }
+
+  List<Widget> _settingsSections({bool heading = true}) {
+    final user = _game.profile;
+    return [
+      if (heading)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+          child: Text(
+            _game.t('settings'),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+          ),
+        ),
+      _sectionLabel(_game.t('language')),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: _card(
+          child: _menuRow(
+            '🌐',
+            _game.t('language'),
+            GameLocale.resolve(user?.locale).nativeName,
+            () => _game.open('language'),
+            last: true,
+            valueSize: 14,
+          ),
+        ),
+      ),
+      _sectionLabel(_game.t('preferences')),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: _card(
+          child: Column(
+            children: [
+              _toggleRow('🔔', _game.t('notifications'), _game.notifyOn, _game.toggleNotify),
+              _toggleRow('🔊', _game.t('sound'), _game.soundOn, _game.toggleSound),
+              _toggleRow('🌙', _game.t('dark'), true, null, last: true),
+            ],
+          ),
+        ),
+      ),
+      _sectionLabel(_game.t('support')),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: _card(
+          child: Column(
+            children: [
+              _menuRow('❓', _game.t('help'), _game.t('how_to'), () => _game.open('howto')),
+              _menuRow('ℹ️', _game.t('about'), gameVersionCode, null, last: true),
+            ],
+          ),
+        ),
+      ),
+    ];
   }
 
   Widget _achievements(BilgiProfile user) {
     if (bilgiAchievements.isEmpty) {
       return ListView(
         children: [
-          BilgiTopBar(title: _game.t('page_achievements'), onBack: _game.back),
+          BilgiTopBar(title: _game.t('page_achievements'), onBack: _game.back, trailing: _headerBalances()),
           Padding(padding: const EdgeInsets.all(20), child: Text(_game.t('no_achievements'))),
         ],
       );
@@ -2003,7 +2301,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
-        BilgiTopBar(title: _game.t('page_achievements'), onBack: _game.back),
+        BilgiTopBar(title: _game.t('page_achievements'), onBack: _game.back, trailing: _headerBalances()),
         for (final item in bilgiAchievements)
           _achievementRow(user, item),
       ],
@@ -2069,7 +2367,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(0, 0, 0, 20),
       children: [
-        BilgiTopBar(title: _game.t('page_history'), onBack: _game.back),
+        BilgiTopBar(title: _game.t('page_history'), onBack: _game.back, trailing: _headerBalances()),
         if (_game.past.isEmpty)
           const Padding(
             padding: EdgeInsets.fromLTRB(20, 20, 20, 0),
@@ -2153,7 +2451,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
     if (!register) return _login();
     return ListView(
       children: [
-        BilgiTopBar(title: 'Kayıt', onBack: _game.back),
+        BilgiTopBar(title: 'Kayıt', onBack: _game.back, trailing: _headerBalances()),
         if (_game.notice != null) _note(_game.notice!),
         _FormCard(
           title: 'Hesap oluştur',
@@ -2174,7 +2472,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
-        BilgiTopBar(title: _game.t('sign_in'), onBack: _game.back),
+        BilgiTopBar(title: _game.t('sign_in'), onBack: _game.back, trailing: _headerBalances()),
         if (_game.notice != null) _note(_game.notice!),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
@@ -2260,7 +2558,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
-        BilgiTopBar(title: _game.t('how_to'), onBack: _game.back),
+        BilgiTopBar(title: _game.t('how_to'), onBack: _game.back, trailing: _headerBalances()),
         _howtoBlock(_game.t('howto_play_h'), _game.t('howto_play')),
         _howtoBlock(
           _game.t('howto_gold_h'),
@@ -2302,7 +2600,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
   Widget _forgot() {
     return ListView(
       children: [
-        BilgiTopBar(title: 'Şifre', onBack: _game.back),
+        BilgiTopBar(title: 'Şifre', onBack: _game.back, trailing: _headerBalances()),
         if (_game.notice != null) _note(_game.notice!),
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 20),
@@ -2323,7 +2621,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
   Widget _invite(BilgiProfile user) {
     return ListView(
       children: [
-        BilgiTopBar(title: 'Davet', onBack: _game.back),
+        BilgiTopBar(title: 'Davet', onBack: _game.back, trailing: _headerBalances()),
         if (_game.notice != null) _note(_game.notice!),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -2345,7 +2643,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
-        BilgiTopBar(title: 'Yasal', onBack: _game.back),
+        BilgiTopBar(title: 'Yasal', onBack: _game.back, trailing: _headerBalances()),
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 20),
           child: Text(
@@ -2538,7 +2836,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
     final premium = _game.profile?.premium == true;
     return ListView(
       children: [
-        const BilgiTopBar(title: 'Reklam'),
+        BilgiTopBar(title: 'Reklam', trailing: _headerBalances()),
         Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
@@ -2557,7 +2855,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
   Widget _jokerShop(BilgiProfile user) {
     return ListView(
       children: [
-        BilgiTopBar(title: 'Joker', onBack: _game.back),
+        BilgiTopBar(title: 'Joker', onBack: _game.back, trailing: _headerBalances()),
         if (_game.notice != null) _note(_game.notice!),
         Text('🪙 ${user.gold}', textAlign: TextAlign.center),
         for (final entry in _game.config.jokerPrices.entries)
@@ -2569,7 +2867,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
   Widget _noLives(BilgiProfile user) {
     return ListView(
       children: [
-        BilgiTopBar(title: 'Can', onBack: _game.back),
+        BilgiTopBar(title: 'Can', onBack: _game.back, trailing: _headerBalances()),
         _note('❤️ Canın bitti! Yenilenmesini bekle veya satın al.'),
         _tile('🪙', 'Doldur', '${_game.config.lifePrice} altın • şu an ${user.lives}', _game.refill),
         _tile('🎬', 'Reklamla can', 'Günlük sınır ${_game.config.rewardedLifeLimit}', () => _game.watchFor('life')),
@@ -3408,6 +3706,106 @@ class _BilgiScreenState extends State<BilgiScreen> {
     if (day == today.subtract(const Duration(days: 1))) return 'Dün $hhmm';
     final days = today.difference(day).inDays;
     return '$days gün önce';
+  }
+}
+
+class _BilgiHomeGlow extends StatelessWidget {
+  const _BilgiHomeGlow({required this.color, required this.size, required this.opacity});
+
+  final Color color;
+  final double size;
+  final double opacity;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            colors: [
+              color.withValues(alpha: opacity),
+              color.withValues(alpha: 0),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BalanceStat {
+  const _BalanceStat(this.icon, this.count, this.name);
+
+  final String icon;
+  final String count;
+  final String name;
+}
+
+class _PlayerBalanceRow extends StatelessWidget {
+  const _PlayerBalanceRow({
+    required this.items,
+    this.dense = false,
+    this.compactText = false,
+    this.showNames = true,
+    this.expand = true,
+  });
+
+  final List<_BalanceStat> items;
+  final bool dense;
+  final bool compactText;
+  final bool showNames;
+  final bool expand;
+
+  @override
+  Widget build(BuildContext context) {
+    final iconSize = dense ? 16.0 : 22.0;
+    final countSize = compactText ? 9.0 : (dense ? 12.0 : 16.0);
+    final nameSize = compactText ? 8.0 : (dense ? 10.0 : 11.0);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(dense ? 0 : 8, 0, dense ? 0 : 8, dense ? 0 : 12),
+      child: Row(
+        mainAxisAlignment: expand ? MainAxisAlignment.center : MainAxisAlignment.end,
+        mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+        children: [
+          for (final item in items)
+            _balanceTile(item, iconSize, countSize, nameSize),
+        ],
+      ),
+    );
+  }
+
+  Widget _balanceTile(_BalanceStat item, double iconSize, double countSize, double nameSize) {
+    final tile = Semantics(
+      container: true,
+      label: '${item.name} ${item.count}',
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: expand ? 0 : 3),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(item.icon, style: TextStyle(fontSize: iconSize, height: 1)),
+            SizedBox(height: dense ? 1 : 2),
+            Text(
+              item.count,
+              maxLines: 1,
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: countSize, height: 1.1),
+            ),
+            if (showNames)
+              Text(
+                item.name,
+                maxLines: 1,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: BilgiColors.muted, fontWeight: FontWeight.w600, fontSize: nameSize, height: 1.15),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (!expand) return tile;
+    return Expanded(child: tile);
   }
 }
 
