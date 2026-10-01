@@ -11,6 +11,7 @@ import 'package:kelimelig/api/bilgi_catalog_http.dart';
 import 'package:kelimelig/api/bilgi_translate_http.dart';
 import 'package:kelimelig/api/bilgi_rooms_http.dart';
 import 'package:kelimelig/api/bilgi_reports_http.dart';
+import 'package:kelimelig/api/bilgi_league_http.dart';
 import 'package:kelimelig/api/bilgi_users_http.dart';
 import 'package:kelimelig/api/mail_http.dart';
 import 'package:kelimelig/api/privacy_page.dart';
@@ -157,6 +158,9 @@ Future<void> main() async {
   mountBilgiTranslate(router, db);
   mountBilgiRooms(router, db);
   mountBilgiUsers(router, db);
+  final bilgiStore = ScopedKeyValueStore(PostgresKv(db), GameIds.lunoBilgi);
+  mountBilgiLeague(router, bilgiStore);
+  watchBilgiLeague(bilgiStore);
   mountSiteCards(router, db);
   _mountAdminWeb(router);
 

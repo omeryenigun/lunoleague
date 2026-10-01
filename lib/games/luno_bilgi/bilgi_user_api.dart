@@ -5,7 +5,15 @@ import 'package:kelimelig/core/config/api_config.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 
 class BilgiUserApi {
-  static Future<List<BilgiProfile>?> loadAll(String token) async {
+  static List<BilgiProfile> _profiles(Object? raw) {
+    if (raw is! List) return const [];
+    return [
+      for (final item in raw)
+        if (item is Map) BilgiProfile.fromMap(Map<String, dynamic>.from(item)),
+    ];
+  }
+
+  static Future<({List<BilgiProfile> listed, List<BilgiProfile> players})?> loadAll(String token) async {
     if (token.isEmpty) return null;
     try {
       final response = await http.get(
@@ -15,10 +23,9 @@ class BilgiUserApi {
       if (response.statusCode != 200) return null;
       final decoded = jsonDecode(response.body);
       if (decoded is! Map || decoded['users'] is! List) return null;
-      return [
-        for (final item in decoded['users'] as List)
-          if (item is Map) BilgiProfile.fromMap(Map<String, dynamic>.from(item)),
-      ];
+      final listed = _profiles(decoded['users']);
+      final players = decoded['players'] is List ? _profiles(decoded['players']) : listed;
+      return (listed: listed, players: players);
     } catch (_) {
       return null;
     }
@@ -50,16 +57,21 @@ class BilgiUserApi {
     }
   }
 
-  /// Pushes a registered Bilgi account to the shared server list (best-effort).
-  static Future<void> upsert(BilgiProfile user) async {
-    if (user.email.trim().isEmpty && user.passwordHash.isEmpty) return;
+  /// Pushes a registered Bilgi account and returns the saved public profile.
+  static Future<Map<String, dynamic>?> upsert(BilgiProfile user) async {
     try {
-      await http.put(
+      final response = await http.put(
         Uri.parse('${ApiConfig.baseUrl}/v1/bilgi/users'),
         headers: {'content-type': 'application/json; charset=utf-8'},
         body: jsonEncode(user.toMap()),
       );
-    } catch (_) {}
+      if (response.statusCode < 200 || response.statusCode >= 300) return null;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map || decoded['user'] is! Map) return null;
+      return Map<String, dynamic>.from(decoded['user'] as Map);
+    } catch (_) {
+      return null;
+    }
   }
 
   static String? _error(String body) {

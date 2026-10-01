@@ -4,6 +4,7 @@ import 'package:kelimelig/admin/screens/game_detail_screen.dart';
 import 'package:kelimelig/admin/widgets/admin_widgets.dart';
 import 'package:kelimelig/core/constants/enums.dart';
 import 'package:kelimelig/core/theme/colors.dart';
+import 'package:kelimelig/domain/account/luno_account.dart';
 import 'package:kelimelig/domain/entities/admin_models.dart';
 
 class UserDetailScreen extends StatefulWidget {
@@ -50,8 +51,12 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
               Text(u.id, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
               const SizedBox(height: 8),
               Text(
-                '${adminProviderLabel(u.authProvider.name)} • ${u.isAnonymous ? 'Misafir' : 'Kayıtlı'} • ${u.currentLeague.label}',
+                '${adminProviderLabel(u.authProvider.name)} • ${u.guestHere || u.isAnonymous ? 'Misafir' : 'Kayıtlı'} • ${u.currentLeague.label}',
               ),
+              if ((u.accountFirstGame ?? '').isNotEmpty || u.accountGames.isNotEmpty)
+                Text(
+                  'İlk: ${lunoGameLabel(u.accountFirstGame ?? '')} • Etkin: ${u.accountGames.map(lunoGameLabel).join(', ')}',
+                ),
               Text('Lv ${u.level} • ${u.xp} XP • ${u.coin} coin • streak ${u.streak}/${u.longestStreak}'),
               Text('Oyun ${u.gamesPlayed} / kazanç ${u.gamesWon} • endless en iyi ${u.endlessBest}'),
               if (u.isBanned)

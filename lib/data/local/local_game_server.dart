@@ -34,6 +34,7 @@ import 'package:kelimelig/data/local/tr_profanity.dart';
 import 'package:kelimelig/data/local/word_csv.dart';
 import 'package:kelimelig/data/local/seed_words_en.dart';
 import 'package:kelimelig/data/local/seed_words_extra.dart';
+import 'package:kelimelig/domain/account/luno_account.dart';
 import 'package:kelimelig/domain/entities/admin_models.dart';
 import 'package:kelimelig/domain/entities/cosmetics.dart';
 import 'package:kelimelig/domain/entities/app_config.dart';
@@ -872,6 +873,16 @@ class LocalGameServer implements GameServer {
     if (id.isEmpty) {
       throw AppFailure(UserMessages.googleNotConfigured, code: 'NO_GOOGLE');
     }
+    final opened = await _switchToAccountProgress(email: email, googleId: id);
+    if (opened != null) {
+      await _store.put('google_accounts', id, {
+        'googleId': id,
+        'userId': opened.id,
+        'email': email,
+        'createdAt': _now.toIso8601String(),
+      });
+      return opened;
+    }
     final linked = await _store.get('google_accounts', id);
     final linkedUserId = linked?['userId'] as String?;
     if (linkedUserId != null) {
@@ -879,13 +890,14 @@ class LocalGameServer implements GameServer {
       if (map != null) {
         final existing = UserEntity.fromMap(map);
         await _store.putMeta(_currentUserKey, existing.id);
-        return _saveUser(
+        final saved = await _saveUser(
           existing.copyWith(
             lastLoginAt: _now,
             email: email ?? existing.email,
             isAnonymous: false,
           ),
         );
+        return _rememberAccount(saved, provider: 'google', email: email, googleId: id);
       }
     }
     final typed = displayName?.trim();
@@ -895,18 +907,25 @@ class LocalGameServer implements GameServer {
       name,
       email: email,
     );
+    final remembered = await _rememberAccount(
+      user,
+      provider: 'google',
+      email: email,
+      googleId: id,
+    );
     await _store.put('google_accounts', id, {
       'googleId': id,
-      'userId': user.id,
+      'userId': remembered.id,
       'email': email,
       'createdAt': _now.toIso8601String(),
     });
-    return user;
+    return remembered;
   }
 
   @override
-  Future<UserEntity> signInWithApple({String? displayName}) =>
-      _upgradeOrCreate(AuthProvider.apple, displayName ?? 'Apple Oyuncu');
+  Future<UserEntity> signInWithApple({String? displayName}) {
+    throw AppFailure(UserMessages.appleNotReady, code: 'APPLE_SOON');
+  }
 
   @override
   Future<UserEntity> registerWithEmail({
@@ -936,6 +955,11 @@ class LocalGameServer implements GameServer {
     final hash = PasswordHash.hash(password, salt);
 
     final existing = await _userOrNull();
+    final shared = await LunoAccountDirectory(lunoAccountRoot(_store)).find(email: normalized);
+    final progressId = shared?.progressIds[lunoAccountGameId(_store)];
+    if (progressId != null && progressId.isNotEmpty && progressId != existing?.id) {
+      throw AppFailure(UserMessages.emailTaken, code: 'EMAIL_TAKEN');
+    }
     final keepId =
         (existing != null && existing.isAnonymous) ? existing.id : null;
     await _ensureNicknameFree(name, exceptUserId: keepId);
@@ -971,7 +995,7 @@ class LocalGameServer implements GameServer {
       'userId': user.id,
       'createdAt': _now.toIso8601String(),
     });
-    return user;
+    return _rememberAccount(user, provider: 'email', email: normalized);
   }
 
   @override
@@ -1010,7 +1034,63 @@ class LocalGameServer implements GameServer {
       ),
     );
     await _store.putMeta(_currentUserKey, user.id);
-    return user;
+    return _rememberAccount(user, provider: 'email', email: normalized);
+  }
+
+  /// Opens this game's existing progress for a shared account. The current guest stays as-is.
+  Future<UserEntity?> _switchToAccountProgress({String? email, String? googleId}) async {
+    final account = await LunoAccountDirectory(lunoAccountRoot(_store)).find(
+      email: email,
+      googleId: googleId,
+    );
+    if (account == null) return null;
+    final progressId = account.progressIds[lunoAccountGameId(_store)];
+    if (progressId == null || progressId.isEmpty) return null;
+    final current = await _userOrNull();
+    if (current?.id == progressId) return null;
+    final map = await _store.get('users', progressId);
+    if (map == null) {
+      throw AppFailure(UserMessages.serverError, code: 'ACCOUNT_PROGRESS');
+    }
+    final other = UserEntity.fromMap(map);
+    if (other.isBanned) throw AppFailure(UserMessages.banned, code: 'BANNED');
+    await _store.putMeta(_currentUserKey, other.id);
+    return _saveUser(
+      other.copyWith(
+        lastLoginAt: _now,
+        email: (email != null && email.trim().isNotEmpty) ? email.trim() : other.email,
+        isAnonymous: false,
+        accountId: account.id,
+        accountFirstGame: account.firstGameId,
+        accountGames: account.activatedGames,
+        accountCreatedAt: account.createdAt,
+      ),
+    );
+  }
+
+  Future<UserEntity> _rememberAccount(
+    UserEntity user, {
+    required String provider,
+    String? email,
+    String? googleId,
+  }) async {
+    final link = await LunoAccountDirectory(lunoAccountRoot(_store)).link(
+      gameId: lunoAccountGameId(_store),
+      progressId: user.id,
+      displayName: user.displayName,
+      provider: provider,
+      email: email ?? user.email,
+      googleId: googleId,
+    );
+    if (link.otherProgressId != null && link.otherProgressId != user.id) return user;
+    return _saveUser(
+      user.copyWith(
+        accountId: link.account.id,
+        accountFirstGame: link.account.firstGameId,
+        accountGames: link.account.activatedGames,
+        accountCreatedAt: link.account.createdAt,
+      ),
+    );
   }
 
   Future<UserEntity> _upgradeOrCreate(
@@ -3974,24 +4054,67 @@ class LocalGameServer implements GameServer {
     AdminUserKind kind = AdminUserKind.all,
   }) async {
     final q = query.trim().toLowerCase();
-    final list = (await _store.values('users')).map(UserEntity.fromMap).where((u) {
+    final listed = await _withSharedAccounts(
+      (await _store.values('users')).map(UserEntity.fromMap).toList(),
+    );
+    final filtered = listed.where((u) {
       switch (kind) {
         case AdminUserKind.registered:
-          if (u.isAnonymous) return false;
+          if (u.isAnonymous || u.guestHere) return false;
         case AdminUserKind.guest:
-          if (!u.isAnonymous) return false;
+          if (!u.isAnonymous && !u.guestHere) return false;
         case AdminUserKind.banned:
           if (!u.isBanned) return false;
         case AdminUserKind.all:
           break;
       }
       if (q.isEmpty) return true;
+      final games = u.accountGames.join(' ').toLowerCase();
       return u.displayName.toLowerCase().contains(q) ||
           u.id.toLowerCase().contains(q) ||
-          u.authProvider.name.contains(q);
+          (u.email ?? '').toLowerCase().contains(q) ||
+          u.authProvider.name.contains(q) ||
+          games.contains(q);
     }).toList()
       ..sort((a, b) => b.lastLoginAt.compareTo(a.lastLoginAt));
-    return list;
+    return filtered;
+  }
+
+  Future<List<UserEntity>> _withSharedAccounts(List<UserEntity> users) async {
+    final accounts = await LunoAccountDirectory(lunoAccountRoot(_store)).all();
+    final gameId = lunoAccountGameId(_store);
+    final byId = {for (final account in accounts) account.id: account};
+    final byEmail = {
+      for (final account in accounts)
+        if (account.email.isNotEmpty) account.email: account,
+    };
+    final out = <UserEntity>[];
+    final seen = <String>{};
+    for (final user in users) {
+      final account = (user.accountId == null ? null : byId[user.accountId]) ??
+          (user.email == null ? null : byEmail[user.email!.trim().toLowerCase()]);
+      if (account == null) {
+        out.add(user);
+        continue;
+      }
+      seen.add(account.id);
+      final here = account.activatedGames.contains(gameId);
+      out.add(
+        user.copyWith(
+          accountId: account.id,
+          accountFirstGame: account.firstGameId,
+          accountGames: account.activatedGames,
+          accountCreatedAt: account.createdAt,
+          guestHere: !here,
+          isAnonymous: here ? user.isAnonymous : true,
+        ),
+      );
+    }
+    for (final account in accounts) {
+      if (seen.contains(account.id) || account.activatedGames.contains(gameId)) continue;
+      out.add(_guestAccountRow(account));
+    }
+    return out;
   }
 
   Future<AdminGameRecord> _recordFromResult(Map<String, dynamic> r) async {
@@ -4037,12 +4160,68 @@ class LocalGameServer implements GameServer {
   Future<AdminUserDetail> adminUserDetail(String userId) async {
     final map = await _store.get('users', userId);
     if (map == null) {
-      throw AppFailure(UserMessages.serverError, code: 'NO_USER');
+      final account = await _sharedAccount(userId);
+      if (account == null) {
+        throw AppFailure(UserMessages.serverError, code: 'NO_USER');
+      }
+      return AdminUserDetail(user: _guestAccountRow(account), recentGames: const []);
     }
     final games = await adminListGames(userId: userId);
     return AdminUserDetail(
-      user: UserEntity.fromMap(map),
+      user: await _annotateAccount(UserEntity.fromMap(map)),
       recentGames: games.take(20).toList(),
+    );
+  }
+
+  Future<LunoAccount?> _sharedAccount(String id) async {
+    for (final account in await LunoAccountDirectory(lunoAccountRoot(_store)).all()) {
+      if (account.id == id) return account;
+    }
+    return null;
+  }
+
+  Future<UserEntity> _annotateAccount(UserEntity user) async {
+    final accounts = await LunoAccountDirectory(lunoAccountRoot(_store)).all();
+    final account = accounts.where((item) => item.id == user.accountId).firstOrNull ??
+        accounts.where((item) => user.email != null && item.email == user.email!.trim().toLowerCase()).firstOrNull;
+    if (account == null) return user;
+    final here = account.activatedGames.contains(lunoAccountGameId(_store));
+    return user.copyWith(
+      accountId: account.id,
+      accountFirstGame: account.firstGameId,
+      accountGames: account.activatedGames,
+      accountCreatedAt: account.createdAt,
+      guestHere: !here,
+      isAnonymous: here ? user.isAnonymous : true,
+    );
+  }
+
+  UserEntity _guestAccountRow(LunoAccount account) {
+    return UserEntity(
+      id: account.id,
+      displayName: account.displayName.isEmpty ? 'Misafir' : account.displayName,
+      email: account.email.isEmpty ? null : account.email,
+      authProvider: AuthProvider.values.where((item) => item.name == account.provider).firstOrNull ??
+          AuthProvider.email,
+      isAnonymous: true,
+      level: 1,
+      xp: 0,
+      coin: 0,
+      currentLeague: LeagueTier.bronze,
+      streak: 0,
+      longestStreak: 0,
+      endlessBest: 0,
+      shields: 0,
+      freeHint1: 0,
+      freeHint2: 0,
+      isBanned: false,
+      createdAt: account.createdAt,
+      lastLoginAt: account.createdAt,
+      accountId: account.id,
+      accountFirstGame: account.firstGameId,
+      accountGames: account.activatedGames,
+      accountCreatedAt: account.createdAt,
+      guestHere: true,
     );
   }
 

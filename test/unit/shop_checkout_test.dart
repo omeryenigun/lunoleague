@@ -59,4 +59,12 @@ class _FixedBilling implements BillingGateway {
   Future<StorePurchase> buy(String productId) async {
     return StorePurchase(productId: productId, purchaseToken: 'tok-$productId');
   }
+
+  @override
+  Future<StorePurchase> buyOffer({
+    required String productId,
+    String? basePlanId,
+    bool consumable = true,
+  }) =>
+      buy(productId);
 }

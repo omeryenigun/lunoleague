@@ -168,6 +168,11 @@ class UserEntity {
     this.avatar,
     this.firstName,
     this.lastName,
+    this.accountId,
+    this.accountFirstGame,
+    this.accountGames = const [],
+    this.accountCreatedAt,
+    this.guestHere = false,
   });
 
   final String id;
@@ -224,6 +229,11 @@ class UserEntity {
   final String? avatar;
   final String? firstName;
   final String? lastName;
+  final String? accountId;
+  final String? accountFirstGame;
+  final List<String> accountGames;
+  final DateTime? accountCreatedAt;
+  final bool guestHere;
 
   UserEntity stampCurrentLocale() {
     final map = Map<String, LocaleProgress>.from(progressByLocale);
@@ -334,6 +344,11 @@ class UserEntity {
     bool clearFirstName = false,
     String? lastName,
     bool clearLastName = false,
+    String? accountId,
+    String? accountFirstGame,
+    List<String>? accountGames,
+    DateTime? accountCreatedAt,
+    bool? guestHere,
   }) {
     return UserEntity(
       id: id,
@@ -394,6 +409,11 @@ class UserEntity {
       avatar: avatar ?? this.avatar,
       firstName: clearFirstName ? null : (firstName ?? this.firstName),
       lastName: clearLastName ? null : (lastName ?? this.lastName),
+      accountId: accountId ?? this.accountId,
+      accountFirstGame: accountFirstGame ?? this.accountFirstGame,
+      accountGames: accountGames ?? this.accountGames,
+      accountCreatedAt: accountCreatedAt ?? this.accountCreatedAt,
+      guestHere: guestHere ?? this.guestHere,
     );
   }
 
@@ -454,6 +474,11 @@ class UserEntity {
         'avatar': avatar,
         'firstName': firstName,
         'lastName': lastName,
+        'accountId': accountId,
+        'accountFirstGame': accountFirstGame,
+        'accountGames': accountGames,
+        'accountCreatedAt': accountCreatedAt?.toIso8601String(),
+        'guestHere': guestHere,
       };
 
   factory UserEntity.fromMap(Map<dynamic, dynamic> map) {
@@ -520,6 +545,14 @@ class UserEntity {
       avatar: map['avatar'] as String?,
       firstName: map['firstName'] as String?,
       lastName: map['lastName'] as String?,
+      accountId: map['accountId'] as String?,
+      accountCreatedAt: DateTime.tryParse('${map['accountCreatedAt'] ?? ''}'),
+      accountFirstGame: map['accountFirstGame'] as String?,
+      accountGames: [
+        for (final item in map['accountGames'] as List? ?? const [])
+          if ('$item'.isNotEmpty) '$item',
+      ],
+      guestHere: map['guestHere'] as bool? ?? false,
     );
   }
 }

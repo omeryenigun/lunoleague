@@ -2,7 +2,9 @@ import 'package:kelimelig/api/admin_http.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
 import 'package:kelimelig/data/local/scoped_store.dart';
 import 'package:kelimelig/data/remote/postgres_kv.dart';
+import 'package:kelimelig/domain/account/luno_account.dart';
 import 'package:kelimelig/domain/game/game_ids.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_league.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:postgres/postgres.dart';
 import 'package:shelf/shelf.dart';
@@ -24,13 +26,14 @@ Future<Response> _list(Request request, Connection db, KeyValueStore store) asyn
     return jsonResponse({'error': 'Oturum geçersiz.'}, status: 401);
   }
   final users = await store.values('users');
-  users.sort((a, b) {
-    final aAt = '${a['createdAt'] ?? ''}';
-    final bAt = '${b['createdAt'] ?? ''}';
-    return bAt.compareTo(aAt);
-  });
+  final players = [for (final row in users) BilgiProfile.fromMap(row)];
+  final accounts = await LunoAccountDirectory(lunoAccountRoot(store)).all();
+  final listed = annotateBilgiAccounts(players, accounts);
+  listed.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  players.sort((a, b) => b.createdAt.compareTo(a.createdAt));
   return jsonResponse({
-    'users': [for (final row in users) bilgiUserPublicMap(row)],
+    'users': [for (final user in listed) user.toPublicMap()],
+    'players': [for (final user in players) user.toPublicMap()],
   });
 }
 
@@ -65,9 +68,6 @@ Future<Response> _upsert(Request request, KeyValueStore store) async {
   if (incoming.id.trim().isEmpty || incoming.id.length > 80) {
     return jsonResponse({'error': 'Kullanıcı geçersiz.'}, status: 400);
   }
-  if (incoming.email.trim().isEmpty && incoming.passwordHash.isEmpty) {
-    return jsonResponse({'error': 'Kayıtlı hesap gerekli.'}, status: 400);
-  }
   final saved = await mergeBilgiUser(store, incoming);
   return jsonResponse({'ok': true, 'user': saved.toPublicMap()});
 }
@@ -89,7 +89,38 @@ Future<BilgiProfile> mergeBilgiUser(KeyValueStore store, BilgiProfile incoming) 
   final banned = existing == null ? incoming.banned : existing['banned'] == true;
   final banReason = existing == null ? incoming.banReason : '${existing['banReason'] ?? ''}';
   final id = existing == null ? incoming.id : '${existing['id']}';
-  final saved = incoming.copyWith(id: id, banned: banned, banReason: banReason);
+  final settled = await store.getMeta('bilgi_league_settlement') ?? '';
+  final merged = existing == null
+      ? incoming
+      : mergeBilgiLeague(BilgiProfile.fromMap(existing), incoming, settledWeek: settled);
+  final guest = incoming.email.trim().isEmpty && incoming.passwordHash.isEmpty;
+  if (guest) {
+    final saved = merged.copyWith(id: id, banned: banned, banReason: banReason, email: '', passwordHash: '');
+    await store.put('users', id, saved.toMap());
+    return saved;
+  }
+  final directory = LunoAccountDirectory(lunoAccountRoot(store));
+  final known = await directory.find(email: email);
+  final otherId = known?.progressIds[GameIds.lunoBilgi];
+  if (otherId != null && otherId.isNotEmpty && otherId != id) {
+    final row = await store.get('users', otherId);
+    if (row != null) return BilgiProfile.fromMap(row);
+  }
+  final link = await directory.link(
+    gameId: GameIds.lunoBilgi,
+    progressId: id,
+    displayName: incoming.username,
+    provider: incoming.passwordHash.isEmpty ? 'google' : 'email',
+    email: incoming.email,
+  );
+  final saved = merged.copyWith(
+    id: id,
+    banned: banned,
+    banReason: banReason,
+    accountId: link.account.id,
+    accountFirstGame: link.account.firstGameId,
+    accountGames: link.account.activatedGames,
+  );
   await store.put('users', id, saved.toMap());
   return saved;
 }

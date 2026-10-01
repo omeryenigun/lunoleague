@@ -234,18 +234,27 @@ class _LoginScreenState extends State<LoginScreen>
                         ),
                         child: Text(l10n.t('google')),
                       ),
-                      if (Theme.of(context).platform == TargetPlatform.iOS) ...[
-                        const SizedBox(height: 12),
-                        OutlinedButton(
-                          onPressed: state.loading
-                              ? null
-                              : () async {
-                                  await context.read<AuthCubit>().apple();
-                                  await _afterLogin();
-                                },
-                          child: Text(l10n.t('apple')),
+                      const SizedBox(height: 12),
+                      OutlinedButton(
+                        onPressed: state.loading
+                            ? null
+                            : () {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(l10n.t('apple_soon'))),
+                                );
+                              },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFFF0FDF4),
+                          side: BorderSide(
+                            color: AppColors.cosmicGreen.withValues(alpha: 0.5),
+                          ),
+                          minimumSize: const Size.fromHeight(48),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
                         ),
-                      ],
+                        child: Text(l10n.t('apple')),
+                      ),
                       const SizedBox(height: 12),
                       TextButton(
                         onPressed: state.loading

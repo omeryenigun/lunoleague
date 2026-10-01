@@ -52,9 +52,7 @@ class _BilgiLanguagePageState extends State<BilgiLanguagePage>
   @override
   Widget build(BuildContext context) {
     final selected = widget.selectedId;
-    return ColoredBox(
-      color: BilgiColors.bg,
-      child: SafeArea(
+    return SafeArea(
         child: FadeTransition(
           opacity: _fade,
           child: SlideTransition(
@@ -162,7 +160,6 @@ class _BilgiLanguagePageState extends State<BilgiLanguagePage>
             ),
           ),
         ),
-      ),
     );
   }
 }

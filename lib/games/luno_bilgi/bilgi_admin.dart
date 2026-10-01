@@ -4,8 +4,12 @@ import 'package:kelimelig/core/constants/game_version.dart';
 import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/core/mail/mail_template.dart';
 import 'package:kelimelig/data/remote/api_session.dart';
+import 'package:kelimelig/domain/account/luno_account.dart';
+import 'package:kelimelig/domain/game/game_ids.dart';
 import 'package:kelimelig/core/l10n/game_locale.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_league.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_league_api.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_csv.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_mail.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
@@ -31,9 +35,12 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   var _note = '';
   List<BilgiQuestion> _questions = const [];
   List<BilgiProfile> _users = const [];
+  List<BilgiProfile> _leagueUsers = const [];
   BilgiConfig _config = const BilgiConfig();
   Map<String, dynamic> _catalog = const {};
   List<Map<String, dynamic>> _events = const [];
+  var _leagueBoard = 'all';
+  var _settledWeek = '';
   List<Map<String, dynamic>> _staff = const [];
   List<Map<String, dynamic>> _games = const [];
   final _rewardAmounts = List.generate(7, (_) => TextEditingController());
@@ -82,6 +89,11 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   final _reportStatusErrors = <String, String>{};
   final _reportStatusBusy = <String>{};
   var _subCat = 'turk_tarihi';
+  var _userFirstGame = '';
+  var _userActiveGame = '';
+  var _userStatus = '';
+  var _userPeriod = '';
+  var _userPlays = '';
 
   LunoBilgiServer get _server => sl<LunoBilgiServer>();
 
@@ -199,20 +211,25 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     await _server.saveCatalog(bilgiCatalogClosedUnless(catalog, active.categories, active.subs));
   }
 
-  Future<List<BilgiProfile>> _usersBank() async {
+  Future<({List<BilgiProfile> listed, List<BilgiProfile> players})> _usersBank() async {
     final token = sl<ApiSession>().adminToken ?? '';
-    if (token.isEmpty) return _server.users();
+    if (token.isEmpty) {
+      return (listed: await _server.listedUsers(), players: await _server.users());
+    }
     final remote = await BilgiUserApi.loadAll(token);
-    if (remote == null) return _server.users();
+    if (remote == null) {
+      return (listed: await _server.listedUsers(), players: await _server.users());
+    }
     return remote;
   }
 
   Future<void> _load() async {
     final questions = await _bank();
     final labels = await BilgiQuestionApi.loadLabels();
-    final users = await _usersBank();
+    final bank = await _usersBank();
     final config = await _server.config();
     final events = await _server.events();
+    final league = await BilgiLeagueApi.load(scope: 'global');
     final staff = await _server.staff();
     final games = await _server.games();
     final remote = await BilgiQuestionApi.loadCatalog();
@@ -228,11 +245,13 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     setState(() {
       _questions = questions;
       _labels = labels;
-      _selectedIds.removeWhere((id) => !questions.any((question) => question.id == id));
-      _users = users;
+      _selectedIds.clear();
+      _users = bank.listed;
+      _leagueUsers = bank.players;
       _config = config;
       _catalog = catalog;
       _events = events;
+      _settledWeek = league?.settledWeek ?? '';
       _staff = staff;
       _games = games;
       for (var i = 0; i < 7; i++) {
@@ -1374,7 +1393,10 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
               TextField(
                 controller: _bankSearch,
                 style: const TextStyle(color: Colors.white),
-                onChanged: (_) => setState(() => _bankPage = 0),
+                onChanged: (_) => setState(() {
+                  _bankPage = 0;
+                  _selectedIds.clear();
+                }),
                 decoration: InputDecoration(
                   hintText: 'En az 3 harf yaz',
                   hintStyle: const TextStyle(color: BilgiColors.muted),
@@ -1392,7 +1414,12 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                     hint: 'Ana kategori',
                     selected: _bankCat,
                     options: [for (final c in _categories) (c.id, '${c.emoji} ${c.name}')],
-                    onChanged: (v) => setState(() { _bankCat = v; _bankSub = ''; _bankPage = 0; }),
+                    onChanged: (v) => setState(() {
+                      _bankCat = v;
+                      _bankSub = '';
+                      _bankPage = 0;
+                      _selectedIds.clear();
+                    }),
                   ),
                   _SearchCombo(
                     hint: _bankCat.isEmpty ? 'Önce ana kategori' : 'Alt kategori',
@@ -1401,11 +1428,15 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                     options: [
                       for (final name in _categories.where((item) => item.id == _bankCat).firstOrNull?.subs ?? const <String>[]) (name, name),
                     ],
-                    onChanged: (v) => setState(() { _bankSub = v; _bankPage = 0; }),
+                    onChanged: (v) => setState(() {
+                      _bankSub = v;
+                      _bankPage = 0;
+                      _selectedIds.clear();
+                    }),
                   ),
-                  _select(_bankDiff, [('','Tüm Zorluklar'), ('kolay','Kolay'), ('orta','Orta'), ('zor','Zor'), ('efsane','Efsane')], (v) => setState(() { _bankDiff = v; _bankPage = 0; })),
-                  _select(_bankStatus, [('','Tüm Durumlar'), ('approved','Onaylı'), ('pending','Bekleyen'), ('draft','Taslak'), ('rejected','Reddedilen')], (v) => setState(() { _bankStatus = v; _bankPage = 0; })),
-                  _select(_bankLang, [('','Tüm Tercümeler'), ('ready','Tercüme tamam'), ('missing','Tercüme eksik')], (v) => setState(() { _bankLang = v; _bankPage = 0; })),
+                  _select(_bankDiff, [('','Tüm Zorluklar'), ('kolay','Kolay'), ('orta','Orta'), ('zor','Zor'), ('efsane','Efsane')], (v) => setState(() { _bankDiff = v; _bankPage = 0; _selectedIds.clear(); })),
+                  _select(_bankStatus, [('','Tüm Durumlar'), ('approved','Onaylı'), ('pending','Bekleyen'), ('draft','Taslak'), ('rejected','Reddedilen')], (v) => setState(() { _bankStatus = v; _bankPage = 0; _selectedIds.clear(); })),
+                  _select(_bankLang, [('','Tüm Tercümeler'), ('ready','Tercüme tamam'), ('missing','Tercüme eksik')], (v) => setState(() { _bankLang = v; _bankPage = 0; _selectedIds.clear(); })),
                   _ghost('📥 İçe Aktar', () => setState(() => _index = 7)),
                   _primary('➕ Yeni Soru', _openEditor),
                 ],
@@ -1420,6 +1451,15 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                     if (rows.isEmpty || _bulkBusy) return;
                     setState(() {
                       for (final question in rows) {
+                        _selectedIds.add(question.id);
+                      }
+                    });
+                  }),
+                  _ghost('Sayfadakileri seç', () {
+                    if (slice.isEmpty || _bulkBusy) return;
+                    setState(() {
+                      _selectedIds.clear();
+                      for (final question in slice) {
                         _selectedIds.add(question.id);
                       }
                     });
@@ -2896,15 +2936,85 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     );
   }
 
+  DateTime _userRegisteredAt(BilgiProfile user) => user.accountCreatedAt ?? user.createdAt;
+
+  String _userDay(DateTime value) {
+    final local = value.toLocal();
+    final day = local.day.toString().padLeft(2, '0');
+    final month = local.month.toString().padLeft(2, '0');
+    return '$day.$month.${local.year}';
+  }
+
+  String _userStatusKey(BilgiProfile user) {
+    if (user.banned) return 'banli';
+    if (user.guestHere) return 'misafir';
+    if (user.premium) return 'premium';
+    return 'aktif';
+  }
+
+  bool _userMatches(BilgiProfile user, {required bool? banned, required bool premium, required String query}) {
+    if (premium && !user.premium) return false;
+    if (banned != null && user.banned != banned) return false;
+    if (query.isNotEmpty &&
+        !user.username.toLowerCase().contains(query) &&
+        !user.email.toLowerCase().contains(query)) {
+      return false;
+    }
+    if (_userFirstGame.isNotEmpty && user.accountFirstGame != _userFirstGame) return false;
+    if (_userActiveGame.isNotEmpty && !user.accountGames.contains(_userActiveGame)) return false;
+    if (banned == null && !premium && _userStatus.isNotEmpty && _userStatusKey(user) != _userStatus) {
+      return false;
+    }
+    final registered = _userRegisteredAt(user);
+    final now = DateTime.now();
+    if (_userPeriod == '7' && registered.isBefore(now.subtract(const Duration(days: 7)))) return false;
+    if (_userPeriod == '30' && registered.isBefore(now.subtract(const Duration(days: 30)))) return false;
+    if (_userPeriod == 'year' && registered.year != now.year) return false;
+    final minPlays = int.tryParse(_userPlays);
+    if (minPlays != null && user.gamesPlayed < minPlays) return false;
+    if (_userPlays == '0' && user.gamesPlayed != 0) return false;
+    return true;
+  }
+
+  Widget _userFilter(String label, Widget field) {
+    return SizedBox(
+      width: 220,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(color: BilgiColors.muted, fontSize: 11, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          field,
+        ],
+      ),
+    );
+  }
+
+  Widget _userFact(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(color: BilgiColors.muted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.4)),
+        const SizedBox(height: 2),
+        Text(value.isEmpty ? '—' : value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+      ],
+    );
+  }
+
   Widget _userList(bool? banned, {bool premium = false}) {
     final query = _topSearch.text.trim().toLowerCase();
-    final rows = _users.where((user) {
-      if (premium && !user.premium) return false;
-      if (banned != null && user.banned != banned) return false;
-      if (query.isEmpty) return true;
-      return user.username.toLowerCase().contains(query) || user.email.toLowerCase().contains(query);
-    }).toList();
+    final rows = _users.where((user) => _userMatches(user, banned: banned, premium: premium, query: query)).toList()
+      ..sort((a, b) => _userRegisteredAt(b).compareTo(_userRegisteredAt(a)));
+    final games = <(String, String)>[
+      ('', 'Tümü'),
+      for (final id in GameIds.all) (id, lunoGameLabel(id)),
+    ];
     final empty = premium ? 'Premium üye yok.' : banned == true ? 'Banlı kullanıcı yok.' : 'Kayıtlı kullanıcı yok.';
+    final filtersOn = _userFirstGame.isNotEmpty ||
+        _userActiveGame.isNotEmpty ||
+        _userStatus.isNotEmpty ||
+        _userPeriod.isNotEmpty ||
+        _userPlays.isNotEmpty;
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       children: [
@@ -2913,46 +3023,146 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
             padding: EdgeInsets.only(bottom: 12),
             child: Text('Play makbuzu olmadan premium yüklenmez.', style: TextStyle(color: BilgiColors.warning)),
           ),
-        Container(
-          decoration: _cardDeco(),
-          child: Column(
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          crossAxisAlignment: WrapCrossAlignment.end,
+          children: [
+            _userFilter('İlk oyun', _select(_userFirstGame, games, (value) => setState(() => _userFirstGame = value))),
+            _userFilter('Etkin oyun', _select(_userActiveGame, games, (value) => setState(() => _userActiveGame = value))),
+            if (banned == null && !premium)
+              _userFilter(
+                'Durum',
+                _select(_userStatus, const [
+                  ('', 'Tümü'),
+                  ('aktif', 'Aktif'),
+                  ('misafir', 'Misafir'),
+                  ('premium', 'Premium'),
+                  ('banli', 'Banlı'),
+                ], (value) => setState(() => _userStatus = value)),
+              ),
+            _userFilter(
+              'İlk kayıt',
+              _select(_userPeriod, const [
+                ('', 'Tümü'),
+                ('7', 'Son 7 gün'),
+                ('30', 'Son 30 gün'),
+                ('year', 'Bu yıl'),
+              ], (value) => setState(() => _userPeriod = value)),
+            ),
+            _userFilter(
+              'Oyun sayısı',
+              _select(_userPlays, const [
+                ('', 'Tümü'),
+                ('0', 'Henüz yok'),
+                ('1', '1 ve üzeri'),
+                ('10', '10 ve üzeri'),
+                ('50', '50 ve üzeri'),
+              ], (value) => setState(() => _userPlays = value)),
+            ),
+            if (filtersOn)
+              _ghost('Filtreleri temizle', () => setState(() {
+                    _userFirstGame = '';
+                    _userActiveGame = '';
+                    _userStatus = '';
+                    _userPeriod = '';
+                    _userPlays = '';
+                  })),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Text('${rows.length} kullanıcı', style: const TextStyle(color: BilgiColors.muted, fontSize: 12)),
+        const SizedBox(height: 12),
+        if (rows.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: _cardDeco(),
+            child: Text(empty, style: const TextStyle(color: BilgiColors.muted)),
+          )
+        else
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columns = constraints.maxWidth >= 1100 ? 3 : constraints.maxWidth >= 720 ? 2 : 1;
+              final width = (constraints.maxWidth - (12 * (columns - 1))) / columns;
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  for (final user in rows)
+                    SizedBox(width: width, child: _userCard(user, premium: premium)),
+                ],
+              );
+            },
+          ),
+      ],
+    );
+  }
+
+  Widget _userCard(BilgiProfile user, {required bool premium}) {
+    final first = (user.accountFirstGame ?? '').isEmpty ? '—' : lunoGameLabel(user.accountFirstGame!);
+    final active = user.accountGames.isEmpty ? '—' : user.accountGames.map(lunoGameLabel).join(', ');
+    final status = user.banned ? 'Banlı' : user.guestHere ? 'Misafir' : user.premium ? 'Premium' : 'Aktif';
+    final statusColor = user.banned
+        ? BilgiColors.error
+        : user.guestHere
+            ? BilgiColors.warning
+            : BilgiColors.secondary;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: _cardDeco(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              _tableHead(const ['Kullanıcı', 'Seviye', 'Altın', 'Durum', 'İşlem']),
-              if (rows.isEmpty)
-                Padding(padding: const EdgeInsets.all(20), child: Text(empty, style: const TextStyle(color: BilgiColors.muted)))
-              else
-                for (final user in rows)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0x08FFFFFF)))),
-                    child: Row(
-                      children: [
-                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(user.username, style: const TextStyle(fontWeight: FontWeight.w700)), Text(user.email, style: const TextStyle(color: BilgiColors.muted, fontSize: 11))])),
-                        Expanded(child: Text('${user.level}')),
-                        Expanded(child: Text('${user.gold}')),
-                        Expanded(child: _badge(user.banned ? 'Banlı' : user.premium ? 'Premium' : 'Aktif', user.banned ? BilgiColors.error : BilgiColors.secondary)),
-                        if (!premium)
-                          _ghost(user.banned ? 'Aç' : 'Banla', () async {
-                            final banned = !user.banned;
-                            final reason = banned ? 'Askıya alındı' : '';
-                            final token = sl<ApiSession>().adminToken ?? '';
-                            final error = await BilgiUserApi.setBan(
-                              token,
-                              user.id,
-                              banned: banned,
-                              reason: reason,
-                            );
-                            await _server.setBan(user.id, banned: banned, reason: reason);
-                            if (error != null && mounted) setState(() => _note = error);
-                            await _load();
-                          }),
-                      ],
-                    ),
-                  ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(user.username, style: const TextStyle(fontWeight: FontWeight.w800)),
+                    if (user.email.isNotEmpty)
+                      Text(user.email, style: const TextStyle(color: BilgiColors.muted, fontSize: 11)),
+                  ],
+                ),
+              ),
+              _badge(status, statusColor),
             ],
           ),
-        ),
-      ],
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 16,
+            runSpacing: 12,
+            children: [
+              SizedBox(width: 140, child: _userFact('İlk oyun', first)),
+              SizedBox(width: 180, child: _userFact('Etkin oyunlar', active)),
+              SizedBox(width: 110, child: _userFact('İlk kayıt', _userDay(_userRegisteredAt(user)))),
+              SizedBox(width: 90, child: _userFact('Oyun sayısı', '${user.gamesPlayed}')),
+              SizedBox(width: 90, child: _userFact('Etkin oyun', '${user.accountGames.length}')),
+              SizedBox(width: 70, child: _userFact('Seviye', '${user.level}')),
+              SizedBox(width: 80, child: _userFact('Altın', '${user.gold}')),
+              SizedBox(width: 70, child: _userFact('Seri', '${user.streak}')),
+            ],
+          ),
+          if (!premium) ...[
+            const SizedBox(height: 12),
+            _ghost(user.banned ? 'Aç' : 'Banla', () async {
+              final nextBanned = !user.banned;
+              final reason = nextBanned ? 'Askıya alındı' : '';
+              final token = sl<ApiSession>().adminToken ?? '';
+              final error = await BilgiUserApi.setBan(
+                token,
+                user.id,
+                banned: nextBanned,
+                reason: reason,
+              );
+              await _server.setBan(user.id, banned: nextBanned, reason: reason);
+              if (error != null && mounted) setState(() => _note = error);
+              await _load();
+            }),
+          ],
+        ],
+      ),
     );
   }
 
@@ -3072,9 +3282,9 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
           spacing: 12,
           runSpacing: 12,
           children: [
-            _packCard('Haftalık', '19,99 TL'),
-            _packCard('Aylık', '49,99 TL', popular: true),
-            _packCard('Yıllık', '399,99 TL'),
+            _packCard('Aylık', '29,99 TL'),
+            _packCard('6 Aylık', '129,99 TL'),
+            _packCard('Yıllık', '199,99 TL', popular: true),
           ],
         ),
         const SizedBox(height: 12),
@@ -3143,17 +3353,66 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     );
   }
 
+  List<BilgiBoardEntry> _leagueStandings(String key, DateTime now) {
+    final weekly = key == 'week' || key.endsWith(':week');
+    final category = key.startsWith('cat:') ? key.split(':')[1] : null;
+    final snap = bilgiLeagueSnapshot(
+      users: _leagueUsers,
+      scope: category == null ? (weekly ? 'weekly' : 'global') : 'category',
+      categoryId: category,
+      categoryWeekly: weekly,
+      now: now,
+      seedIfShort: false,
+    );
+    return snap.rows;
+  }
+
   Widget _eventEditor() {
-    final week = DateKeys.weekId();
-    final left = DateKeys.weekRemaining();
+    final now = DateTime.now().toUtc();
+    final week = bilgiWeekId(now);
+    final left = bilgiWeekRemaining(now);
+    final open = bilgiOpenCategoryIds(_leagueUsers);
+    final choices = <({String id, String label})>[
+      (id: 'all', label: 'Genel tüm zamanlar'),
+      (id: 'week', label: 'Genel bu hafta'),
+      for (final id in open) ...[
+        (id: 'cat:$id:all', label: '${bilgiCategoryById(id)?.name ?? id} tüm zamanlar'),
+        (id: 'cat:$id:week', label: '${bilgiCategoryById(id)?.name ?? id} bu hafta'),
+      ],
+    ];
+    final selected = choices.any((item) => item.id == _leagueBoard) ? _leagueBoard : 'all';
+    final standings = _leagueStandings(selected, now);
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       children: [
         _panelCard('LUNO LİGİ', [
           _infoRow('Hafta', week),
           _infoRow('Kalan', '${left.inDays} gün ${left.inHours % 24} saat'),
-          _infoRow('Ödül', '10000 / 5000 / 2500, ilk 100 kişi 500'),
+          _infoRow('Son kapanan hafta', _settledWeek.isEmpty ? '—' : _settledWeek),
+          _infoRow('Kademe', 'Bronz 0 • Gümüş 500 • Altın 2000 • Elmas 6000 • Efsane 15000'),
+          _infoRow('Genel ödül', '10000 / 5000 / 2500, 4-100 arası 500 altın'),
+          _infoRow('Kategori ödülü', '1000 / 500 / 250, 4-10 arası 100 altın'),
+          _infoRow('Gerçek oyuncu', '${standings.length}'),
+          _infoRow('Oyuncu ekranı', standings.length < bilgiLeagueRealLimit ? 'Örnek sıra' : 'Gerçek liste'),
         ]),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          initialValue: selected,
+          items: [for (final item in choices) DropdownMenuItem(value: item.id, child: Text(item.label))],
+          onChanged: (value) {
+            if (value == null) return;
+            setState(() => _leagueBoard = value);
+          },
+        ),
+        const SizedBox(height: 12),
+        if (standings.isEmpty)
+          const Text('Bu ligde gerçek sıra yok.', style: TextStyle(color: BilgiColors.muted))
+        else
+          for (var i = 0; i < standings.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _infoRow('${i + 1}. ${standings[i].name}', '${standings[i].score} • ${standings[i].tier}'),
+            ),
         const SizedBox(height: 12),
         _panelCard('GÜNÜN SORUSU', [
           _infoRow('Soru', '1'),

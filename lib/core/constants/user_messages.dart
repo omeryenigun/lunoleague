@@ -20,6 +20,7 @@ class UserMessages {
   static const personNameBad = 'Ad ve soyad harf içerebilir.';
   static const badCredentials = 'E-posta veya şifre hatalı.';
   static const googleNotConfigured = 'Google girişi henüz ayarlı değil.';
+  static const appleNotReady = 'Apple ile giriş henüz hazır değil.';
   static const googleSignInFailed = 'Google girişi tamamlanamadı.';
   static const billingUnavailable = 'Google Play ödemesi şu an kullanılamıyor.';
   static const adUnavailable = 'Ödüllü reklam şu an kullanılamıyor.';

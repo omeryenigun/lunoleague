@@ -1,4 +1,6 @@
 import 'package:kelimelig/core/l10n/game_locale.dart';
+import 'package:kelimelig/domain/account/luno_account.dart';
+import 'package:kelimelig/domain/game/game_ids.dart';
 
 const bilgiApproveBlocked = 'Onay için seçili dillerde soru, dört şık ve açıklama dolu olmalı.';
 const bilgiCategoryBlocked = 'Kategori seçili dillerde adlandırılmadan açılamaz.';
@@ -379,6 +381,36 @@ class BilgiQuestionFormData {
   }
 }
 
+class BilgiCategoryPoints {
+  const BilgiCategoryPoints({this.total = 0, this.week = 0});
+
+  final int total;
+  final int week;
+
+  Map<String, dynamic> toMap() => {'total': total, 'week': week};
+}
+
+Map<String, BilgiCategoryPoints> bilgiCategoryPointsFrom(Object? raw) {
+  if (raw is! Map) return const {};
+  final out = <String, BilgiCategoryPoints>{};
+  for (final entry in raw.entries) {
+    final value = entry.value;
+    if (value is! Map) continue;
+    out['${entry.key}'] = BilgiCategoryPoints(
+      total: bilgiInt(value['total'], 0),
+      week: bilgiInt(value['week'], 0),
+    );
+  }
+  return out;
+}
+
+Map<String, int> bilgiIntMapFrom(Object? raw) {
+  if (raw is! Map) return const {};
+  return {
+    for (final entry in raw.entries) '${entry.key}': bilgiInt(entry.value, 0),
+  };
+}
+
 class BilgiProfile {
   const BilgiProfile({
     required this.id,
@@ -423,8 +455,19 @@ class BilgiProfile {
     required this.adDay,
     required this.weekId,
     required this.weekScore,
+    this.categoryScores = const {},
+    this.heldWeekId = '',
+    this.heldWeekScore = 0,
+    this.heldCategoryWeeks = const {},
+    this.leagueRewardWeek = '',
+    this.leagueRewardText = '',
     this.locale = 'tr',
     this.localeChosen = false,
+    this.accountId,
+    this.accountFirstGame,
+    this.accountGames = const [],
+    this.accountCreatedAt,
+    this.guestHere = false,
   });
 
   final String id;
@@ -469,8 +512,19 @@ class BilgiProfile {
   final String adDay;
   final String weekId;
   final int weekScore;
+  final Map<String, BilgiCategoryPoints> categoryScores;
+  final String heldWeekId;
+  final int heldWeekScore;
+  final Map<String, int> heldCategoryWeeks;
+  final String leagueRewardWeek;
+  final String leagueRewardText;
   final String locale;
   final bool localeChosen;
+  final String? accountId;
+  final String? accountFirstGame;
+  final List<String> accountGames;
+  final DateTime? accountCreatedAt;
+  final bool guestHere;
 
   bool rewardReady(String today, String yesterday) {
     if (lastReward == today) return false;
@@ -525,8 +579,21 @@ class BilgiProfile {
         'adDay': adDay,
         'weekId': weekId,
         'weekScore': weekScore,
+        'categoryScores': {
+          for (final entry in categoryScores.entries) entry.key: entry.value.toMap(),
+        },
+        'heldWeekId': heldWeekId,
+        'heldWeekScore': heldWeekScore,
+        'heldCategoryWeeks': heldCategoryWeeks,
+        'leagueRewardWeek': leagueRewardWeek,
+        'leagueRewardText': leagueRewardText,
         'locale': locale,
         'localeChosen': localeChosen,
+        'accountId': accountId,
+        'accountFirstGame': accountFirstGame,
+        'accountGames': accountGames,
+        'accountCreatedAt': accountCreatedAt?.toIso8601String(),
+        'guestHere': guestHere,
       };
 
   /// Admin/API payload without credentials.
@@ -583,8 +650,22 @@ class BilgiProfile {
       adDay: map['adDay'] as String? ?? '',
       weekId: map['weekId'] as String? ?? '',
       weekScore: map['weekScore'] as int? ?? 0,
+      categoryScores: bilgiCategoryPointsFrom(map['categoryScores']),
+      heldWeekId: map['heldWeekId'] as String? ?? '',
+      heldWeekScore: map['heldWeekScore'] as int? ?? 0,
+      heldCategoryWeeks: bilgiIntMapFrom(map['heldCategoryWeeks']),
+      leagueRewardWeek: map['leagueRewardWeek'] as String? ?? '',
+      leagueRewardText: map['leagueRewardText'] as String? ?? '',
       locale: map['locale'] as String? ?? 'tr',
       localeChosen: map['localeChosen'] as bool? ?? false,
+      accountId: map['accountId'] as String?,
+      accountCreatedAt: DateTime.tryParse('${map['accountCreatedAt'] ?? ''}'),
+      accountFirstGame: map['accountFirstGame'] as String?,
+      accountGames: [
+        for (final item in map['accountGames'] as List? ?? const [])
+          if ('$item'.isNotEmpty) '$item',
+      ],
+      guestHere: map['guestHere'] as bool? ?? false,
     );
   }
 
@@ -631,8 +712,19 @@ class BilgiProfile {
     String? adDay,
     String? weekId,
     int? weekScore,
+    Map<String, BilgiCategoryPoints>? categoryScores,
+    String? heldWeekId,
+    int? heldWeekScore,
+    Map<String, int>? heldCategoryWeeks,
+    String? leagueRewardWeek,
+    String? leagueRewardText,
     String? locale,
     bool? localeChosen,
+    String? accountId,
+    String? accountFirstGame,
+    List<String>? accountGames,
+    DateTime? accountCreatedAt,
+    bool? guestHere,
   }) {
     return BilgiProfile(
       id: id ?? this.id,
@@ -677,10 +769,74 @@ class BilgiProfile {
       adDay: adDay ?? this.adDay,
       weekId: weekId ?? this.weekId,
       weekScore: weekScore ?? this.weekScore,
+      categoryScores: categoryScores ?? this.categoryScores,
+      heldWeekId: heldWeekId ?? this.heldWeekId,
+      heldWeekScore: heldWeekScore ?? this.heldWeekScore,
+      heldCategoryWeeks: heldCategoryWeeks ?? this.heldCategoryWeeks,
+      leagueRewardWeek: leagueRewardWeek ?? this.leagueRewardWeek,
+      leagueRewardText: leagueRewardText ?? this.leagueRewardText,
       locale: locale ?? this.locale,
       localeChosen: localeChosen ?? this.localeChosen,
+      accountId: accountId ?? this.accountId,
+      accountFirstGame: accountFirstGame ?? this.accountFirstGame,
+      accountGames: accountGames ?? this.accountGames,
+      accountCreatedAt: accountCreatedAt ?? this.accountCreatedAt,
+      guestHere: guestHere ?? this.guestHere,
     );
   }
+}
+
+/// Registered profiles plus shared accounts that have not entered this game.
+/// A device guest with no account is left out of the shared list.
+List<BilgiProfile> annotateBilgiAccounts(List<BilgiProfile> profiles, List<LunoAccount> accounts) {
+  final byId = {for (final account in accounts) account.id: account};
+  final byEmail = {
+    for (final account in accounts)
+      if (account.email.isNotEmpty) account.email: account,
+  };
+  final out = <BilgiProfile>[];
+  final seen = <String>{};
+  for (final user in profiles) {
+    if (user.email.trim().isEmpty && user.passwordHash.isEmpty && (user.accountId == null || user.accountId!.isEmpty)) {
+      continue;
+    }
+    final account = (user.accountId == null ? null : byId[user.accountId]) ??
+        (user.email.trim().isEmpty ? null : byEmail[user.email.trim().toLowerCase()]);
+    if (account == null) {
+      out.add(user);
+      continue;
+    }
+    seen.add(account.id);
+    final here = account.activatedGames.contains(GameIds.lunoBilgi);
+    out.add(
+      user.copyWith(
+        accountId: account.id,
+        accountFirstGame: account.firstGameId,
+        accountGames: account.activatedGames,
+        accountCreatedAt: account.createdAt,
+        guestHere: !here,
+      ),
+    );
+  }
+  for (final account in accounts) {
+    if (seen.contains(account.id) || account.activatedGames.contains(GameIds.lunoBilgi)) continue;
+    out.add(
+      BilgiProfile.fromMap({
+        'id': account.id,
+        'username': account.displayName.isEmpty ? 'Misafir' : account.displayName,
+        'email': account.email,
+        'gold': 0,
+        'lives': 0,
+        'createdAt': account.createdAt.toIso8601String(),
+        'accountId': account.id,
+        'accountFirstGame': account.firstGameId,
+        'accountGames': account.activatedGames,
+        'accountCreatedAt': account.createdAt.toIso8601String(),
+        'guestHere': true,
+      }),
+    );
+  }
+  return out;
 }
 
 class BilgiMode {

@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kelimelig/api/bilgi_users_http.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
+import 'package:kelimelig/domain/account/luno_account.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_league.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 
 BilgiProfile _profile({
@@ -96,6 +98,31 @@ void main() {
     expect(second.banned, isTrue);
     expect(second.banReason, 'Askıya alındı');
     expect((await store.values('users')).length, 1);
+  });
+
+  test('a guest is stored by id and stays off the shared account list', () async {
+    final store = MemoryKeyValueStore();
+    final saved = await mergeBilgiUser(
+      store,
+      _profile(id: 'g1', username: 'Misafir', email: '', passwordHash: '', gold: 20),
+    );
+    expect(saved.id, 'g1');
+    expect(saved.email, isEmpty);
+    expect(saved.passwordHash, isEmpty);
+    expect(saved.accountId, isNull);
+    expect(await store.values(lunoAccountsBox), isEmpty);
+    expect(annotateBilgiAccounts([saved], const []), isEmpty);
+    expect(bilgiPublicPlayer(saved), isTrue);
+
+    await store.put('users', saved.id, saved.copyWith(banned: true, banReason: 'Askıya alındı').toMap());
+    final again = await mergeBilgiUser(
+      store,
+      _profile(id: 'g1', username: 'Misafir', email: '', passwordHash: '', gold: 80),
+    );
+    expect(again.id, 'g1');
+    expect(again.banned, isTrue);
+    expect(again.gold, 80);
+    expect(await store.values(lunoAccountsBox), isEmpty);
   });
 
   test('username and email are enough for admin search fields', () {

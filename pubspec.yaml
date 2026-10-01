@@ -33,6 +33,7 @@ dependencies:
   pointycastle: ^3.9.1
   asn1lib: ^1.6.2
   in_app_purchase: ^3.3.1
+  in_app_purchase_android: ^0.5.0
   crypto: ^3.0.6
   postgres: ^3.5.6
   shelf: ^1.4.2
@@ -52,5 +53,6 @@ flutter:
     - assets/config/
     - assets/audio/
     - assets/images/
+    - assets/images/shop/
     - assets/icons/
     - assets/animations/

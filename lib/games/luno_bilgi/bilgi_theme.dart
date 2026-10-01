@@ -31,7 +31,72 @@ class BilgiChrome extends StatelessWidget {
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),
-          child: child,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              const _BilgiBackdrop(),
+              child,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BilgiBackdrop extends StatelessWidget {
+  const _BilgiBackdrop();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Stack(
+      fit: StackFit.expand,
+      children: [
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF0B0E14), Color(0xFF2A1B3D)],
+            ),
+          ),
+        ),
+        Positioned(
+          top: -80,
+          left: -80,
+          child: _BilgiGlow(color: Color(0xFF7B61FF), size: 250, opacity: 0.25),
+        ),
+        Positioned(
+          bottom: 50,
+          right: -80,
+          child: _BilgiGlow(color: Color(0xFFE91E63), size: 300, opacity: 0.18),
+        ),
+      ],
+    );
+  }
+}
+
+class _BilgiGlow extends StatelessWidget {
+  const _BilgiGlow({required this.color, required this.size, required this.opacity});
+
+  final Color color;
+  final double size;
+  final double opacity;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            colors: [
+              color.withValues(alpha: opacity),
+              color.withValues(alpha: 0),
+            ],
+          ),
         ),
       ),
     );

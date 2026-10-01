@@ -11,6 +11,8 @@ class SessionKv implements KeyValueStore {
 
   final KeyValueStore _inner;
 
+  KeyValueStore get inner => _inner;
+
   /// Matches `LocalGameServer`'s current-user meta key.
   static const currentUserKey = 'currentUserId';
 

@@ -10,6 +10,9 @@ class ScopedKeyValueStore implements KeyValueStore {
   final KeyValueStore _inner;
   final String gameId;
 
+  /// Unscoped store. Shared accounts live here, not inside a game prefix.
+  KeyValueStore get root => _inner;
+
   static String boxName(String gameId, String box) => '${gameId}__$box';
 
   static String metaKey(String gameId, String key) => '${gameId}__$key';

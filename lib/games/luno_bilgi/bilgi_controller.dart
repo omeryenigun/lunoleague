@@ -5,14 +5,14 @@ import 'package:kelimelig/core/l10n/game_locale.dart';
 import 'package:kelimelig/core/services/ad_service.dart';
 import 'package:kelimelig/core/services/audio_manager.dart';
 import 'package:kelimelig/core/services/google_auth.dart';
-import 'package:kelimelig/data/local/key_value_store.dart';
-import 'package:kelimelig/data/local/local_game_server.dart';
-import 'package:kelimelig/data/local/scoped_store.dart';
-import 'package:kelimelig/domain/game/game_ids.dart';
-import 'package:kelimelig/domain/game/game_server.dart';
+import 'package:kelimelig/core/constants/user_messages.dart';
+import 'package:kelimelig/core/errors/failures.dart';
+import 'package:kelimelig/core/services/billing_gateway.dart';
 import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_l10n.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_league.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_league_api.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_mail.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_question_api.dart';
@@ -20,6 +20,7 @@ import 'package:kelimelig/games/luno_bilgi/bilgi_room.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_report_api.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_rules.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_shop.dart';
 import 'package:kelimelig/injection.dart';
 
 const _countsNotice = '📡 Bağlantı hatası. İnternetini kontrol et.';
@@ -86,8 +87,18 @@ class BilgiController extends ChangeNotifier {
   Map<String, int> categoryCounts = const {};
   Map<String, int> subCounts = const {};
   List<BilgiCategory> categories = bilgiCategories;
-  String boardScope = 'global';
-  List<BilgiProfile> board = const [];
+  String boardScope = 'general';
+  String? boardCategoryId;
+  bool boardWeekly = true;
+  List<BilgiBoardEntry> boardRows = const [];
+  bool boardSeed = false;
+  int boardRealCount = 0;
+  List<String> boardCategoryIds = const [];
+  Map<String, int> boardCategoryRanks = const {};
+  bool boardClosed = false;
+  String leagueTier = '';
+  String leagueTitle = '';
+  Duration leagueRemaining = Duration.zero;
   List<Map<String, dynamic>> past = const [];
   List<Map<String, dynamic>> eventRows = const [];
   bool picked = false;
@@ -106,6 +117,7 @@ class BilgiController extends ChangeNotifier {
   int _rewardEpoch = 0;
   bool _alive = true;
   bool _adLaunching = false;
+  bool _shopBuying = false;
   List<String> newBadgeIds = const [];
   bool notifyOn = true;
   bool soundOn = true;
@@ -142,6 +154,7 @@ class BilgiController extends ChangeNotifier {
         'result',
         'history',
         'login',
+        'achievements',
       }.contains(page);
 
   Future<void> retry() async {
@@ -165,8 +178,9 @@ class BilgiController extends ChangeNotifier {
     notifyListeners();
 
     config = await server.config();
-    profile = await server.profile();
+    profile = await server.pullRemoteProfile();
     resolvingLocale = false;
+    await _showLeagueReward();
 
     if (config.maintenance) {
       stack
@@ -268,7 +282,7 @@ class BilgiController extends ChangeNotifier {
     if (id == 'detail' || id == 'setup') _preparePlaySettings();
     stack.add(id);
     notifyListeners();
-    if (id == 'league') unawaited(loadBoard());
+    if (id == 'league' || id == 'profile') unawaited(loadBoard());
     if (id == 'history' || id == 'profile') unawaited(loadHistory());
     if (id == 'event') unawaited(loadEvents());
     if (id == 'setup' || id == 'detail') unawaited(refreshPool());
@@ -331,8 +345,16 @@ class BilgiController extends ChangeNotifier {
   }
 
   Future<void> _reloadProfile() async {
-    profile = await server.profile();
+    profile = await server.pullRemoteProfile();
+    await _showLeagueReward();
     notifyListeners();
+  }
+
+  Future<void> _showLeagueReward() async {
+    final user = profile;
+    if (user == null || user.leagueRewardText.isEmpty) return;
+    notice = user.leagueRewardText;
+    profile = await server.clearLeagueReward();
   }
 
   Future<Map<String, dynamic>> _visibleCatalog() async {
@@ -846,8 +868,36 @@ class BilgiController extends ChangeNotifier {
   }
 
   Future<void> loadBoard() async {
-    final scope = boardScope == 'category' ? 'global' : boardScope;
-    board = await server.leaderboard(scope: scope);
+    if (boardScope != 'general' && boardScope != 'category') {
+      boardScope = 'general';
+      boardCategoryId = null;
+    }
+    final scope = boardScope == 'general' ? 'global' : boardScope;
+    final categoryId = boardCategoryId;
+    final weekly = boardWeekly;
+    profile = await server.pullRemoteProfile();
+    final remote = await BilgiLeagueApi.load(
+      scope: scope,
+      categoryId: categoryId,
+      categoryWeekly: weekly,
+      me: profile?.id,
+    );
+    final local = await server.leagueSnapshot(
+      scope: scope,
+      categoryId: categoryId,
+      categoryWeekly: weekly,
+    );
+    final snap = remote ?? local;
+    boardRows = snap.rows;
+    boardSeed = snap.seed;
+    boardRealCount = snap.realCount;
+    boardCategoryIds = snap.categoryIds;
+    boardCategoryRanks = snap.categoryRanks.isNotEmpty ? snap.categoryRanks : local.categoryRanks;
+    boardClosed = snap.closed;
+    leagueTier = snap.tier.isNotEmpty ? snap.tier : (profile == null ? '' : bilgiTier(bilgiVisibleWeekScore(profile!, DateTime.now())));
+    leagueTitle = snap.title;
+    leagueRemaining = snap.remaining;
+    await _showLeagueReward();
     notifyListeners();
   }
 
@@ -916,6 +966,58 @@ class BilgiController extends ChangeNotifier {
     profile = result.profile ?? profile;
     notice = result.message;
     notifyListeners();
+  }
+
+  bool get plusActive {
+    final user = profile;
+    if (user == null) return false;
+    return bilgiPlusActive(user, DateTime.now());
+  }
+
+  /// Starts a Play purchase. Web and desktop only show [bilgiPlayAndroidNotice].
+  Future<void> buyPlay(BilgiPlaySku sku) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      notice = bilgiPlayAndroidNotice;
+      notifyListeners();
+      return;
+    }
+    if (_shopBuying) return;
+    _shopBuying = true;
+    notice = null;
+    notifyListeners();
+    try {
+      final billing = sl<BillingGateway>();
+      final purchase = await billing.buyOffer(
+        productId: sku.productId,
+        basePlanId: sku.basePlanId,
+        consumable: sku.consumable,
+      );
+      if (purchase.productId != sku.productId || purchase.purchaseToken.trim().isEmpty) {
+        notice = UserMessages.billingUnavailable;
+        return;
+      }
+      final result = await server.grantPlayPurchase(
+        productId: sku.productId,
+        basePlanId: sku.basePlanId,
+        purchaseToken: purchase.purchaseToken,
+        orderId: purchase.orderId,
+      );
+      if (!result.ok || result.profile == null) {
+        notice = result.message ?? UserMessages.billingUnavailable;
+        return;
+      }
+      profile = result.profile;
+      final acknowledge = purchase.acknowledge;
+      if (acknowledge != null) await acknowledge();
+      notice = sku.gold > 0 ? '${sku.gold} altın eklendi.' : 'Luno Plus açıldı.';
+    } on AppFailure catch (error) {
+      notice = error.message;
+    } catch (_) {
+      notice = UserMessages.billingUnavailable;
+    } finally {
+      _shopBuying = false;
+      notifyListeners();
+    }
   }
 
   Future<void> refill() async {
@@ -1250,7 +1352,11 @@ class BilgiController extends ChangeNotifier {
         notifyListeners();
         return;
       }
-      final result = await server.loginSocial(email: email, username: account.displayName);
+      final result = await server.loginSocial(
+        email: email,
+        username: account.displayName,
+        googleId: account.id,
+      );
       profile = result.profile ?? profile;
       notice = result.message;
       if (result.ok) tab('home');
@@ -1261,26 +1367,9 @@ class BilgiController extends ChangeNotifier {
     }
   }
 
-  /// Same League call as AuthCubit.apple: GameServer.signInWithApple, then the Bilgi profile.
-  Future<void> loginApple() async {
-    try {
-      final GameServer game = sl.isRegistered<GameServer>()
-          ? sl<GameServer>()
-          : LocalGameServer(ScopedKeyValueStore(sl<KeyValueStore>(), GameIds.lunoLeague));
-      final user = await game.signInWithApple();
-      final email = user.email?.trim() ?? '';
-      final result = await server.loginSocial(
-        email: email.contains('@') ? email : 'apple-${user.id}@players.luno',
-        username: user.displayName,
-      );
-      profile = result.profile ?? profile;
-      notice = result.message;
-      if (result.ok) tab('home');
-      notifyListeners();
-    } catch (_) {
-      notice = '⚠️ Bir şeyler ters gitti. Tekrar dene.';
-      notifyListeners();
-    }
+  void loginApple() {
+    notice = UserMessages.appleNotReady;
+    notifyListeners();
   }
 
   void socialUnavailable() {
@@ -1326,6 +1415,7 @@ class BilgiController extends ChangeNotifier {
   Future<void> saveProfile({String? username, String? city, String? avatar}) async {
     final result = await server.updateProfile(username: username, city: city, avatar: avatar);
     profile = result.profile ?? profile;
+    notice = result.message;
     notifyListeners();
   }
 

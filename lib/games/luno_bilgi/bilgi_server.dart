@@ -1,13 +1,18 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:kelimelig/core/constants/user_messages.dart';
+import 'package:kelimelig/domain/account/luno_account.dart';
+import 'package:kelimelig/domain/game/game_ids.dart';
 import 'package:kelimelig/core/l10n/game_locale.dart';
 import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_league.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_room.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_rules.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_shop.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_trial_questions.dart';
 
 class BilgiResult {
@@ -48,6 +53,44 @@ const dailyQuestionAdPassMeta = 'dailyQuestionAdPass';
 const dailyQuestionQuotaMessage =
     'Günlük oyun hakkınız doldu. Reklamla yeni oyun başlatın';
 
+/// Generic label stored before a device has a real display name.
+const bilgiGenericUsername = 'Oyuncu';
+
+/// Same character rule as the app nickname check: letters, numbers, single spaces.
+final bilgiUsernamePattern = RegExp(r'^[\p{L}\p{N}]+(?: [\p{L}\p{N}]+)*$', unicode: true);
+
+bool bilgiPlaceholderUsername(String name) {
+  final trimmed = name.trim();
+  return trimmed.isEmpty || trimmed.toLowerCase() == bilgiGenericUsername.toLowerCase();
+}
+
+String bilgiUsernameNormalized(String raw) => raw.trim().replaceAll(RegExp(r'\s+'), ' ');
+
+/// Length, charset, and shape already used for nicknames. Null when the name is acceptable.
+String? bilgiUsernameIssue(String raw) {
+  final name = bilgiUsernameNormalized(raw);
+  if (name.length < 2) return UserMessages.nicknameShort;
+  if (name.length > 20) return UserMessages.nicknameLong;
+  if (!bilgiUsernamePattern.hasMatch(name)) return UserMessages.nicknameBad;
+  return null;
+}
+
+/// Stable guest label. Suffix is the profile id's digits, last 9 when the id is longer.
+/// A longer slice (still within 13 digits) is used only when that short name is already taken.
+String bilgiGuestUsername(String id, [Set<String> takenLower = const {}]) {
+  final digits = id.replaceAll(RegExp(r'[^0-9]'), '');
+  final body = digits.isEmpty ? '1' : digits;
+  final shortest = min(9, body.length);
+  final longest = min(13, body.length);
+  String? first;
+  for (var length = shortest; length <= longest; length++) {
+    final name = 'Misafir${body.substring(body.length - length)}';
+    first ??= name;
+    if (!takenLower.contains(name.toLowerCase())) return name;
+  }
+  return first ?? 'Misafir$body';
+}
+
 class LunoBilgiServer {
   LunoBilgiServer(this._store, {DateTime Function()? clock, Random? random})
       : _clock = clock ?? DateTime.now,
@@ -74,10 +117,11 @@ class LunoBilgiServer {
   /// Düello, grup ve özel oda sunucuda durur. Boşsa odalar telefon deposunda kalır.
   BilgiRoomHooks? remoteRooms;
 
-  /// Registered accounts are mirrored to the API so Bilgi admin can list them.
-  Future<void> Function(BilgiProfile user)? remoteUpsert;
+  /// Registered accounts are mirrored to the API. The map is the saved public profile.
+  Future<Map<String, dynamic>?> Function(BilgiProfile user)? remoteUpsert;
 
   static const _users = 'users';
+  static const _playPurchases = 'play_purchases';
   static const _questions = 'questions';
   static const _games = 'games';
   static const _rooms = 'rooms';
@@ -102,7 +146,8 @@ class LunoBilgiServer {
     }
     if (await _store.getMeta(_active) == null) {
       final seedCfg = await config();
-      final guest = _newProfile(username: 'Oyuncu', jokers: await _starterJokers(), lives: seedCfg.startLives);
+      var guest = _newProfile(jokers: await _starterJokers(), lives: seedCfg.startLives);
+      guest = guest.copyWith(username: await _uniqueGuestUsername(guest.id));
       await _save(guest);
       await _store.putMeta(_active, guest.id);
     }
@@ -157,12 +202,9 @@ class LunoBilgiServer {
       minutesPerLife: cfg.lifeMinutes,
     );
     final today = DateKeys.dayKey(now);
-    final week = DateKeys.weekId(now);
     user = user.copyWith(
       lives: lives,
       livesAt: lives >= cfg.maxLives ? now : clock,
-      weekId: user.weekId == week ? user.weekId : week,
-      weekScore: user.weekId == week ? user.weekScore : 0,
       adGoldToday: user.adDay == today ? user.adGoldToday : 0,
       adJokerToday: user.adDay == today ? user.adJokerToday : 0,
       adLifeToday: user.adDay == today ? user.adLifeToday : 0,
@@ -174,8 +216,38 @@ class LunoBilgiServer {
     if (user.jokers.isEmpty) {
       user = user.copyWith(jokers: await _starterJokers());
     }
+    if (!_registered(user) && bilgiPlaceholderUsername(user.username)) {
+      final chosen = await _store.getMeta(_usernameChosenKey(user.id));
+      if (chosen != '1') {
+        user = user.copyWith(username: await _uniqueGuestUsername(user.id));
+      }
+    }
     await _save(user);
     return user;
+  }
+
+  bool _registered(BilgiProfile user) => user.email.trim().isNotEmpty || user.passwordHash.isNotEmpty;
+
+  String _usernameChosenKey(String id) => 'bilgiUsernameChosen:$id';
+
+  Future<String> _uniqueGuestUsername(String id) async {
+    final taken = <String>{};
+    for (final row in await _store.values(_users)) {
+      if ('${row['id'] ?? ''}' == id) continue;
+      final name = '${row['username'] ?? ''}'.trim().toLowerCase();
+      if (name.isNotEmpty) taken.add(name);
+    }
+    return bilgiGuestUsername(id, taken);
+  }
+
+  Future<bool> _usernameTaken(String name, {required String exceptId}) async {
+    final key = bilgiUsernameNormalized(name).toLowerCase();
+    for (final row in await _store.values(_users)) {
+      if ('${row['id'] ?? ''}' == exceptId) continue;
+      final existing = bilgiUsernameNormalized('${row['username'] ?? ''}').toLowerCase();
+      if (existing.isNotEmpty && existing == key) return true;
+    }
+    return false;
   }
 
   Future<Map<String, int>> _starterJokers() async {
@@ -190,7 +262,7 @@ class LunoBilgiServer {
   }
 
   BilgiProfile _newProfile({
-    String username = 'Oyuncu',
+    String username = '',
     String email = '',
     String passwordHash = '',
     Map<String, int>? jokers,
@@ -198,9 +270,10 @@ class LunoBilgiServer {
   }) {
     final now = _clock();
     final id = 'u${now.microsecondsSinceEpoch}${_random.nextInt(999)}';
+    final given = username.trim();
     return BilgiProfile(
       id: id,
-      username: username,
+      username: given.isEmpty ? bilgiGuestUsername(id) : given,
       email: email,
       passwordHash: passwordHash,
       avatar: '😎',
@@ -239,20 +312,31 @@ class LunoBilgiServer {
       adLifeToday: 0,
       adDoubleToday: 0,
       adDay: DateKeys.dayKey(now),
-      weekId: DateKeys.weekId(now),
+      weekId: bilgiWeekId(now),
       weekScore: 0,
     );
   }
 
   Future<void> _save(BilgiProfile user) => _store.put(_users, user.id, user.toMap());
 
-  Future<void> _pushRemote(BilgiProfile user) async {
+  Future<BilgiProfile> _pushRemote(BilgiProfile user) async {
     final push = remoteUpsert;
-    if (push == null) return;
-    if (user.email.trim().isEmpty && user.passwordHash.isEmpty) return;
+    if (push == null) return user;
     try {
-      await push(user);
-    } catch (_) {}
+      final saved = await push(user);
+      if (saved == null) return user;
+      final next = bilgiTakeLeagueGrant(user, saved);
+      await _save(next);
+      return next;
+    } catch (_) {
+      return user;
+    }
+  }
+
+  /// Sends the open profile and writes the league grant from the server reply.
+  Future<BilgiProfile> pullRemoteProfile() async {
+    final user = await profile();
+    return _pushRemote(user);
   }
 
   Future<List<BilgiQuestion>> questions() async {
@@ -273,6 +357,12 @@ class LunoBilgiServer {
     return rows.map(BilgiProfile.fromMap).toList();
   }
 
+  /// Shared accounts, plus this game's registered profiles. Device-only guests stay out.
+  Future<List<BilgiProfile>> listedUsers() async {
+    final accounts = await LunoAccountDirectory(lunoAccountRoot(_store)).all();
+    return annotateBilgiAccounts(await users(), accounts);
+  }
+
   Future<BilgiResult> register({
     required String username,
     required String email,
@@ -285,49 +375,125 @@ class LunoBilgiServer {
     if (username.trim().length < 3 || password.length < 6 || !email.contains('@')) {
       return const BilgiResult(message: '⚠️ Bir şeyler ters gitti. Tekrar dene.');
     }
-    final all = await users();
-    if (all.any((u) => u.username.toLowerCase() == username.trim().toLowerCase())) {
-      return const BilgiResult(message: '⚠️ Bir şeyler ters gitti. Tekrar dene.');
-    }
-    final user = _newProfile(
+    return _bindRegistered(
+      email: email,
+      provider: 'email',
       username: username.trim(),
-      email: email.trim(),
       passwordHash: hashBilgiPassword(password),
-      jokers: await _starterJokers(),
-      lives: cfg.startLives,
+      replaceName: true,
     );
-    await _save(user);
-    await _store.putMeta(_active, user.id);
-    await _pushRemote(user);
-    return BilgiResult(profile: user);
   }
 
-  Future<BilgiResult> loginSocial({required String email, String? username}) async {
+  Future<BilgiResult> loginSocial({
+    required String email,
+    String? username,
+    String? googleId,
+  }) async {
     final trimmed = email.trim();
     if (!trimmed.contains('@')) {
       return const BilgiResult(message: '⚠️ Bir şeyler ters gitti. Tekrar dene.');
     }
-    final all = await users();
-    final match = all.where((u) => u.email.toLowerCase() == trimmed.toLowerCase());
-    if (match.isNotEmpty) {
-      final user = match.first;
-      if (user.banned) return const BilgiResult(message: '🚫 Hesabın askıya alındı.');
-      await _store.putMeta(_active, user.id);
-      await _pushRemote(user);
-      return BilgiResult(profile: user);
-    }
-    final name = username?.trim();
-    final user = _newProfile(
-      username: name != null && name.length >= 3 ? name : trimmed.split('@').first,
+    return _bindRegistered(
       email: trimmed,
-      passwordHash: '',
-      jokers: await _starterJokers(),
-      lives: (await config()).startLives,
+      provider: (googleId ?? '').trim().isEmpty ? 'email' : 'google',
+      googleId: googleId,
+      username: username,
+      replaceName: false,
     );
-    await _save(user);
-    await _store.putMeta(_active, user.id);
-    await _pushRemote(user);
-    return BilgiResult(profile: user);
+  }
+
+  bool _guestLooking(String name) =>
+      bilgiPlaceholderUsername(name) || RegExp(r'^Misafir\d+$').hasMatch(name.trim());
+
+  /// Upgrades the open guest, or opens the progress this account already has.
+  Future<BilgiResult> _bindRegistered({
+    required String email,
+    required String provider,
+    String? googleId,
+    String? username,
+    String? passwordHash,
+    required bool replaceName,
+  }) async {
+    final current = await profile();
+    final mail = email.trim();
+    if (current.email.isNotEmpty && current.email.toLowerCase() != mail.toLowerCase()) {
+      return const BilgiResult(message: '⚠️ Bir şeyler ters gitti. Tekrar dene.');
+    }
+    final directory = LunoAccountDirectory(lunoAccountRoot(_store));
+    final account = await directory.find(email: mail, googleId: googleId);
+    final otherId = account?.progressIds[GameIds.lunoBilgi];
+    if (otherId != null && otherId.isNotEmpty && otherId != current.id) {
+      final row = await _store.get(_users, otherId);
+      if (row == null) {
+        return const BilgiResult(message: 'Bu hesabın bu oyundaki kaydı bulunamadı.');
+      }
+      final other = BilgiProfile.fromMap(row);
+      if (other.banned) return const BilgiResult(message: '🚫 Hesabın askıya alındı.');
+      await _store.putMeta(_active, other.id);
+      final linked = await _stampAccount(other, provider: provider, email: mail, googleId: googleId);
+      return BilgiResult(profile: await _pushRemote(linked));
+    }
+    final local = (await users()).where(
+      (user) => user.id != current.id && user.email.toLowerCase() == mail.toLowerCase(),
+    );
+    if (local.isNotEmpty) {
+      final other = local.first;
+      if (other.banned) return const BilgiResult(message: '🚫 Hesabın askıya alındı.');
+      await _store.putMeta(_active, other.id);
+      final linked = await _stampAccount(other, provider: provider, email: mail, googleId: googleId);
+      return BilgiResult(profile: await _pushRemote(linked));
+    }
+    final typed = username?.trim() ?? '';
+    final canReplace = replaceName || _guestLooking(current.username);
+    final nextName = canReplace && typed.length >= 2 ? typed : current.username;
+    if (await _usernameTaken(nextName, exceptId: current.id)) {
+      return const BilgiResult(message: '⚠️ Bir şeyler ters gitti. Tekrar dene.');
+    }
+    final upgraded = current.copyWith(
+      username: nextName,
+      email: mail,
+      passwordHash: passwordHash ?? current.passwordHash,
+    );
+    final linked = await _stampAccount(upgraded, provider: provider, email: mail, googleId: googleId);
+    await _store.putMeta(_active, linked.id);
+    return BilgiResult(profile: await _pushRemote(linked));
+  }
+
+  Future<BilgiProfile> _stampAccount(
+    BilgiProfile user, {
+    required String provider,
+    String? email,
+    String? googleId,
+  }) async {
+    final link = await LunoAccountDirectory(lunoAccountRoot(_store)).link(
+      gameId: GameIds.lunoBilgi,
+      progressId: user.id,
+      displayName: user.username,
+      provider: provider,
+      email: email ?? user.email,
+      googleId: googleId,
+    );
+    if (link.otherProgressId != null && link.otherProgressId != user.id) {
+      final row = await _store.get(_users, link.otherProgressId!);
+      if (row != null) {
+        final other = BilgiProfile.fromMap(row).copyWith(
+          accountId: link.account.id,
+          accountFirstGame: link.account.firstGameId,
+          accountGames: link.account.activatedGames,
+        );
+        await _save(other);
+        await _store.putMeta(_active, other.id);
+        return other;
+      }
+    }
+    final stamped = user.copyWith(
+      accountId: link.account.id,
+      accountFirstGame: link.account.firstGameId,
+      accountGames: link.account.activatedGames,
+      guestHere: false,
+    );
+    await _save(stamped);
+    return stamped;
   }
 
   Future<BilgiResult> login({required String email, required String password}) async {
@@ -340,8 +506,8 @@ class LunoBilgiServer {
     final user = match.first;
     if (user.banned) return const BilgiResult(message: '🚫 Hesabın askıya alındı.');
     await _store.putMeta(_active, user.id);
-    await _pushRemote(user);
-    return BilgiResult(profile: user);
+    final linked = await _stampAccount(user, provider: 'email', email: user.email);
+    return BilgiResult(profile: await _pushRemote(linked));
   }
 
   Future<String?> startGate(BilgiProfile user, BilgiMode mode) async {
@@ -355,7 +521,7 @@ class LunoBilgiServer {
   }
 
   bool needsAd(BilgiProfile user, BilgiConfig cfg) {
-    if (user.premium) return false;
+    if (bilgiPlusActive(user, _clock())) return false;
     if (user.adFreeLeft > 0) return false;
     final today = DateKeys.dayKey(_clock());
     final used = user.lastPlayDay == today ? user.freePlaysUsed : 0;
@@ -724,6 +890,7 @@ class LunoBilgiServer {
       }
       final level = applyXp(level: user.level, xp: user.xp, gained: xp);
       final cats = {...user.categoriesPlayed, round.categoryId}.toList();
+      final scored = bilgiAddScore(user, points: round.score, categoryId: round.categoryId, now: _clock());
       final duelWins = user.duelWins +
           ((round.modeId == 'duello' &&
                   round.opponentName.isNotEmpty &&
@@ -731,15 +898,13 @@ class LunoBilgiServer {
                   round.score >= round.opponentScore)
               ? 1
               : 0);
-      var next = user.copyWith(
-        gold: user.gold + gold,
+      var next = scored.copyWith(
+        gold: scored.gold + gold,
         xp: level.xp,
         level: level.level,
-        diamond: user.diamond + level.diamondsGained,
-        correctTotal: user.correctTotal + round.correct,
-        bestScore: round.score > user.bestScore ? round.score : user.bestScore,
-        totalScore: user.totalScore + round.score,
-        weekScore: user.weekScore + round.score,
+        diamond: scored.diamond + level.diamondsGained,
+        correctTotal: scored.correctTotal + round.correct,
+        bestScore: round.score > scored.bestScore ? round.score : scored.bestScore,
         categoriesPlayed: cats,
         duelWins: duelWins,
         title: level.level >= 10 ? 'Bilge' : user.title,
@@ -775,11 +940,10 @@ class LunoBilgiServer {
       return const BilgiResult(message: '⚠️ Bir şeyler ters gitti. Tekrar dene.');
     }
     round.score = extra * 2;
-    final next = user.copyWith(
-      totalScore: user.totalScore + extra,
-      weekScore: user.weekScore + extra,
-      bestScore: round.score > user.bestScore ? round.score : user.bestScore,
-      adDoubleToday: user.adDoubleToday + 1,
+    final scored = bilgiAddScore(user, points: extra, categoryId: round.categoryId, now: _clock());
+    final next = scored.copyWith(
+      bestScore: round.score > scored.bestScore ? round.score : scored.bestScore,
+      adDoubleToday: scored.adDoubleToday + 1,
     );
     await _publishScore(round);
     await _save(next);
@@ -852,6 +1016,53 @@ class LunoBilgiServer {
     return BilgiResult(profile: next);
   }
 
+  /// Grants gold or Plus for one verified Play purchase. The same receipt is applied once.
+  /// A subscription renewal (new order id) extends [BilgiProfile.premiumUntil] forward.
+  Future<BilgiResult> grantPlayPurchase({
+    required String productId,
+    String? basePlanId,
+    required String purchaseToken,
+    String? orderId,
+  }) async {
+    final token = purchaseToken.trim();
+    final order = orderId?.trim() ?? '';
+    if (token.isEmpty) {
+      return const BilgiResult(message: UserMessages.billingUnavailable);
+    }
+    final sku = bilgiPlaySku(productId, basePlanId);
+    if (sku == null) {
+      return const BilgiResult(message: UserMessages.billingUnavailable);
+    }
+    final user = await profile();
+    if (await _playPurchaseSeen(subscription: sku.plus, token: token, orderId: order)) {
+      return BilgiResult(profile: user);
+    }
+    final now = _clock();
+    final next = applyBilgiPlayReward(user, sku, now);
+    await _save(next);
+    final record = {
+      'productId': sku.productId,
+      'basePlanId': sku.basePlanId ?? '',
+      'purchaseOptionId': sku.purchaseOptionId ?? '',
+      'userId': user.id,
+      'createdAt': now.toIso8601String(),
+    };
+    await _store.put(_playPurchases, 'tok:$token', record);
+    if (order.isNotEmpty) await _store.put(_playPurchases, 'ord:$order', record);
+    return BilgiResult(profile: await _pushRemote(next));
+  }
+
+  Future<bool> _playPurchaseSeen({
+    required bool subscription,
+    required String token,
+    required String orderId,
+  }) async {
+    if (subscription && orderId.isNotEmpty) {
+      return await _store.get(_playPurchases, 'ord:$orderId') != null;
+    }
+    return await _store.get(_playPurchases, 'tok:$token') != null;
+  }
+
   Future<BilgiResult> grantAd({required String kind}) async {
     final user = await profile();
     final cfg = await config();
@@ -890,10 +1101,20 @@ class LunoBilgiServer {
 
   Future<BilgiResult> updateProfile({String? username, String? city, String? avatar}) async {
     final user = await profile();
-    final next = user.copyWith(username: username, city: city, avatar: avatar);
+    var next = user;
+    if (username != null) {
+      final issue = bilgiUsernameIssue(username);
+      if (issue != null) return BilgiResult(message: issue, profile: user);
+      final name = bilgiUsernameNormalized(username);
+      if (await _usernameTaken(name, exceptId: user.id)) {
+        return BilgiResult(message: UserMessages.nicknameTaken, profile: user);
+      }
+      next = next.copyWith(username: name);
+      await _store.putMeta(_usernameChosenKey(user.id), '1');
+    }
+    next = next.copyWith(city: city, avatar: avatar);
     await _save(next);
-    await _pushRemote(next);
-    return BilgiResult(profile: next);
+    return BilgiResult(profile: await _pushRemote(next));
   }
 
   Future<BilgiResult> claimInvite(String code) async {
@@ -932,22 +1153,39 @@ class LunoBilgiServer {
   }
 
   Future<List<BilgiProfile>> leaderboard({String scope = 'global', String? categoryId}) async {
+    final snap = await leagueSnapshot(scope: scope, categoryId: categoryId);
+    if (snap.seed) return const [];
+    final all = await users();
+    final byId = {for (final user in all) user.id: user};
+    return [for (final row in snap.rows) if (byId[row.id] != null) byId[row.id]!];
+  }
+
+  Future<BilgiLeagueSnapshot> leagueSnapshot({
+    required String scope,
+    String? categoryId,
+    bool categoryWeekly = false,
+  }) async {
     final all = await users();
     final me = await profile();
-    var list = all.where((u) => !u.banned).toList();
-    if (scope == 'weekly') {
-      list.sort((a, b) => b.weekScore.compareTo(a.weekScore));
-    } else if (scope == 'friends') {
-      list = list.where((u) => u.id == me.id || me.friends.contains(u.id)).toList();
-      list.sort((a, b) => b.totalScore.compareTo(a.totalScore));
-    } else if (scope == 'city') {
-      if (me.city.isEmpty) return const [];
-      list = list.where((u) => u.city == me.city).toList();
-      list.sort((a, b) => b.totalScore.compareTo(a.totalScore));
-    } else {
-      list.sort((a, b) => b.totalScore.compareTo(a.totalScore));
-    }
-    return list;
+    final settled = await _store.getMeta('bilgi_league_settlement') ?? '';
+    return bilgiLeagueSnapshot(
+      users: all,
+      me: me,
+      scope: scope,
+      categoryId: categoryId,
+      categoryWeekly: categoryWeekly,
+      now: _clock(),
+      settledWeek: settled,
+    );
+  }
+
+  Future<BilgiProfile> clearLeagueReward() async {
+    final user = await profile();
+    if (user.leagueRewardText.isEmpty) return user;
+    final next = user.copyWith(leagueRewardText: '');
+    await _save(next);
+    await _pushRemote(next);
+    return next;
   }
 
   Future<BilgiResult> findDuel() async {
@@ -1382,8 +1620,7 @@ class LunoBilgiServer {
     }
     final next = match.first.copyWith(passwordHash: hashBilgiPassword(password));
     await _save(next);
-    await _pushRemote(next);
-    return BilgiResult(profile: next);
+    return BilgiResult(profile: await _pushRemote(next));
   }
 
   Future<List<Map<String, dynamic>>> staff() async {
