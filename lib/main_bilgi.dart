@@ -21,7 +21,8 @@ Future<void> main() async {
     ..remoteDraw = BilgiQuestionApi.draw
     ..remoteDaily = BilgiQuestionApi.daily
     ..remoteRooms = BilgiRoomApi.hooks()
-    ..remoteUpsert = BilgiUserApi.upsert;
+    ..remoteUpsert = BilgiUserApi.upsert
+    ..remoteWallet = BilgiUserApi.wallet;
   runApp(const LunoBilgiApp());
   if (!kIsWeb) {
     try {

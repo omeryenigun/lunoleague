@@ -786,8 +786,8 @@ class BilgiProfile {
   }
 }
 
-/// Registered profiles plus shared accounts that have not entered this game.
-/// A device guest with no account is left out of the shared list.
+/// Registered profiles, device guests, and shared accounts that have not entered this game.
+/// A device guest is listed with [BilgiProfile.guestHere] so admin can open the wallet.
 List<BilgiProfile> annotateBilgiAccounts(List<BilgiProfile> profiles, List<LunoAccount> accounts) {
   final byId = {for (final account in accounts) account.id: account};
   final byEmail = {
@@ -798,6 +798,7 @@ List<BilgiProfile> annotateBilgiAccounts(List<BilgiProfile> profiles, List<LunoA
   final seen = <String>{};
   for (final user in profiles) {
     if (user.email.trim().isEmpty && user.passwordHash.isEmpty && (user.accountId == null || user.accountId!.isEmpty)) {
+      out.add(user.copyWith(guestHere: true));
       continue;
     }
     final account = (user.accountId == null ? null : byId[user.accountId]) ??

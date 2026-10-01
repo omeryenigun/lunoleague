@@ -94,7 +94,7 @@ void main() {
     );
     expect(second.id, 'local-a');
     expect(second.username, 'Ada2');
-    expect(second.gold, 900);
+    expect(second.gold, 500);
     expect(second.banned, isTrue);
     expect(second.banReason, 'Askıya alındı');
     expect((await store.values('users')).length, 1);
@@ -107,11 +107,15 @@ void main() {
       _profile(id: 'g1', username: 'Misafir', email: '', passwordHash: '', gold: 20),
     );
     expect(saved.id, 'g1');
+    expect(saved.gold, 500);
     expect(saved.email, isEmpty);
     expect(saved.passwordHash, isEmpty);
     expect(saved.accountId, isNull);
     expect(await store.values(lunoAccountsBox), isEmpty);
-    expect(annotateBilgiAccounts([saved], const []), isEmpty);
+    final listed = annotateBilgiAccounts([saved], const []);
+    expect(listed, hasLength(1));
+    expect(listed.single.guestHere, isTrue);
+    expect(listed.single.id, 'g1');
     expect(bilgiPublicPlayer(saved), isTrue);
 
     await store.put('users', saved.id, saved.copyWith(banned: true, banReason: 'Askıya alındı').toMap());
@@ -121,7 +125,7 @@ void main() {
     );
     expect(again.id, 'g1');
     expect(again.banned, isTrue);
-    expect(again.gold, 80);
+    expect(again.gold, 500);
     expect(await store.values(lunoAccountsBox), isEmpty);
   });
 

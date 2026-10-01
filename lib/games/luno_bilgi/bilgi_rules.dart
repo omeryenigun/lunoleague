@@ -76,6 +76,61 @@ int goldForScore(int totalScore, double modeMultiplier) {
   return ((totalScore / 10) * modeMultiplier).floor();
 }
 
+/// True when [message] is an existing “not enough gold” refusal.
+bool bilgiNoticeIsGoldShort(String? message) {
+  if (message == null || message.isEmpty) return false;
+  return message.contains('Yeterli altın');
+}
+
+/// A gold source the player can open from the insufficient-gold dialog.
+/// Lives refill on a timer; gold does not, so there is no wait row.
+enum BilgiGoldHelpKind { ad, shop, daily }
+
+class BilgiGoldHelpOption {
+  const BilgiGoldHelpOption({
+    required this.kind,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final BilgiGoldHelpKind kind;
+  final String title;
+  final String subtitle;
+}
+
+/// Shop packs and the rewarded-ad grant are always listed.
+/// Daily reward is listed only when today’s unclaimed payout includes gold.
+List<BilgiGoldHelpOption> bilgiGoldHelpOptions({
+  required int rewardedGold,
+  required int shopGoldA,
+  required int shopGoldB,
+  required bool dailyGoldReady,
+  required int dailyGold,
+}) {
+  final options = <BilgiGoldHelpOption>[
+    BilgiGoldHelpOption(
+      kind: BilgiGoldHelpKind.ad,
+      title: 'Reklam izle',
+      subtitle: '$rewardedGold altın',
+    ),
+    BilgiGoldHelpOption(
+      kind: BilgiGoldHelpKind.shop,
+      title: 'Altın satın al',
+      subtitle: '$shopGoldA veya $shopGoldB altın',
+    ),
+  ];
+  if (dailyGoldReady && dailyGold > 0) {
+    options.add(
+      BilgiGoldHelpOption(
+        kind: BilgiGoldHelpKind.daily,
+        title: 'Günlük ödül',
+        subtitle: '$dailyGold altın',
+      ),
+    );
+  }
+  return options;
+}
+
 int xpForScore(int totalScore) {
   if (totalScore <= 0) return 0;
   return totalScore ~/ 2;
@@ -146,3 +201,269 @@ String bilgiBootPage({
   if (!seenIntro) return 'intro';
   return 'home';
 }
+
+/// Shown when the explanation cannot be turned into a clue that hides the answer.
+const bilgiHintWithheld = 'Bu soruda ipucu, doğru şıkkı söylemez.';
+
+const _hintAnswerPhrases = [
+  'doğru cevap',
+  'dogru cevap',
+  'doğru yanıt',
+  'dogru yanit',
+  'doğru şıkkı',
+  'dogru sikki',
+  'doğru şık',
+  'dogru sik',
+  'doğru seçenek',
+  'dogru secenek',
+  'correct answer',
+  'right answer',
+  'richtige antwort',
+  'respuesta correcta',
+  'bonne réponse',
+  'bonne reponse',
+  'risposta corretta',
+  'resposta correta',
+  'juiste antwoord',
+  'poprawna odpowiedź',
+  'poprawna odpowiedz',
+  'правильный ответ',
+  'cevap',
+  'yanıt',
+  'yanit',
+  'answer',
+  'antwort',
+  'respuesta',
+  'réponse',
+  'reponse',
+  'risposta',
+  'resposta',
+  'antwoord',
+  'odpowiedź',
+  'odpowiedz',
+  'ответ',
+];
+
+/// One short clue from [explanation]. The correct option text, its letter, and
+/// phrases that announce the answer are removed. If nothing safe remains, the
+/// fixed line is returned and the answer is not stated.
+String bilgiHintClue({
+  required String explanation,
+  required List<String> options,
+  required int correct,
+}) {
+  final raw = explanation.trim();
+  if (raw.isEmpty) return bilgiHintWithheld;
+  final answer = (correct >= 0 && correct < options.length) ? options[correct].trim() : '';
+  final letter = (correct >= 0 && correct <= 3) ? ['A', 'B', 'C', 'D'][correct] : '';
+  var text = raw;
+  for (final phrase in _hintAnswerPhrases) {
+    text = _removeHintToken(text, phrase, gluedSuffix: true);
+  }
+  if (answer.isNotEmpty) {
+    text = _removeHintToken(text, answer, apostropheSuffix: true);
+  }
+  text = _stripHintLetter(text, letter);
+  for (final part in text.split(RegExp(r'[.!?…\n]+'))) {
+    final sentence = _tidyHintSentence(part);
+    if (sentence.isEmpty) continue;
+    if (_hintLetterCount(sentence) < 8) continue;
+    if (_hintLeaks(sentence, answer, letter)) continue;
+    return _shortHintSentence(sentence);
+  }
+  return bilgiHintWithheld;
+}
+
+String _stripHintLetter(String text, String letter) {
+  final mark = letter.trim().toUpperCase();
+  if (mark.length != 1) return text;
+  var next = text;
+  for (final form in ['($mark)', '$mark)', '$mark.', '$mark:', '$mark-']) {
+    next = _removeHintToken(next, form);
+  }
+  for (final prefix in ['şıkkı', 'sikki', 'seçenek', 'secenek', 'şık', 'sik', 'option']) {
+    next = _removeHintToken(next, '$prefix $mark');
+    next = _removeHintToken(next, '$mark $prefix', gluedSuffix: true);
+  }
+  return _removeHintToken(next, mark);
+}
+
+String _removeHintToken(
+  String text,
+  String token, {
+  bool gluedSuffix = false,
+  bool apostropheSuffix = false,
+}) {
+  final needle = token.trim();
+  if (needle.isEmpty || text.isEmpty) return text;
+  final foldedNeedle = _hintLoose(needle);
+  if (foldedNeedle.isEmpty) return text;
+  final buffer = StringBuffer();
+  var i = 0;
+  while (i < text.length) {
+    final folded = _hintLoose(text);
+    final at = folded.indexOf(foldedNeedle, i);
+    if (at < 0) {
+      buffer.write(text.substring(i));
+      break;
+    }
+    final beforeOk = at == 0 || !_hintTokenChar(text[at - 1]);
+    var end = at + foldedNeedle.length;
+    if (end > text.length) end = text.length;
+    if (beforeOk) {
+      if (apostropheSuffix && end < text.length && _hintApostrophe(text[end])) {
+        end++;
+        while (end < text.length && _hintLetter(text[end])) {
+          end++;
+        }
+      } else if (gluedSuffix) {
+        while (end < text.length && _hintLetter(text[end])) {
+          end++;
+        }
+      }
+      final afterOk = end >= text.length || !_hintTokenChar(text[end]);
+      if (afterOk) {
+        buffer.write(text.substring(i, at));
+        i = end;
+        continue;
+      }
+    }
+    final step = at + 1;
+    buffer.write(text.substring(i, step > text.length ? text.length : step));
+    i = step > text.length ? text.length : step;
+  }
+  return buffer.toString();
+}
+
+String _tidyHintSentence(String raw) {
+  var text = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+  text = text.replaceAll(RegExp(r'''^[\s,;:.\-–—|/\\'"“”‘’()\[\]·•]+'''), '');
+  text = text.replaceAll(RegExp(r'''[\s,;:.\-–—|/\\'"“”‘’()\[\]·•]+$'''), '');
+  text = text.replaceFirst(
+    RegExp("^(?:dır|dir|dur|dür|tır|tir|tur|tür)\\b", caseSensitive: false),
+    '',
+  );
+  text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+  text = text.replaceAll(RegExp(r'\s+([,;:])'), r'$1');
+  text = text.replaceAll(RegExp(r'([(\[])\s+'), r'$1');
+  text = text.replaceAll(RegExp(r'\(\s*\)'), '');
+  text = text.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+  if (text.isEmpty) return '';
+  final sentence = _hintUpperFirst(text);
+  if (RegExp(r'[.!?…]$').hasMatch(sentence)) return sentence;
+  return '$sentence.';
+}
+
+String _shortHintSentence(String sentence) {
+  if (sentence.length <= 180) return sentence;
+  final cut = sentence.lastIndexOf(' ', 160);
+  final end = cut >= 40 ? cut : 160;
+  return sentence.substring(0, end).trim();
+}
+
+bool _hintLeaks(String text, String answer, String letter) {
+  final foldedAnswer = _hintLoose(answer.trim());
+  if (foldedAnswer.isNotEmpty) {
+    final folded = _hintLoose(text);
+    final named = foldedAnswer.length >= 4
+        ? folded.contains(foldedAnswer)
+        : _hintHasToken(folded, foldedAnswer);
+    if (named) return true;
+  }
+  final mark = letter.trim();
+  if (mark.length == 1 && _hintHasToken(_hintLoose(text), _hintLoose(mark))) return true;
+  return false;
+}
+
+bool _hintHasToken(String foldedText, String foldedNeedle) {
+  if (foldedNeedle.isEmpty) return false;
+  var start = 0;
+  while (start < foldedText.length) {
+    final at = foldedText.indexOf(foldedNeedle, start);
+    if (at < 0) return false;
+    final beforeOk = at == 0 || !_hintTokenChar(foldedText[at - 1]);
+    final end = at + foldedNeedle.length;
+    final afterOk = end >= foldedText.length || !_hintTokenChar(foldedText[end]);
+    if (beforeOk && afterOk) return true;
+    start = at + 1;
+  }
+  return false;
+}
+
+int _hintLetterCount(String text) {
+  var count = 0;
+  for (var i = 0; i < text.length; i++) {
+    if (_hintLetter(text[i])) count++;
+  }
+  return count;
+}
+
+String _hintUpperFirst(String text) {
+  if (text.isEmpty) return text;
+  final first = text[0];
+  final upper = switch (first) {
+    'i' => 'İ',
+    'ı' => 'I',
+    'ş' => 'Ş',
+    'ğ' => 'Ğ',
+    'ü' => 'Ü',
+    'ö' => 'Ö',
+    'ç' => 'Ç',
+    _ => first.toUpperCase().length == 1 ? first.toUpperCase() : first,
+  };
+  if (upper == first) return text;
+  return upper + text.substring(1);
+}
+
+String _hintLoose(String input) {
+  final out = StringBuffer();
+  for (var i = 0; i < input.length; i++) {
+    out.write(_hintLooseChar(input[i]));
+  }
+  return out.toString();
+}
+
+String _hintLooseChar(String ch) {
+  switch (ch) {
+    case 'İ':
+    case 'I':
+    case 'ı':
+    case 'i':
+      return 'i';
+    case 'Ş':
+    case 'ş':
+      return 'ş';
+    case 'Ğ':
+    case 'ğ':
+      return 'ğ';
+    case 'Ü':
+    case 'ü':
+      return 'ü';
+    case 'Ö':
+    case 'ö':
+      return 'ö';
+    case 'Ç':
+    case 'ç':
+      return 'ç';
+    default:
+      final lower = ch.toLowerCase();
+      return lower.length == 1 ? lower : ch;
+  }
+}
+
+bool _hintLetter(String ch) {
+  if (ch.isEmpty) return false;
+  final loose = _hintLooseChar(ch);
+  final code = loose.codeUnitAt(0);
+  if (code >= 0x61 && code <= 0x7a) return true;
+  return 'çğıöşü'.contains(loose);
+}
+
+bool _hintTokenChar(String ch) {
+  if (_hintLetter(ch)) return true;
+  if (ch.isEmpty) return false;
+  final code = ch.codeUnitAt(0);
+  return code >= 0x30 && code <= 0x39;
+}
+
+bool _hintApostrophe(String ch) => ch == "'" || ch == '’' || ch == '‘' || ch == '`';

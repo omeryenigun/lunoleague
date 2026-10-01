@@ -36,6 +36,10 @@ BilgiProfile _player(
   });
 }
 
+Map<String, int> _enoughPublished() => {
+      for (final category in bilgiCategories) category.id: bilgiMinPublishedQuestions,
+    };
+
 void main() {
   test('Istanbul Monday opens the new Bilgi week', () {
     final monday = DateTime.utc(2026, 10, 4, 21);
@@ -62,6 +66,47 @@ void main() {
     final doubled = bilgiAddScore(karma, points: 15, categoryId: 'genel', now: now);
     expect(doubled.categoryScores['genel']?.total, 55);
     expect(doubled.categoryScores['genel']?.week, 55);
+  });
+
+  test('a category league is listed only where this player has points', () {
+    final scored = _player('ada', category: 'genel', categoryTotal: 40, total: 40);
+    final playedEmpty = _player('ada', category: 'felsefe', categoryTotal: 0, played: true, total: 40);
+    final counts = _enoughPublished();
+    expect(bilgiMyOpenLeagueIds(scored, publishedCounts: counts), ['genel']);
+    expect(bilgiPlayedCategory(playedEmpty, 'felsefe'), isTrue);
+    expect(bilgiMyOpenLeagueIds(playedEmpty, publishedCounts: counts), isEmpty);
+    final open = bilgiOpenCategoryIds([
+      scored,
+      _player('berk', category: 'felsefe', categoryTotal: 10, total: 10),
+    ]);
+    expect(open, contains('felsefe'));
+    expect(bilgiMyOpenLeagueIds(scored, publishedCounts: counts), isNot(contains('felsefe')));
+  });
+
+  test('a category under 60 published questions is hidden from player leagues', () {
+    final user = _player('ada', category: 'genel', categoryTotal: 40, total: 40).copyWith(
+      categoryScores: const {
+        'genel': BilgiCategoryPoints(total: 40),
+        'felsefe': BilgiCategoryPoints(total: 15),
+        'karma': BilgiCategoryPoints(total: 8),
+      },
+    );
+    expect(bilgiCategoryListed('felsefe', null), isFalse);
+    expect(bilgiCategoryListed('felsefe', 0), isFalse);
+    expect(bilgiCategoryListed('felsefe', bilgiMinPublishedQuestions - 1), isFalse);
+    expect(bilgiCategoryListed('felsefe', bilgiMinPublishedQuestions), isTrue);
+    expect(bilgiCategoryListed('karma', 12), isFalse);
+    expect(bilgiCategoryListed('karma', bilgiMinPublishedQuestions), isTrue);
+    expect(bilgiMinPublishedQuestions, 60);
+    final counts = _enoughPublished()
+      ..['felsefe'] = 59
+      ..['karma'] = 12;
+    final mine = bilgiMyOpenLeagueIds(user, publishedCounts: counts);
+    expect(mine, contains('genel'));
+    expect(mine, isNot(contains('felsefe')));
+    expect(mine, isNot(contains('karma')));
+    final unknown = Map<String, int>.from(counts)..remove('genel');
+    expect(bilgiMyOpenLeagueIds(user, publishedCounts: unknown), isNot(contains('genel')));
   });
 
   test('a guest with points ranks in general and only in a category they played', () {
@@ -404,5 +449,199 @@ void main() {
 
     final admin = bilgiLeagueSnapshot(users: users, scope: 'global', now: now, seedIfShort: false);
     expect(admin.rows, hasLength(200));
+  });
+
+  test('a category with 60 approved questions is in the league catalog without points', () {
+    final counts = <String, int>{
+      'felsefe': bilgiMinPublishedQuestions,
+      'genel': bilgiMinPublishedQuestions - 1,
+      'karma': bilgiMinPublishedQuestions,
+      tumuKarmaId: bilgiMinPublishedQuestions,
+    };
+    final catalog = bilgiLeagueCatalog(counts);
+    final idle = _player('ada', category: 'felsefe', played: false, total: 0);
+    expect(idle.categoryScores, isEmpty);
+    expect(catalog, contains('felsefe'));
+    expect(catalog, isNot(contains('genel')));
+    expect(catalog, isNot(contains('karma')));
+    expect(catalog, isNot(contains(tumuKarmaId)));
+    expect(bilgiLeagueCatalog(const {}), isEmpty);
+  });
+
+  test('category player counts ignore a zero-point played row', () {
+    final now = DateTime.utc(2026, 10, 1, 12);
+    final a = _player('ada', category: 'felsefe', categoryTotal: 10, total: 10);
+    final b = _player('berk', category: 'felsefe', categoryTotal: 4, total: 4);
+    final zero = _player('zero', category: 'felsefe', played: true, total: 5);
+    final counts = bilgiCategoryPlayerCounts([a, b, zero]);
+    expect(counts['felsefe'], 2);
+    final snap = bilgiLeagueSnapshot(users: [a, b, zero], scope: 'category', now: now);
+    expect(snap.categoryPlayerCounts['felsefe'], 2);
+    final restored = BilgiLeagueSnapshot.fromMap(snap.toMap());
+    expect(restored.categoryPlayerCounts['felsefe'], 2);
+    expect(BilgiLeagueSnapshot.fromMap(const {}).categoryPlayerCounts, isEmpty);
+  });
+
+  test('a category board stays empty until someone has a positive score', () {
+    final now = DateTime.utc(2026, 10, 1, 12);
+    final week = bilgiWeekId(now);
+    final zero = _player('ada', category: 'felsefe', played: true, weekId: week, total: 0);
+    final empty = bilgiLeagueSnapshot(
+      users: [zero],
+      me: zero,
+      scope: 'category',
+      categoryId: 'felsefe',
+      now: now,
+    );
+    expect(empty.seed, isFalse);
+    expect(empty.rows, isEmpty);
+    expect(empty.closed, isFalse);
+    final scored = _player('ada', category: 'felsefe', categoryTotal: 12, weekId: week, total: 12);
+    final opened = bilgiLeagueSnapshot(
+      users: [scored],
+      me: scored,
+      scope: 'category',
+      categoryId: 'felsefe',
+      now: now,
+    );
+    expect(opened.seed, isTrue);
+    expect(opened.closed, isFalse);
+    expect(opened.rows.where((row) => row.seed), hasLength(100));
+    expect(opened.rows.last.id, 'ada');
+    expect(opened.rows.last.rank, 1);
+    final weekOnly = _player(
+      'cem',
+      category: 'felsefe',
+      categoryWeek: 8,
+      week: 8,
+      weekId: week,
+      total: 8,
+    );
+    final weekly = bilgiLeagueSnapshot(
+      users: [weekOnly],
+      me: weekOnly,
+      scope: 'category',
+      categoryId: 'felsefe',
+      categoryWeekly: true,
+      now: now,
+    );
+    expect(weekly.realCount, 1);
+    expect(weekly.seed, isTrue);
+    expect(weekly.rows.where((row) => row.seed), hasLength(100));
+    expect(weekly.rows.last.rank, 1);
+  });
+
+  test('league catalog sorts by Turkish name, question count, and player count', () {
+    expect(bilgiTurkishCompare('C', 'Ç'), lessThan(0));
+    expect(bilgiTurkishCompare('Ç', 'D'), lessThan(0));
+    expect(bilgiTurkishCompare('g', 'ğ'), lessThan(0));
+    expect(bilgiTurkishCompare('Işık', 'İstanbul'), lessThan(0));
+    expect(bilgiTurkishCompare('o', 'ö'), lessThan(0));
+    expect(bilgiTurkishCompare('s', 'ş'), lessThan(0));
+    expect(bilgiTurkishCompare('u', 'ü'), lessThan(0));
+    const ids = ['unlu', 'mantik_cikarim', 'cografya', 'din', 'internet'];
+    expect(
+      bilgiSortLeagueCatalog(ids, sort: bilgiLeagueSortAlpha),
+      ['cografya', 'mantik_cikarim', 'din', 'internet', 'unlu'],
+    );
+    expect(
+      bilgiSortLeagueCatalog(
+        const ['felsefe', 'genel', 'cografya'],
+        sort: bilgiLeagueSortQuestions,
+        questionCounts: const {'genel': 120, 'felsefe': 80, 'cografya': 80},
+      ),
+      ['genel', 'cografya', 'felsefe'],
+    );
+    expect(
+      bilgiSortLeagueCatalog(
+        const ['genel', 'felsefe', 'cografya'],
+        sort: bilgiLeagueSortPlayers,
+        playerCounts: const {'genel': 1, 'felsefe': 4, 'cografya': 4},
+      ),
+      ['cografya', 'felsefe', 'genel'],
+    );
+  });
+
+  test('my rank label follows the selected period', () {
+    final now = DateTime.utc(2026, 10, 1, 12);
+    final week = bilgiWeekId(now);
+    final me = _player(
+      'ada',
+      category: 'felsefe',
+      categoryTotal: 10,
+      week: 0,
+      categoryWeek: 0,
+      weekId: week,
+      total: 10,
+    );
+    final higher = _player(
+      'berk',
+      category: 'felsefe',
+      categoryTotal: 40,
+      week: 0,
+      categoryWeek: 0,
+      weekId: week,
+      total: 40,
+    );
+    final weekly = bilgiLeagueSnapshot(
+      users: [me, higher],
+      me: me,
+      scope: 'category',
+      categoryId: 'felsefe',
+      categoryWeekly: true,
+      now: now,
+    );
+    expect(
+      bilgiMyRankLabel(
+        score: bilgiLeaguePeriodScore(me, weekly: true, categoryId: 'felsefe', now: now),
+        rank: bilgiMyBoardRank(weekly.rows, me.id),
+      ),
+      'Lig Puanınız: 0',
+    );
+    final allTime = bilgiLeagueSnapshot(
+      users: [me, higher],
+      me: me,
+      scope: 'category',
+      categoryId: 'felsefe',
+      now: now,
+    );
+    expect(
+      bilgiMyRankLabel(
+        score: bilgiLeaguePeriodScore(me, weekly: false, categoryId: 'felsefe', now: now),
+        rank: bilgiMyBoardRank(allTime.rows, me.id),
+      ),
+      'Lig Puanınız: 10\n2. Sıradasınız',
+    );
+    expect(allTime.rows.last.rank, 2);
+    final generalWeek = bilgiLeagueSnapshot(
+      users: [me],
+      me: me,
+      scope: 'global',
+      categoryWeekly: true,
+      now: now,
+    );
+    expect(
+      bilgiMyRankLabel(
+        score: bilgiLeaguePeriodScore(me, weekly: true, now: now),
+        rank: bilgiMyBoardRank(generalWeek.rows, me.id),
+      ),
+      'Lig Puanınız: 0',
+    );
+    final generalAll = bilgiLeagueSnapshot(
+      users: [me],
+      me: me,
+      scope: 'global',
+      now: now,
+    );
+    expect(
+      bilgiMyRankLabel(
+        score: bilgiLeaguePeriodScore(me, weekly: false, now: now),
+        rank: bilgiMyBoardRank(generalAll.rows, me.id),
+      ),
+      'Lig Puanınız: 10\n1. Sıradasınız',
+    );
+    expect(bilgiMyRankLabel(score: 80, rank: 1), 'Lig Puanınız: 80\n1. Sıradasınız');
+    expect(bilgiMyRankLabel(score: 40, rank: 4), 'Lig Puanınız: 40\n4. Sıradasınız');
+    expect(bilgiMyRankLabel(score: 80, rank: 0), 'Lig Puanınız: 80');
   });
 }

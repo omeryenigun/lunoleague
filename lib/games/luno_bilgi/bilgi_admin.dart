@@ -17,8 +17,10 @@ import 'package:kelimelig/games/luno_bilgi/bilgi_report.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_question_api.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_report_api.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_sub_counts.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_theme.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_user_api.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_wallet.dart';
 import 'package:kelimelig/injection.dart';
 
 class BilgiAdminScreen extends StatefulWidget {
@@ -63,12 +65,13 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   var _bankStatus = '';
   var _bankLang = '';
   var _bankPage = 0;
+  var _bankPageSize = bilgiBankPageSize;
   var _labels = const <String, String>{};
   var _moveCat = '';
   var _moveSub = '';
   final _selectedIds = <String>{};
   var _bulkBusy = false;
-  var _bulkStatusOpen = false;
+  var _bulkMenu = '';
   var _formSerial = 0;
   String? _translatingId;
   BilgiQuestion? _editing;
@@ -94,6 +97,13 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   var _userStatus = '';
   var _userPeriod = '';
   var _userPlays = '';
+  BilgiProfile? _ledgerUser;
+  List<BilgiLedgerLine> _ledgerLines = const [];
+  var _ledgerAsset = '';
+  var _ledgerReason = '';
+  var _ledgerError = '';
+  final _ledgerFrom = TextEditingController();
+  final _ledgerTo = TextEditingController();
 
   LunoBilgiServer get _server => sl<LunoBilgiServer>();
 
@@ -162,6 +172,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     _mailHtml.dispose();
     _mailText.dispose();
     _mailTestTo.dispose();
+    _ledgerFrom.dispose();
+    _ledgerTo.dispose();
     super.dispose();
   }
 
@@ -522,6 +534,12 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
             decoration: BoxDecoration(color: BilgiColors.card, borderRadius: BorderRadius.circular(20)),
             child: const Text('Admin', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
           ),
+          if (_index == 1) ...[
+            const SizedBox(width: 12),
+            _ghost('📥 İçe Aktar', () => setState(() => _index = 7)),
+            const SizedBox(width: 12),
+            _primary('➕ Yeni Soru', _openEditor),
+          ],
           if (_index == 4) ...[
             const SizedBox(width: 12),
             _primary('Toplu Soru Ekle', () => setState(() => _index = 7)),
@@ -1244,7 +1262,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     }
     if (changed.isEmpty) {
       setState(() {
-        _bulkStatusOpen = false;
+        _bulkMenu = '';
         _note = blocked == 0
             ? 'Seçili sorular zaten bu durumda.'
             : '$blocked soru tercümesi tamam olmadığı için onaylanmadı.';
@@ -1272,10 +1290,58 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     if (!mounted) return;
     setState(() {
       _bulkBusy = false;
-      _bulkStatusOpen = false;
+      _bulkMenu = '';
       _note = blocked == 0
           ? '${changed.length} sorunun durumu ${labels[status]} oldu.'
           : '${changed.length} sorunun durumu ${labels[status]} oldu. $blocked soru tercümesi tamam olmadığı için onaylanmadı.';
+    });
+    await _load();
+  }
+
+  Future<void> _applyBulkDifficulty(String difficulty) async {
+    if (_bulkBusy) return;
+    if (_selectedIds.isEmpty) {
+      setState(() => _note = 'Önce soru seç.');
+      return;
+    }
+    const labels = {
+      'kolay': 'Kolay',
+      'orta': 'Orta',
+      'zor': 'Zor',
+      'efsane': 'Efsane',
+    };
+    if (!labels.containsKey(difficulty)) return;
+    final chosen = _questions.where((question) => _selectedIds.contains(question.id)).toList();
+    final changed = <BilgiQuestion>[
+      for (final question in chosen)
+        if (question.difficulty != difficulty) question.copyWith(difficulty: difficulty),
+    ];
+    if (changed.isEmpty) {
+      setState(() => _note = 'Seçili sorular zaten bu zorlukta.');
+      return;
+    }
+    setState(() => _bulkBusy = true);
+    try {
+      await _saveRemote(changed);
+    } on StateError catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _bulkBusy = false;
+        _note = error.message;
+      });
+      return;
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _bulkBusy = false;
+        _note = 'Zorluk kaydedilemedi.';
+      });
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _bulkBusy = false;
+      _note = '${changed.length} sorunun zorluğu ${labels[difficulty]} oldu.';
     });
     await _load();
   }
@@ -1353,37 +1419,74 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     }
   }
 
+  void _clearBankSelection() {
+    if (_bulkBusy) return;
+    setState(() {
+      _bankSearch.clear();
+      _selectedIds.clear();
+      _bankCat = '';
+      _bankSub = '';
+      _bankDiff = '';
+      _bankStatus = '';
+      _bankLang = '';
+      _bankPage = 0;
+      _bulkMenu = '';
+      _moveCat = '';
+      _moveSub = '';
+    });
+  }
+
+  void _onBulkMenu(String value) {
+    if (_bulkBusy) return;
+    if (value == 'status' || value == 'difficulty') {
+      if (_selectedIds.isEmpty) {
+        setState(() {
+          _bulkMenu = '';
+          _note = 'Önce soru seç.';
+        });
+        return;
+      }
+      setState(() => _bulkMenu = value);
+      return;
+    }
+    setState(() => _bulkMenu = '');
+    switch (value) {
+      case 'category':
+        _applyBulkCategory();
+      case 'translate':
+        _translateSelected();
+      case 'delete':
+        _deleteSelected();
+    }
+  }
+
   Widget _bankTable() {
     final query = _bankSearch.text.trim();
     final filtering = query.length >= 3;
-    final folded = _fold(query);
-    final rows = _questions.where((q) {
-      if (_bankCat.isNotEmpty && q.categoryId != _bankCat) return false;
-      if (_bankSub.isNotEmpty && !q.tags.contains(_bankSub)) return false;
-      if (_bankDiff.isNotEmpty && q.difficulty != _bankDiff) return false;
-      if (_bankStatus.isNotEmpty && q.status != _bankStatus) return false;
-      final translated = _questionReady(q);
-      if (_bankLang == 'ready' && !translated) return false;
-      if (_bankLang == 'missing' && translated) return false;
-      if (!filtering) return true;
-      if (_fold(q.text).contains(folded)) return true;
-      for (final option in q.options) {
-        if (_fold(option).contains(folded)) return true;
-      }
-      return false;
-    }).toList();
-    const pageSize = 12;
-    final pages = rows.isEmpty ? 1 : (rows.length / pageSize).ceil();
-    final page = _bankPage.clamp(0, pages - 1);
-    final slice = rows.skip(page * pageSize).take(pageSize).toList();
-    final from = rows.isEmpty ? 0 : page * pageSize + 1;
-    final to = page * pageSize + slice.length;
+    final category = _categories.where((item) => item.id == _bankCat).firstOrNull;
+    final rows = bilgiFilterBankQuestions(
+      _questions,
+      categoryId: _bankCat,
+      subcategory: _bankSub,
+      difficulty: _bankDiff,
+      status: _bankStatus,
+      translation: _bankLang,
+      search: _bankSearch.text,
+      categorySubs: category?.subs ?? const <String>[],
+      isTranslated: _questionReady,
+    );
+    final window = bilgiBankWindow(rows, _bankPage, pageSize: _bankPageSize);
+    final slice = window.slice;
+    final page = window.page;
+    final pages = window.pages;
+    final from = window.from;
+    final to = window.to;
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       children: [
         Container(
           padding: const EdgeInsets.all(16),
-          margin: const EdgeInsets.only(bottom: 16),
+          margin: const EdgeInsets.only(bottom: 12),
           decoration: _cardDeco(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1437,67 +1540,105 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                   _select(_bankDiff, [('','Tüm Zorluklar'), ('kolay','Kolay'), ('orta','Orta'), ('zor','Zor'), ('efsane','Efsane')], (v) => setState(() { _bankDiff = v; _bankPage = 0; _selectedIds.clear(); })),
                   _select(_bankStatus, [('','Tüm Durumlar'), ('approved','Onaylı'), ('pending','Bekleyen'), ('draft','Taslak'), ('rejected','Reddedilen')], (v) => setState(() { _bankStatus = v; _bankPage = 0; _selectedIds.clear(); })),
                   _select(_bankLang, [('','Tüm Tercümeler'), ('ready','Tercüme tamam'), ('missing','Tercüme eksik')], (v) => setState(() { _bankLang = v; _bankPage = 0; _selectedIds.clear(); })),
-                  _ghost('📥 İçe Aktar', () => setState(() => _index = 7)),
-                  _primary('➕ Yeni Soru', _openEditor),
                 ],
               ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  _ghost('Tümünü seç', () {
-                    if (rows.isEmpty || _bulkBusy) return;
-                    setState(() {
-                      for (final question in rows) {
-                        _selectedIds.add(question.id);
-                      }
-                    });
-                  }),
-                  _ghost('Sayfadakileri seç', () {
-                    if (slice.isEmpty || _bulkBusy) return;
-                    setState(() {
-                      _selectedIds.clear();
-                      for (final question in slice) {
-                        _selectedIds.add(question.id);
-                      }
-                    });
-                  }),
-                  _ghost('Seçimi temizle', () {
-                    if (_selectedIds.isEmpty || _bulkBusy) return;
-                    setState(_selectedIds.clear);
-                  }),
-                  Text('${_selectedIds.length} seçili', style: const TextStyle(color: BilgiColors.muted, fontSize: 12)),
-                  _SearchCombo(
-                    hint: 'Üst kategori',
-                    selected: _moveCat,
-                    options: [for (final c in _categories) (c.id, '${c.emoji} ${c.name}')],
-                    onChanged: (v) => setState(() { _moveCat = v; _moveSub = ''; }),
-                  ),
-                  _SearchCombo(
-                    hint: _moveCat.isEmpty ? 'Önce üst kategori' : 'Alt kategori',
-                    selected: _moveSub,
-                    enabled: _moveCat.isNotEmpty,
-                    options: [
-                      for (final name in _categories.where((item) => item.id == _moveCat).firstOrNull?.subs ?? const <String>[]) (name, name),
-                    ],
-                    onChanged: (v) => setState(() => _moveSub = v),
-                  ),
-                  _primary('Kategoriyi değiştir', () { _applyBulkCategory(); }),
-                  _primary('Seçilenleri çevir', () { _translateSelected(); }),
-                  _primary('Toplu durum güncelle', () {
-                    if (_bulkBusy) return;
-                    setState(() => _bulkStatusOpen = !_bulkStatusOpen);
-                  }),
-                  if (_bulkStatusOpen) ...[
-                    _ghost('Onaylı', () { _applyBulkStatus('approved'); }),
-                    _ghost('Bekleyen', () { _applyBulkStatus('pending'); }),
-                    _ghost('Taslak', () { _applyBulkStatus('draft'); }),
-                    _ghost('Reddedilen', () { _applyBulkStatus('rejected'); }),
-                  ],
-                  _solid('Seçimi sil', BilgiColors.error, Colors.white, () { _deleteSelected(); }),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _ghost('Tümünü seç', () {
+                if (rows.isEmpty || _bulkBusy) return;
+                setState(() {
+                  for (final question in rows) {
+                    _selectedIds.add(question.id);
+                  }
+                });
+              }),
+              _ghost('Sayfadakileri seç', () {
+                if (slice.isEmpty || _bulkBusy) return;
+                setState(() {
+                  _selectedIds.clear();
+                  for (final question in slice) {
+                    _selectedIds.add(question.id);
+                  }
+                });
+              }),
+              _ghost('Seçimi temizle', _clearBankSelection),
+              Text('${_selectedIds.length} seçili', style: const TextStyle(color: BilgiColors.muted, fontSize: 12, fontWeight: FontWeight.w700)),
+            ],
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.all(16),
+          margin: const EdgeInsets.only(bottom: 16),
+          decoration: _cardDeco(),
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _SearchCombo(
+                hint: 'Üst kategori',
+                selected: _moveCat,
+                options: [for (final c in _categories) (c.id, '${c.emoji} ${c.name}')],
+                onChanged: (v) => setState(() { _moveCat = v; _moveSub = ''; }),
+              ),
+              _SearchCombo(
+                hint: _moveCat.isEmpty ? 'Önce üst kategori' : 'Alt kategori',
+                selected: _moveSub,
+                enabled: _moveCat.isNotEmpty,
+                options: [
+                  for (final name in _categories.where((item) => item.id == _moveCat).firstOrNull?.subs ?? const <String>[]) (name, name),
                 ],
+                onChanged: (v) => setState(() => _moveSub = v),
+              ),
+              _primary('Toplu işlem', () {
+                if (_bulkBusy) return;
+                setState(() => _bulkMenu = _bulkMenu.isEmpty ? 'root' : '');
+              }),
+              if (_bulkMenu == 'root') ...[
+                _ghost('Kategori değiştir', () => _onBulkMenu('category')),
+                _ghost('Çevir', () => _onBulkMenu('translate')),
+                _ghost('Durum güncelle', () => _onBulkMenu('status')),
+                _ghost('Zorluk değiştir', () => _onBulkMenu('difficulty')),
+                _solid('Seçimi sil', BilgiColors.error, Colors.white, () => _onBulkMenu('delete')),
+              ],
+              if (_bulkMenu == 'status') ...[
+                _ghost('Onaylı', () { setState(() => _bulkMenu = ''); _applyBulkStatus('approved'); }),
+                _ghost('Bekleyen', () { setState(() => _bulkMenu = ''); _applyBulkStatus('pending'); }),
+                _ghost('Taslak', () { setState(() => _bulkMenu = ''); _applyBulkStatus('draft'); }),
+                _ghost('Reddedilen', () { setState(() => _bulkMenu = ''); _applyBulkStatus('rejected'); }),
+              ],
+              if (_bulkMenu == 'difficulty') ...[
+                _ghost('Kolay', () { setState(() => _bulkMenu = ''); _applyBulkDifficulty('kolay'); }),
+                _ghost('Orta', () { setState(() => _bulkMenu = ''); _applyBulkDifficulty('orta'); }),
+                _ghost('Zor', () { setState(() => _bulkMenu = ''); _applyBulkDifficulty('zor'); }),
+                _ghost('Efsane', () { setState(() => _bulkMenu = ''); _applyBulkDifficulty('efsane'); }),
+              ],
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            children: [
+              Text('${rows.length} soru', style: const TextStyle(color: BilgiColors.muted, fontSize: 13, fontWeight: FontWeight.w700)),
+              const Spacer(),
+              const Text('Sayfa başına', style: TextStyle(color: BilgiColors.muted, fontSize: 12, fontWeight: FontWeight.w700)),
+              const SizedBox(width: 8),
+              _select(
+                '$_bankPageSize',
+                [for (final size in bilgiBankPageSizes) ('$size', '$size')],
+                (value) => setState(() {
+                  _bankPageSize = int.parse(value);
+                  _bankPage = 0;
+                }),
               ),
             ],
           ),
@@ -1533,7 +1674,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                   activeColor: BilgiColors.secondary,
                   side: const BorderSide(color: Colors.white54),
                 ),
-                for (final label in const ['ID', 'SORU', 'KATEGORİ', 'ALT KATEGORİ', 'ZORLUK', 'DURUM', 'İŞLEM'])
+                for (final label in const ['ID', 'SORU', 'KATEGORİ', 'ALT KATEGORİ', 'DOĞRU ŞIK', 'ZORLUK', 'DURUM', 'İŞLEM'])
                   Text(label, style: const TextStyle(color: BilgiColors.muted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.6)),
               ], header: true),
               if (slice.isEmpty)
@@ -1544,7 +1685,9 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    Text('$from-$to / ${rows.length} soru', style: const TextStyle(color: BilgiColors.muted, fontSize: 12)),
+                    Text('${rows.length} soru', style: const TextStyle(color: BilgiColors.muted, fontSize: 13, fontWeight: FontWeight.w700)),
+                    const SizedBox(width: 12),
+                    Text('$from-$to', style: const TextStyle(color: BilgiColors.muted, fontSize: 12)),
                     const Spacer(),
                     _pageBtn('‹', page > 0 ? () => setState(() => _bankPage = page - 1) : null, false),
                     _pageBtn('${page + 1}', null, true),
@@ -1559,7 +1702,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     );
   }
 
-  static const _bankFlex = [1, 2, 4, 2, 3, 2, 2, 3];
+  static const _bankFlex = [1, 2, 4, 2, 3, 3, 2, 2, 3];
 
   Widget _bankCells(List<Widget> cells, {bool header = false}) {
     return Container(
@@ -1608,6 +1751,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       ),
       Text(_catLabel(question.categoryId), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13)),
       Text(_subLabel(question), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+      Text(bilgiCorrectChoiceText(question), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13)),
       _diffBadge(question.difficulty),
       _statusBadge(question.status),
       Row(
@@ -2656,7 +2800,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
             _subRow(
               _subIcon(sub),
               sub,
-              '${_subQuestionCount(sub)} soru',
+              _subCountLine(selected.id, sub).label,
+              caption: _subCountCaption(selected.id, sub),
               ready: bilgiNamesReady(_labels, 'sub', '${selected.id}|$sub', locales: selected.locales),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -2704,6 +2849,40 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   }
 
   int _subQuestionCount(String name) => _questions.where((question) => question.tags.contains(name)).length;
+
+  int _subStatusCount(String categoryId, String name, String status) {
+    var count = 0;
+    for (final question in _questions) {
+      if (question.categoryId != categoryId || question.status != status) continue;
+      if (question.tags.contains(name)) count++;
+    }
+    return count;
+  }
+
+  BilgiSubCountLine _subCountLine(String categoryId, String name) {
+    return bilgiSubCountLine(
+      pending: _subStatusCount(categoryId, name, 'pending'),
+      published: _subStatusCount(categoryId, name, 'approved'),
+    );
+  }
+
+  Widget _subCountCaption(String categoryId, String name) {
+    final line = _subCountLine(categoryId, name);
+    return Text.rich(
+      TextSpan(
+        style: const TextStyle(color: BilgiColors.muted, fontSize: 11),
+        children: [
+          TextSpan(text: 'Beklemede ${line.pending} • Yayınlı '),
+          TextSpan(
+            text: '${line.published}',
+            style: line.publishedLow
+                ? const TextStyle(color: BilgiColors.error, fontWeight: FontWeight.w800, fontSize: 11)
+                : null,
+          ),
+        ],
+      ),
+    );
+  }
 
   String _subIcon(String name) {
     final icons = _catalog['subEmoji'];
@@ -2839,7 +3018,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
 
   Widget _langOk() => const Icon(Icons.check_circle, color: Color(0xFF3DDC84), size: 18);
 
-  Widget _subRow(String emoji, String title, String hint, {bool gradient = false, bool ready = false, Widget? trailing}) {
+  Widget _subRow(String emoji, String title, String hint, {bool gradient = false, bool ready = false, Widget? caption, Widget? trailing}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(16),
@@ -2866,7 +3045,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                     ],
                   ],
                 ),
-                Text(hint, style: TextStyle(color: gradient ? Colors.white70 : BilgiColors.muted, fontSize: 11)),
+                caption ?? Text(hint, style: TextStyle(color: gradient ? Colors.white70 : BilgiColors.muted, fontSize: 11)),
               ],
             ),
           ),
@@ -3002,6 +3181,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   }
 
   Widget _userList(bool? banned, {bool premium = false}) {
+    if (_ledgerUser != null) return _ledgerPage();
     final query = _topSearch.text.trim().toLowerCase();
     final rows = _users.where((user) => _userMatches(user, banned: banned, premium: premium, query: query)).toList()
       ..sort((a, b) => _userRegisteredAt(b).compareTo(_userRegisteredAt(a)));
@@ -3144,9 +3324,20 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
               SizedBox(width: 70, child: _userFact('Seri', '${user.streak}')),
             ],
           ),
-          if (!premium) ...[
-            const SizedBox(height: 12),
-            _ghost(user.banned ? 'Aç' : 'Banla', () async {
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            children: [
+              _ghost('Hareketler', () {
+                setState(() {
+                  _ledgerUser = user;
+                  _ledgerLines = const [];
+                  _ledgerError = '';
+                });
+                _loadLedger();
+              }),
+              if (!premium)
+                _ghost(user.banned ? 'Aç' : 'Banla', () async {
               final nextBanned = !user.banned;
               final reason = nextBanned ? 'Askıya alındı' : '';
               final token = sl<ApiSession>().adminToken ?? '';
@@ -3160,10 +3351,155 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
               if (error != null && mounted) setState(() => _note = error);
               await _load();
             }),
-          ],
+            ],
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _loadLedger() async {
+    final user = _ledgerUser;
+    if (user == null) return;
+    final token = sl<ApiSession>().adminToken ?? '';
+    final result = await BilgiUserApi.ledger(
+      token,
+      user.id,
+      asset: _ledgerAsset,
+      reason: _ledgerReason,
+      from: _ledgerFrom.text.trim(),
+      to: _ledgerTo.text.trim(),
+    );
+    if (!mounted || _ledgerUser?.id != user.id) return;
+    setState(() {
+      _ledgerLines = result.lines;
+      _ledgerError = result.error ?? '';
+    });
+  }
+
+  String _ledgerLabel(String code, List<(String, String)> items) {
+    for (final item in items) {
+      if (item.$1 == code) return item.$2;
+    }
+    return code;
+  }
+
+  Widget _ledgerPage() {
+    const assets = <(String, String)>[
+      ('', 'Tümü'),
+      ('gold', 'Altın'),
+      ('diamond', 'Elmas'),
+      ('xp', 'XP'),
+      ('life', 'Can'),
+      ('joker_half', 'Yarı yarıya'),
+      ('joker_double', 'Çift puan'),
+      ('joker_time', 'Süre'),
+      ('joker_change', 'Değiştir'),
+      ('joker_hint', 'İpucu'),
+      ('league_score', 'Lig puanı'),
+      ('premium', 'Premium'),
+    ];
+    const reasons = <(String, String)>[
+      ('', 'Tümü'),
+      ('starter', 'Başlangıç'),
+      ('opening', 'Geçiş bakiyesi'),
+      ('life_spend', 'Can harcama'),
+      ('life_regen', 'Can yenileme'),
+      ('round_finish', 'Tur sonu'),
+      ('score_double', 'Puanı ikiye katla'),
+      ('joker_buy', 'Joker alımı'),
+      ('joker_use', 'Joker kullanımı'),
+      ('life_refill', 'Can doldurma'),
+      ('daily', 'Günlük ödül'),
+      ('ad_gold', 'Reklam altın'),
+      ('ad_joker', 'Reklam joker'),
+      ('ad_life', 'Reklam can'),
+      ('play_gold', 'Altın satın alma'),
+      ('play_plus', 'Luno Plus'),
+      ('invite', 'Davet'),
+      ('league_monday', 'Pazartesi lig'),
+      ('admin', 'Yönetici'),
+    ];
+    final user = _ledgerUser!;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+      children: [
+        Row(
+          children: [
+            _ghost('Geri', () => setState(() => _ledgerUser = null)),
+            const SizedBox(width: 12),
+            Expanded(child: Text('${user.username} hareketleri', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18))),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          crossAxisAlignment: WrapCrossAlignment.end,
+          children: [
+            _userFilter('Varlık', _select(_ledgerAsset, assets, (value) => setState(() => _ledgerAsset = value))),
+            _userFilter('Neden', _select(_ledgerReason, reasons, (value) => setState(() => _ledgerReason = value))),
+            SizedBox(
+              width: 150,
+              child: TextField(
+                controller: _ledgerFrom,
+                decoration: const InputDecoration(labelText: 'Başlangıç', hintText: 'GG.AA.YYYY', isDense: true),
+              ),
+            ),
+            SizedBox(
+              width: 150,
+              child: TextField(
+                controller: _ledgerTo,
+                decoration: const InputDecoration(labelText: 'Bitiş', hintText: 'GG.AA.YYYY', isDense: true),
+              ),
+            ),
+            _primary('Göster', _loadLedger),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text('${_ledgerLines.length} hareket', style: const TextStyle(color: BilgiColors.muted, fontSize: 12)),
+        if (_ledgerError.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(_ledgerError, style: const TextStyle(color: BilgiColors.error)),
+        ],
+        const SizedBox(height: 12),
+        for (final line in _ledgerLines)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: _cardDeco(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${_ledgerWhen(line.createdAt)} · ${_ledgerLabel(line.asset, assets)} · ${line.amount > 0 ? '+' : ''}${line.amount}',
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Sonraki stok ${line.balanceAfter} · ${_ledgerLabel(line.reason, reasons)}${line.ref.isEmpty ? '' : ' · ${line.ref}'}',
+                    style: const TextStyle(color: BilgiColors.muted, fontSize: 12),
+                  ),
+                  if (line.detail.isNotEmpty)
+                    Text(_ledgerDetail(line.detail), style: const TextStyle(fontSize: 12)),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  String _ledgerWhen(DateTime time) {
+    final local = time.toLocal();
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${local.year}-${two(local.month)}-${two(local.day)} ${two(local.hour)}:${two(local.minute)}';
+  }
+
+  String _ledgerDetail(Map<String, Object?> detail) {
+    return detail.entries.where((entry) => '${entry.value}'.isNotEmpty).map((entry) => '${entry.key}: ${entry.value}').join(' · ');
   }
 
   Widget _toggles() {
@@ -4601,7 +4937,9 @@ class _SearchComboState extends State<_SearchCombo> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.selected != widget.selected) {
       _picked = widget.selected;
-      if (!_focus.hasFocus) _text.text = _labelOf(_picked);
+      _text.text = _labelOf(_picked);
+      _open = false;
+      if (widget.selected.isEmpty) _focus.unfocus();
     }
     if (!widget.enabled) _open = false;
   }
@@ -4740,6 +5078,111 @@ class _SearchComboState extends State<_SearchCombo> {
 
 String _fold(String value) {
   return value.replaceAll('İ', 'i').replaceAll('I', 'ı').toLowerCase().replaceAll('ı', 'i').replaceAll('ö', 'o').replaceAll('ü', 'u').replaceAll('ş', 's').replaceAll('ğ', 'g').replaceAll('ç', 'c');
+}
+
+const bilgiBankPageSize = 20;
+
+const bilgiBankPageSizes = <int>[20, 50, 100, 200];
+
+/// Şık metni, doğru indeksteki seçenek. İndeks şıkların dışındaysa boş döner.
+String bilgiCorrectChoiceText(BilgiQuestion question) {
+  final index = question.correct;
+  final options = question.options;
+  if (index < 0 || index >= options.length) return '';
+  return options[index];
+}
+
+String _bankMatchKey(String value) => _fold(value).replaceAll(RegExp(r'\s+'), ' ').trim();
+
+/// Soru bankası süzgeci.
+/// Üç harften kısa arama satır düşürmez.
+/// Seçili kategoriye ait olmayan alt kategori, o kategorideki satırları silmez.
+/// Geçerli alt kategori başka alt kategorideki soruları göstermez.
+List<BilgiQuestion> bilgiFilterBankQuestions(
+  Iterable<BilgiQuestion> questions, {
+  String categoryId = '',
+  String subcategory = '',
+  String difficulty = '',
+  String status = '',
+  String translation = '',
+  String search = '',
+  Iterable<String> categorySubs = const [],
+  bool Function(BilgiQuestion question)? isTranslated,
+}) {
+  final category = categoryId.trim();
+  final wantedSub = subcategory.trim();
+  final wantedDifficulty = difficulty.trim();
+  final wantedStatus = status.trim();
+  final knownSubs = [for (final name in categorySubs) if (name.trim().isNotEmpty) name.trim()];
+  final wantedSubKey = _bankMatchKey(wantedSub);
+  final subApplies = wantedSub.isNotEmpty &&
+      (knownSubs.isEmpty || knownSubs.any((name) => _bankMatchKey(name) == wantedSubKey));
+  final query = search.trim();
+  final searching = query.length >= 3;
+  final foldedQuery = _fold(query);
+  return [
+    for (final question in questions)
+      if (_bilgiBankVisible(
+        question,
+        category: category,
+        subApplies: subApplies,
+        wantedSubKey: wantedSubKey,
+        difficulty: wantedDifficulty,
+        status: wantedStatus,
+        translation: translation.trim(),
+        searching: searching,
+        foldedQuery: foldedQuery,
+        isTranslated: isTranslated,
+      ))
+        question,
+  ];
+}
+
+bool _bilgiBankVisible(
+  BilgiQuestion question, {
+  required String category,
+  required bool subApplies,
+  required String wantedSubKey,
+  required String difficulty,
+  required String status,
+  required String translation,
+  required bool searching,
+  required String foldedQuery,
+  required bool Function(BilgiQuestion question)? isTranslated,
+}) {
+  if (category.isNotEmpty && question.categoryId != category) return false;
+  if (subApplies && !question.tags.any((tag) => _bankMatchKey(tag) == wantedSubKey)) return false;
+  if (difficulty.isNotEmpty && question.difficulty != difficulty) return false;
+  if (status.isNotEmpty && question.status.trim() != status) return false;
+  final translated = isTranslated?.call(question) ?? false;
+  if (translation == 'ready' && !translated) return false;
+  if (translation == 'missing' && translated) return false;
+  if (!searching) return true;
+  if (_fold(question.text).contains(foldedQuery)) return true;
+  for (final option in question.options) {
+    if (_fold(option).contains(foldedQuery)) return true;
+  }
+  return false;
+}
+
+/// Filtered rows are paged. A page past the end still shows the filtered rows.
+({List<T> slice, int page, int pages, int from, int to, int total}) bilgiBankWindow<T>(
+  List<T> rows,
+  int pageIndex, {
+  int pageSize = bilgiBankPageSize,
+}) {
+  final pages = rows.isEmpty ? 1 : (rows.length / pageSize).ceil();
+  final page = pageIndex.clamp(0, pages - 1);
+  final start = page * pageSize;
+  final slice = rows.skip(start).take(pageSize).toList();
+  return (
+    slice: slice,
+    page: page,
+    pages: pages,
+    from: rows.isEmpty ? 0 : start + 1,
+    to: rows.isEmpty ? 0 : start + slice.length,
+    total: rows.length,
+  );
 }
 
 class _Fields extends StatefulWidget {

@@ -615,6 +615,141 @@ void main() {
     final closed = resolveBilgiCategories(bilgiCatalogClosedUnless(null, const {}, const {}), playableOnly: true);
     expect(closed, isEmpty);
   });
+
+  test('hint clue hides the correct option and its letter', () {
+    const options = ['Paris', 'Lyon', 'Nice', 'Lille'];
+    final clue = bilgiHintClue(
+      explanation: "Doğru cevap Paris'tir. Fransa'nın başkentidir.",
+      options: options,
+      correct: 0,
+    );
+    expect(clue, "Fransa'nın başkentidir.");
+    expect(clue.toLowerCase(), isNot(contains('paris')));
+    expect(clue.toLowerCase(), isNot(contains('doğru cevap')));
+    expect(clue, isNot(contains('Bir şıkkı ele')));
+
+    expect(
+      bilgiHintClue(
+        explanation: 'Doğru cevap: Paris',
+        options: options,
+        correct: 0,
+      ),
+      bilgiHintWithheld,
+    );
+    expect(
+      bilgiHintClue(
+        explanation: "Osmanlı Devleti'nin kurucusu Osman Bey'dir.",
+        options: const ['Osman', 'Orhan', 'Murat', 'Bayezid'],
+        correct: 0,
+      ),
+      bilgiHintWithheld,
+    );
+    final lettered = bilgiHintClue(
+      explanation: "A şıkkı Paris'tir. Fransa'nın başkentidir.",
+      options: options,
+      correct: 0,
+    );
+    expect(lettered, "Fransa'nın başkentidir.");
+    expect(lettered, isNot(contains('Paris')));
+    expect(lettered.contains(RegExp(r'\bA\b')), isFalse);
+    expect(
+      bilgiHintClue(explanation: '', options: options, correct: 0),
+      bilgiHintWithheld,
+    );
+    expect(
+      bilgiHintClue(
+        explanation: "Bu antlaşma 1923'te imzalandı.",
+        options: const ['Lozan', 'Versay', 'Sevr', 'Mondros'],
+        correct: 0,
+      ),
+      "Bu antlaşma 1923'te imzalandı.",
+    );
+  });
+
+  test('hint joker stores a clue and does not hide options', () async {
+    final server = LunoBilgiServer(MemoryKeyValueStore(), clock: () => DateTime(2026, 9, 28));
+    server.remoteDraw = ({
+      required String categoryId,
+      required String subcategory,
+      required String difficulty,
+      required int count,
+      required List<String> exclude,
+      required String locale,
+    }) async {
+      return const [
+        BilgiQuestion(
+          id: 'hint-q',
+          categoryId: 'genel',
+          text: 'Fransa’nın başkenti?',
+          options: ['Paris', 'Lyon', 'Nice', 'Lille'],
+          correct: 0,
+          difficulty: 'kolay',
+          explanation: "Doğru cevap Paris'tir. Fransa'nın başkentidir.",
+          tags: ['Atasözleri'],
+        ),
+      ];
+    };
+    final started = await server.startRound(
+      modeId: 'hizli',
+      categoryId: 'genel',
+      subcategory: 'Atasözleri',
+      difficulty: 'kolay',
+      questionCount: 1,
+    );
+    await server.buyJoker('hint');
+    final used = await server.useJoker(roundId: started.round!.id, type: 'hint');
+    expect(used.message, isNull);
+    expect(used.round!.hint, "Fransa'nın başkentidir.");
+    expect(used.round!.hint, isNot(contains('Paris')));
+    expect(used.round!.hidden, isEmpty);
+    expect(used.round!.jokerMax, started.round!.jokerMax);
+  });
+
+  test('gold help lists ad, shop, and claimable daily gold only', () {
+    final ready = bilgiGoldHelpOptions(
+      rewardedGold: 50,
+      shopGoldA: 1000,
+      shopGoldB: 5000,
+      dailyGoldReady: true,
+      dailyGold: 200,
+    );
+    expect(ready.map((option) => option.kind).toList(), [
+      BilgiGoldHelpKind.ad,
+      BilgiGoldHelpKind.shop,
+      BilgiGoldHelpKind.daily,
+    ]);
+    expect(ready[0].subtitle, '50 altın');
+    expect(ready[1].subtitle, '1000 veya 5000 altın');
+    expect(ready[2].subtitle, '200 altın');
+    expect(ready.any((option) => '${option.title} ${option.subtitle}'.toLowerCase().contains('bekle')), isFalse);
+
+    final diamondDay = bilgiGoldHelpOptions(
+      rewardedGold: 50,
+      shopGoldA: 1000,
+      shopGoldB: 5000,
+      dailyGoldReady: true,
+      dailyGold: 0,
+    );
+    expect(diamondDay.map((option) => option.kind).toList(), [
+      BilgiGoldHelpKind.ad,
+      BilgiGoldHelpKind.shop,
+    ]);
+
+    final claimed = bilgiGoldHelpOptions(
+      rewardedGold: 50,
+      shopGoldA: 1000,
+      shopGoldB: 5000,
+      dailyGoldReady: false,
+      dailyGold: 100,
+    );
+    expect(claimed.map((option) => option.kind).toList(), [
+      BilgiGoldHelpKind.ad,
+      BilgiGoldHelpKind.shop,
+    ]);
+    expect(bilgiNoticeIsGoldShort('🪙 Yeterli altının yok. Mağazadan altın al.'), isTrue);
+    expect(bilgiNoticeIsGoldShort('Yeterli altının yok.'), isTrue);
+    expect(bilgiNoticeIsGoldShort('Canın bitti'), isFalse);
+  });
 }
 
 class _DropFieldStore implements KeyValueStore {

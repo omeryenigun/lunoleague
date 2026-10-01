@@ -117,6 +117,130 @@ List<String> bilgiOpenCategoryIds(Iterable<BilgiProfile> users) {
   return [for (final category in bilgiCategories) if (played.contains(category.id)) category.id];
 }
 
+/// Public players whose all-time total in that category is above zero.
+Map<String, int> bilgiCategoryPlayerCounts(Iterable<BilgiProfile> users) {
+  final counts = <String, int>{};
+  for (final category in bilgiCategories) {
+    if (category.id == tumuKarmaId || category.id == 'karma') continue;
+    var players = 0;
+    for (final user in users) {
+      if (!bilgiPublicPlayer(user)) continue;
+      if ((user.categoryScores[category.id]?.total ?? 0) > 0) players++;
+    }
+    if (players > 0) counts[category.id] = players;
+  }
+  return counts;
+}
+
+/// Approved questions a category needs before the player may see it.
+const bilgiMinPublishedQuestions = 60;
+
+/// Player lists and category leagues share this rule.
+/// [publishedCount] is the approved pool (`categoryCounts`). Null is not loaded yet and stays hidden.
+bool bilgiCategoryListed(String categoryId, int? publishedCount) {
+  if (categoryId.trim().isEmpty) return false;
+  return publishedCount != null && publishedCount >= bilgiMinPublishedQuestions;
+}
+
+/// Categories with at least [bilgiMinPublishedQuestions] approved questions.
+/// Karma and the mix id stay out. A missing count is not loaded yet and stays hidden.
+List<String> bilgiLeagueCatalog(Map<String, int> publishedCounts) {
+  return [
+    for (final category in bilgiCategories)
+      if (category.id != tumuKarmaId &&
+          category.id != 'karma' &&
+          bilgiCategoryListed(category.id, publishedCounts[category.id]))
+        category.id,
+  ];
+}
+
+const bilgiLeagueSortAlpha = 'alpha';
+const bilgiLeagueSortQuestions = 'questions';
+const bilgiLeagueSortPlayers = 'players';
+
+/// Turkish letter order: a b c ç d e f g ğ h ı i j k l m n o ö p r s ş t u ü v y z.
+int bilgiTurkishCompare(String left, String right) {
+  final a = _turkishRanks(left);
+  final b = _turkishRanks(right);
+  final n = a.length < b.length ? a.length : b.length;
+  for (var i = 0; i < n; i++) {
+    final by = a[i].compareTo(b[i]);
+    if (by != 0) return by;
+  }
+  return a.length.compareTo(b.length);
+}
+
+const _turkishAlphabet = 'abcçdefgğhıijklmnoöprsştuüvyz';
+
+List<int> _turkishRanks(String input) {
+  final ranks = <int>[];
+  for (final rune in input.runes) {
+    final ch = String.fromCharCode(rune);
+    if (ch == '\u0307') continue;
+    final lower = switch (ch) {
+      'İ' => 'i',
+      'I' => 'ı',
+      'Ç' => 'ç',
+      'Ğ' => 'ğ',
+      'Ö' => 'ö',
+      'Ş' => 'ş',
+      'Ü' => 'ü',
+      _ => ch.toLowerCase(),
+    };
+    for (final part in lower.runes) {
+      if (part == 0x0307) continue;
+      final letter = String.fromCharCode(part);
+      final index = _turkishAlphabet.indexOf(letter);
+      ranks.add(index >= 0 ? index : 100 + part);
+    }
+  }
+  return ranks;
+}
+
+/// [sort] is [bilgiLeagueSortAlpha], [bilgiLeagueSortQuestions], or [bilgiLeagueSortPlayers].
+/// Question and player sorts are high to low, then Turkish category name.
+List<String> bilgiSortLeagueCatalog(
+  List<String> ids, {
+  String sort = bilgiLeagueSortAlpha,
+  Map<String, int> questionCounts = const {},
+  Map<String, int> playerCounts = const {},
+}) {
+  final rows = [...ids];
+  int byName(String a, String b) {
+    final left = bilgiCategoryById(a)?.name ?? a;
+    final right = bilgiCategoryById(b)?.name ?? b;
+    final by = bilgiTurkishCompare(left, right);
+    if (by != 0) return by;
+    return a.compareTo(b);
+  }
+
+  rows.sort((a, b) {
+    if (sort == bilgiLeagueSortQuestions) {
+      final byCount = (questionCounts[b] ?? 0).compareTo(questionCounts[a] ?? 0);
+      if (byCount != 0) return byCount;
+    } else if (sort == bilgiLeagueSortPlayers) {
+      final byCount = (playerCounts[b] ?? 0).compareTo(playerCounts[a] ?? 0);
+      if (byCount != 0) return byCount;
+    }
+    return byName(a, b);
+  });
+  return rows;
+}
+
+/// Categories where [user] has an all-time score and at least [bilgiMinPublishedQuestions] approved questions.
+List<String> bilgiMyOpenLeagueIds(
+  BilgiProfile? user, {
+  required Map<String, int> publishedCounts,
+}) {
+  if (user == null) return const [];
+  return [
+    for (final category in bilgiCategories)
+      if ((user.categoryScores[category.id]?.total ?? 0) > 0 &&
+          bilgiCategoryListed(category.id, publishedCounts[category.id]))
+        category.id,
+  ];
+}
+
 BilgiProfile bilgiRollWeek(BilgiProfile user, DateTime now) {
   final current = bilgiWeekId(now);
   if (user.weekId.isEmpty) return user.copyWith(weekId: current);
@@ -224,6 +348,7 @@ class BilgiLeagueSnapshot {
     required this.settledWeek,
     required this.closed,
     this.categoryRanks = const {},
+    this.categoryPlayerCounts = const {},
   });
 
   final List<BilgiBoardEntry> rows;
@@ -237,6 +362,7 @@ class BilgiLeagueSnapshot {
   final String settledWeek;
   final bool closed;
   final Map<String, int> categoryRanks;
+  final Map<String, int> categoryPlayerCounts;
 
   Map<String, dynamic> toMap() => {
         'rows': [for (final row in rows) row.toMap()],
@@ -250,12 +376,14 @@ class BilgiLeagueSnapshot {
         'settledWeek': settledWeek,
         'closed': closed,
         'categoryRanks': categoryRanks,
+        'categoryPlayerCounts': categoryPlayerCounts,
       };
 
   factory BilgiLeagueSnapshot.fromMap(Map<String, dynamic> map) {
     final rows = map['rows'];
     final ids = map['categoryIds'];
     final ranks = map['categoryRanks'];
+    final players = map['categoryPlayerCounts'];
     return BilgiLeagueSnapshot(
       rows: [
         for (final row in rows is List ? rows : const [])
@@ -274,8 +402,46 @@ class BilgiLeagueSnapshot {
         for (final entry in ranks is Map ? ranks.entries : const [])
           if (bilgiInt(entry.value, 0) > 0) '${entry.key}': bilgiInt(entry.value, 0),
       },
+      categoryPlayerCounts: {
+        for (final entry in players is Map ? players.entries : const [])
+          if (bilgiInt(entry.value, 0) > 0) '${entry.key}': bilgiInt(entry.value, 0),
+      },
     );
   }
+}
+
+/// Points for the open board. Weekly uses this week's score; all-time uses the lifetime total.
+/// A category board reads that category. Genel Lig reads [BilgiProfile.weekScore] or [BilgiProfile.totalScore].
+int bilgiLeaguePeriodScore(
+  BilgiProfile user, {
+  required bool weekly,
+  String? categoryId,
+  DateTime? now,
+}) {
+  final clock = now ?? DateTime.now();
+  if (categoryId != null && categoryId.isNotEmpty) {
+    if (weekly) return bilgiVisibleCategoryWeek(user, categoryId, clock);
+    return user.categoryScores[categoryId]?.total ?? 0;
+  }
+  if (weekly) return bilgiVisibleWeekScore(user, clock);
+  return user.totalScore;
+}
+
+/// Real place on this period's board. Zero when the player has no row.
+int bilgiMyBoardRank(List<BilgiBoardEntry> rows, String meId) {
+  for (final row in rows) {
+    if (row.id == meId && row.rank > 0) return row.rank;
+  }
+  return 0;
+}
+
+/// Points stay on their own line: "Lig Puanınız: 40".
+/// A real place is a second line, "4. Sıradasınız". No place omits that line.
+String bilgiMyRankLabel({required int score, required int rank}) {
+  final points = score < 0 ? 0 : score;
+  final pointsLine = 'Lig Puanınız: $points';
+  if (rank <= 0) return pointsLine;
+  return '$pointsLine\n$rank. Sıradasınız';
 }
 
 const bilgiSeedNames = <String>[
@@ -375,6 +541,7 @@ BilgiLeagueSnapshot bilgiLeagueSnapshot({
   final tier = me == null ? '' : bilgiTier(bilgiVisibleWeekScore(me, now));
   final title = me == null ? '' : bilgiLeagueTitle(me, users);
   final categoryRanks = bilgiMyCategoryRanks(me, users);
+  final categoryPlayerCounts = bilgiCategoryPlayerCounts(users);
   if (scope == 'category' && (categoryId == null || categoryId.isEmpty)) {
     return BilgiLeagueSnapshot(
       rows: const [],
@@ -388,6 +555,7 @@ BilgiLeagueSnapshot bilgiLeagueSnapshot({
       settledWeek: settledWeek,
       closed: false,
       categoryRanks: categoryRanks,
+      categoryPlayerCounts: categoryPlayerCounts,
     );
   }
   if (scope == 'category' && !open.contains(categoryId)) {
@@ -401,8 +569,9 @@ BilgiLeagueSnapshot bilgiLeagueSnapshot({
       tier: tier,
       title: title,
       settledWeek: settledWeek,
-      closed: true,
+      closed: bilgiCategoryById(categoryId!) == null,
       categoryRanks: categoryRanks,
+      categoryPlayerCounts: categoryPlayerCounts,
     );
   }
   final general = scope == 'global' || scope == 'general' || scope == 'weekly';
@@ -424,7 +593,8 @@ BilgiLeagueSnapshot bilgiLeagueSnapshot({
     },
   );
   final realCount = ranked.length;
-  final showSeed = seedIfShort && realCount < bilgiLeagueRealLimit;
+  final showSeed =
+      seedIfShort && realCount < bilgiLeagueRealLimit && (scope != 'category' || realCount > 0);
   final category = scope == 'category' ? bilgiCategoryById(categoryId!) : null;
   BilgiBoardEntry entryFor(BilgiProfile user, int place) {
     return BilgiBoardEntry(
@@ -475,6 +645,7 @@ BilgiLeagueSnapshot bilgiLeagueSnapshot({
     settledWeek: settledWeek,
     closed: false,
     categoryRanks: categoryRanks,
+    categoryPlayerCounts: categoryPlayerCounts,
   );
 }
 

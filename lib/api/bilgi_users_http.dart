@@ -4,8 +4,8 @@ import 'package:kelimelig/data/local/scoped_store.dart';
 import 'package:kelimelig/data/remote/postgres_kv.dart';
 import 'package:kelimelig/domain/account/luno_account.dart';
 import 'package:kelimelig/domain/game/game_ids.dart';
-import 'package:kelimelig/games/luno_bilgi/bilgi_league.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_wallet.dart';
 import 'package:postgres/postgres.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
@@ -89,10 +89,9 @@ Future<BilgiProfile> mergeBilgiUser(KeyValueStore store, BilgiProfile incoming) 
   final banned = existing == null ? incoming.banned : existing['banned'] == true;
   final banReason = existing == null ? incoming.banReason : '${existing['banReason'] ?? ''}';
   final id = existing == null ? incoming.id : '${existing['id']}';
-  final settled = await store.getMeta('bilgi_league_settlement') ?? '';
   final merged = existing == null
-      ? incoming
-      : mergeBilgiLeague(BilgiProfile.fromMap(existing), incoming, settledWeek: settled);
+      ? bilgiBornProfile(incoming)
+      : bilgiKeepServerWallet(BilgiProfile.fromMap(existing), incoming);
   final guest = incoming.email.trim().isEmpty && incoming.passwordHash.isEmpty;
   if (guest) {
     final saved = merged.copyWith(id: id, banned: banned, banReason: banReason, email: '', passwordHash: '');

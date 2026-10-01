@@ -57,6 +57,10 @@ class BilgiController extends ChangeNotifier {
   BilgiRound? round;
   BilgiRoom? room;
   String? notice;
+  /// Bumps when a gold spend is refused so the screen opens the options dialog.
+  int goldHelpSerial = 0;
+  /// Shop should scroll to the gold packs on the next shop build.
+  bool pendingShopGold = false;
   String categoryId = tumuKarmaId;
   String modeId = 'hizli';
   String difficulty = 'hepsi';
@@ -95,6 +99,7 @@ class BilgiController extends ChangeNotifier {
   int boardRealCount = 0;
   List<String> boardCategoryIds = const [];
   Map<String, int> boardCategoryRanks = const {};
+  Map<String, int> boardCategoryPlayerCounts = const {};
   bool boardClosed = false;
   String leagueTier = '';
   String leagueTitle = '';
@@ -146,6 +151,7 @@ class BilgiController extends ChangeNotifier {
         'detail',
         'setup',
         'league',
+        'league_rewards',
         'settings',
         'profile',
         'shop',
@@ -427,6 +433,21 @@ class BilgiController extends ChangeNotifier {
     open('detail');
   }
 
+  bool joinedCategoryLeague(String id) {
+    final user = profile;
+    if (user == null) return false;
+    return bilgiPlayedCategory(user, id);
+  }
+
+  Future<void> playCategoryLeague(String id) async {
+    if (id.isEmpty || id == tumuKarmaId || id == 'karma') return;
+    categoryId = id;
+    subName = '';
+    final mode = bilgiModeById(modeId);
+    final solo = mode.group == 'solo' || mode.id == 'lig' ? mode.id : 'lig';
+    await start(forcedMode: solo);
+  }
+
   void selectSub(String name) {
     subName = name;
     open('setup');
@@ -601,12 +622,25 @@ class BilgiController extends ChangeNotifier {
 
   void _openPreGameAd() {
     if (kIsWeb) {
-      _leaveUnplayableAd();
+      unawaited(_startAfterUnplayableWebAd());
       return;
     }
     if (_adLaunching) return;
     _adLaunching = true;
     unawaited(_playPreGameAd());
+  }
+
+  /// Web cannot play the pre-game ad, so the round starts without it.
+  Future<void> _startAfterUnplayableWebAd() async {
+    if (stack.isNotEmpty && stack.last == 'ad') stack.removeLast();
+    _adLaunching = false;
+    final pending = _pendingShared;
+    if (pending != null) {
+      _pendingShared = null;
+      await _startShared(pending, adCleared: true);
+      return;
+    }
+    await start(adCleared: true);
   }
 
   /// Web and other surfaces with no playable ad leave the countdown. No reward is granted.
@@ -872,6 +906,12 @@ class BilgiController extends ChangeNotifier {
       boardScope = 'general';
       boardCategoryId = null;
     }
+    final selected = boardCategoryId;
+    if (boardScope == 'category' &&
+        selected != null &&
+        (selected == tumuKarmaId || !bilgiCategoryListed(selected, categoryCounts[selected]))) {
+      boardCategoryId = null;
+    }
     final scope = boardScope == 'general' ? 'global' : boardScope;
     final categoryId = boardCategoryId;
     final weekly = boardWeekly;
@@ -888,11 +928,21 @@ class BilgiController extends ChangeNotifier {
       categoryWeekly: weekly,
     );
     final snap = remote ?? local;
+    final ranks = <String, int>{
+      for (final entry in snap.categoryRanks.entries)
+        if (entry.value > 0) entry.key: entry.value,
+    };
+    for (final entry in local.categoryRanks.entries) {
+      if (entry.value > 0) ranks.putIfAbsent(entry.key, () => entry.value);
+    }
     boardRows = snap.rows;
     boardSeed = snap.seed;
     boardRealCount = snap.realCount;
-    boardCategoryIds = snap.categoryIds;
-    boardCategoryRanks = snap.categoryRanks.isNotEmpty ? snap.categoryRanks : local.categoryRanks;
+    boardCategoryIds = bilgiLeagueCatalog(categoryCounts);
+    boardCategoryRanks = ranks;
+    boardCategoryPlayerCounts = remote != null && remote.categoryPlayerCounts.isNotEmpty
+        ? remote.categoryPlayerCounts
+        : local.categoryPlayerCounts;
     boardClosed = snap.closed;
     leagueTier = snap.tier.isNotEmpty ? snap.tier : (profile == null ? '' : bilgiTier(bilgiVisibleWeekScore(profile!, DateTime.now())));
     leagueTitle = snap.title;
@@ -943,8 +993,7 @@ class BilgiController extends ChangeNotifier {
     final prices = config.jokerPrices;
     final cost = (prices['half'] ?? 50) + (prices['double'] ?? 75) + (prices['time'] ?? 60);
     if ((profile?.gold ?? 0) < cost) {
-      notice = '🪙 Yeterli altının yok. Mağazadan altın al.';
-      notifyListeners();
+      requestGoldHelp();
       return;
     }
     await buyJoker('half');
@@ -963,9 +1012,7 @@ class BilgiController extends ChangeNotifier {
 
   Future<void> buyJoker(String type) async {
     final result = await server.buyJoker(type);
-    profile = result.profile ?? profile;
-    notice = result.message;
-    notifyListeners();
+    _applyGoldSpend(result);
   }
 
   bool get plusActive {
@@ -1020,12 +1067,41 @@ class BilgiController extends ChangeNotifier {
     }
   }
 
-  Future<void> refill() async {
-    final result = await server.refillLives();
-    profile = result.profile ?? profile;
-    notice = result.message;
-    if (result.ok && page == 'nolives') back();
+  void requestGoldHelp() {
+    notice = null;
+    goldHelpSerial++;
     notifyListeners();
+  }
+
+  /// Opens the shop on the gold packs. Does not change prices or product ids.
+  void openShopGold() {
+    pendingShopGold = true;
+    if (page == 'shop') {
+      notifyListeners();
+      return;
+    }
+    open('shop');
+  }
+
+  void _applyGoldSpend(BilgiResult result, {bool closeNoLives = false}) {
+    profile = result.profile ?? profile;
+    if (bilgiNoticeIsGoldShort(result.message)) {
+      requestGoldHelp();
+      return;
+    }
+    notice = result.message;
+    if (closeNoLives && result.ok && page == 'nolives') back();
+    notifyListeners();
+  }
+
+  Future<void> refill() async {
+    final user = profile;
+    if (user != null && user.gold < config.lifePrice) {
+      requestGoldHelp();
+      return;
+    }
+    final result = await server.refillLives();
+    _applyGoldSpend(result, closeNoLives: true);
   }
 
   Future<void> watchFor(String kind) async {
