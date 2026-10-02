@@ -932,17 +932,12 @@ class BilgiController extends ChangeNotifier {
       for (final entry in snap.categoryRanks.entries)
         if (entry.value > 0) entry.key: entry.value,
     };
-    for (final entry in local.categoryRanks.entries) {
-      if (entry.value > 0) ranks.putIfAbsent(entry.key, () => entry.value);
-    }
     boardRows = snap.rows;
     boardSeed = snap.seed;
     boardRealCount = snap.realCount;
     boardCategoryIds = bilgiLeagueCatalog(categoryCounts);
     boardCategoryRanks = ranks;
-    boardCategoryPlayerCounts = remote != null && remote.categoryPlayerCounts.isNotEmpty
-        ? remote.categoryPlayerCounts
-        : local.categoryPlayerCounts;
+    boardCategoryPlayerCounts = remote != null ? remote.categoryPlayerCounts : local.categoryPlayerCounts;
     boardClosed = snap.closed;
     leagueTier = snap.tier.isNotEmpty ? snap.tier : (profile == null ? '' : bilgiTier(bilgiVisibleWeekScore(profile!, DateTime.now())));
     leagueTitle = snap.title;

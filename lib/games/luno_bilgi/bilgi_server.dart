@@ -352,7 +352,9 @@ class LunoBilgiServer {
     try {
       final saved = await push(user);
       if (saved == null) return user;
-      final next = bilgiTakeLeagueGrant(user, saved);
+      final next = saved.containsKey('lives')
+          ? bilgiApplyWallet(user, BilgiProfile.fromMap(saved))
+          : bilgiTakeLeagueGrant(user, saved);
       await _save(next);
       return next;
     } catch (_) {

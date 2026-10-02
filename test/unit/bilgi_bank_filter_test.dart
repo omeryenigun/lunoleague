@@ -114,19 +114,28 @@ void main() {
     }
   });
 
-  test('correct choice text is the option at the correct index', () {
-    expect(bilgiCorrectChoiceText(questions.first), 'bir');
+  test('bank list correct column is the choice letter', () {
+    expect(bilgiCorrectChoiceLetter(questions.first), 'A');
     expect(
-      bilgiCorrectChoiceText(_question(
+      bilgiCorrectChoiceLetter(_question(
         id: 'd',
         categoryId: 'felsefe',
         subcategory: 'Antik Yunan Felsefesi',
         status: 'approved',
       ).copyWith(options: const ['alfa', 'beta', 'gama', 'delta'], correct: 2)),
-      'gama',
+      'C',
     );
     expect(
-      bilgiCorrectChoiceText(_question(
+      bilgiCorrectChoiceLetter(_question(
+        id: 'b',
+        categoryId: 'felsefe',
+        subcategory: 'Antik Yunan Felsefesi',
+        status: 'approved',
+      ).copyWith(correct: 1)),
+      'B',
+    );
+    expect(
+      bilgiCorrectChoiceLetter(_question(
         id: 'bos',
         categoryId: 'felsefe',
         subcategory: 'Antik Yunan Felsefesi',

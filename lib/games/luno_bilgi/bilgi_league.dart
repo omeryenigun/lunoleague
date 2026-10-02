@@ -12,6 +12,9 @@ DateTime bilgiIstanbulWall(DateTime now) {
 
 String bilgiWeekId(DateTime now) => DateKeys.weekId(bilgiIstanbulWall(now));
 
+/// Calendar day in Istanbul, same clock as the league week.
+String bilgiDayKey(DateTime now) => DateKeys.dayKey(bilgiIstanbulWall(now));
+
 String bilgiPreviousWeekId(DateTime now) => bilgiWeekId(now.toUtc().subtract(const Duration(days: 7)));
 
 Duration bilgiWeekRemaining(DateTime now) {

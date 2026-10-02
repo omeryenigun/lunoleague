@@ -1751,7 +1751,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       ),
       Text(_catLabel(question.categoryId), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13)),
       Text(_subLabel(question), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13)),
-      Text(bilgiCorrectChoiceText(question), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+      Text(bilgiCorrectChoiceLetter(question), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13)),
       _diffBadge(question.difficulty),
       _statusBadge(question.status),
       Row(
@@ -5084,12 +5084,11 @@ const bilgiBankPageSize = 20;
 
 const bilgiBankPageSizes = <int>[20, 50, 100, 200];
 
-/// Şık metni, doğru indeksteki seçenek. İndeks şıkların dışındaysa boş döner.
-String bilgiCorrectChoiceText(BilgiQuestion question) {
+/// Soru bankası listesindeki doğru şık: 0=A, 1=B, 2=C, 3=D. İndeks dışındaysa boş.
+String bilgiCorrectChoiceLetter(BilgiQuestion question) {
   final index = question.correct;
-  final options = question.options;
-  if (index < 0 || index >= options.length) return '';
-  return options[index];
+  if (index < 0 || index > 3) return '';
+  return const ['A', 'B', 'C', 'D'][index];
 }
 
 String _bankMatchKey(String value) => _fold(value).replaceAll(RegExp(r'\s+'), ' ').trim();

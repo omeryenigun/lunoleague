@@ -1,6 +1,5 @@
 import 'dart:math';
 
-import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
 import 'package:kelimelig/domain/account/luno_account.dart';
 import 'package:kelimelig/domain/game/game_ids.dart';
@@ -247,7 +246,7 @@ Future<void> bilgiEnsureOpening(BilgiLedgerRepo ledger, BilgiProfile user, {Date
 
 /// Yesterday's ad counters do not carry into today.
 BilgiProfile bilgiRollAdDay(BilgiProfile user, DateTime now) {
-  final today = DateKeys.dayKey(now);
+  final today = bilgiDayKey(now);
   if (user.adDay == today) return user;
   return user.copyWith(
     adGoldToday: 0,
@@ -419,7 +418,7 @@ BilgiProfile bilgiFreshProfile({
     adJokerToday: 0,
     adLifeToday: 0,
     adDoubleToday: 0,
-    adDay: DateKeys.dayKey(now),
+    adDay: bilgiDayKey(now),
     weekId: bilgiWeekId(now),
     weekScore: 0,
   );
@@ -732,7 +731,7 @@ class BilgiWalletBook {
     if (ref.isEmpty) return const BilgiWalletReply(error: '⚠️ Bir şeyler ters gitti. Tekrar dene.');
     if (await _done(user.id, 'score_double', ref)) return BilgiWalletReply(profile: user);
     final config = await _config();
-    final today = DateKeys.dayKey(_clock());
+    final today = bilgiDayKey(_clock());
     final used = user.adDay == today ? user.adDoubleToday : 0;
     if (used >= config.rewardedDoubleLimit) return const BilgiWalletReply(error: '📅 Bugünkü hakkını kullandın.');
     final extra = bilgiInt(body['score'], 0);
@@ -834,12 +833,12 @@ class BilgiWalletBook {
     if (loaded.error != null || loaded.profile == null) return loaded;
     final user = loaded.profile!;
     final config = await _config();
-    final today = DateKeys.dayKey(_clock());
+    final today = bilgiDayKey(_clock());
     if (user.lastReward == today || await _done(user.id, 'daily', today)) {
       return const BilgiWalletReply(error: '📅 Bugünkü hakkını kullandın.');
     }
     final doubled = body['doubled'] == true;
-    final yesterday = DateKeys.dayKey(_clock().subtract(const Duration(days: 1)));
+    final yesterday = bilgiDayKey(_clock().toUtc().subtract(const Duration(days: 1)));
     final index = user.lastReward == yesterday ? user.rewardDay % 7 : 0;
     final gold = dayRewardAmount(config.dailyGold, index) * (doubled ? 2 : 1);
     final diamond = dayRewardAmount(config.dailyDiamond, index) * (doubled ? 2 : 1);
@@ -873,7 +872,7 @@ class BilgiWalletBook {
     final user = bilgiRollAdDay(loaded.profile!, _clock());
     final kind = '${body['kind'] ?? ''}';
     final config = await _config();
-    final today = DateKeys.dayKey(_clock());
+    final today = bilgiDayKey(_clock());
     final sameDay = user.adDay == today;
     final goldUsed = sameDay ? user.adGoldToday : 0;
     final jokerUsed = sameDay ? user.adJokerToday : 0;

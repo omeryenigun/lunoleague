@@ -47,6 +47,8 @@ void main() {
     expect(bilgiWeekId(monday), DateKeys.weekId(DateTime(2026, 10, 5)));
     expect(bilgiWeekId(sunday), DateKeys.weekId(DateTime(2026, 10, 4)));
     expect(bilgiWeekId(monday), isNot(bilgiWeekId(sunday)));
+    expect(bilgiDayKey(DateTime.utc(2026, 10, 1, 22)), '2026-10-02');
+    expect(bilgiDayKey(DateTime.utc(2026, 10, 1, 20)), '2026-10-01');
   });
 
   test('a round writes only that category, and karma stays general', () {
@@ -391,6 +393,36 @@ void main() {
     expect(pulled.totalScore, 40);
     expect(pulled.weekScore, 40);
     expect(pulled.gold, 40);
+  });
+
+  test('a full profile reply writes lives and jokers back', () async {
+    final store = MemoryKeyValueStore();
+    final now = DateTime.utc(2026, 10, 2, 12);
+    final server = LunoBilgiServer(store, clock: () => now);
+    final user = await server.profile();
+    await store.put(
+      'users',
+      user.id,
+      user.copyWith(
+        lives: 1,
+        livesAt: now.subtract(const Duration(hours: 5)),
+        adFreeLeft: 1,
+        jokers: const {'half': 0, 'double': 0, 'time': 0, 'change': 0, 'hint': 0},
+      ).toMap(),
+    );
+    server.remoteUpsert = (incoming) async => incoming.copyWith(
+      lives: 1,
+      livesAt: now,
+      gold: 800,
+      jokers: const {'half': 0, 'double': 0, 'time': 0, 'change': 0, 'hint': 3},
+    ).toPublicMap();
+    final pulled = await server.pullRemoteProfile();
+    expect(pulled.lives, 1);
+    expect(pulled.gold, 800);
+    expect(pulled.jokers['hint'], 3);
+    expect(pulled.adFreeLeft, 1);
+    expect(pulled.id, user.id);
+    expect(pulled.passwordHash, user.passwordHash);
   });
 
   test('category list rank is the real all-time place, not a seed row', () {

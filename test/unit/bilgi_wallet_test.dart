@@ -111,6 +111,20 @@ void main() {
     expect(rewarded.profile?.gold, 550);
   });
 
+  test('Istanbul midnight rolls the ad day while UTC is still yesterday', () async {
+    final store = MemoryKeyValueStore();
+    final book = BilgiWalletBook(store, MemoryBilgiLedger(), clock: () => DateTime.utc(2026, 10, 1, 22));
+    final existing = bilgiFreshProfile(
+      id: 'ada',
+      now: DateTime.utc(2026, 10, 1, 9),
+      config: const BilgiConfig(),
+    ).copyWith(adGoldToday: 10, adDay: '2026-10-01');
+    await store.put(bilgiWalletUsers, existing.id, existing.toMap());
+    final synced = await book.apply({'op': 'sync', 'userId': 'ada'});
+    expect(synced.profile?.adDay, '2026-10-02');
+    expect(synced.profile?.adGoldToday, 0);
+  });
+
   test('dismissing the shown league reward clears the text and keeps the gold', () {
     final server = bilgiFreshProfile(
       id: 'ada',
