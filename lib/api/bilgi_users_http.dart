@@ -1,4 +1,5 @@
 import 'package:kelimelig/api/admin_http.dart';
+import 'package:kelimelig/core/constants/user_messages.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
 import 'package:kelimelig/data/local/scoped_store.dart';
 import 'package:kelimelig/data/remote/postgres_kv.dart';
@@ -68,8 +69,12 @@ Future<Response> _upsert(Request request, KeyValueStore store) async {
   if (incoming.id.trim().isEmpty || incoming.id.length > 80) {
     return jsonResponse({'error': 'Kullanıcı geçersiz.'}, status: 400);
   }
-  final saved = await mergeBilgiUser(store, incoming);
-  return jsonResponse({'ok': true, 'user': saved.toPublicMap()});
+  try {
+    final saved = await mergeBilgiUser(store, incoming);
+    return jsonResponse({'ok': true, 'user': saved.toPublicMap()});
+  } on BilgiUsernameTaken {
+    return jsonResponse({'error': UserMessages.nicknameTaken}, status: 409);
+  }
 }
 
 /// Upserts by email when present, otherwise by id. Client cannot clear a server ban.
@@ -92,8 +97,16 @@ Future<BilgiProfile> mergeBilgiUser(KeyValueStore store, BilgiProfile incoming) 
   final merged = existing == null
       ? bilgiBornProfile(incoming)
       : bilgiKeepServerWallet(BilgiProfile.fromMap(existing), incoming);
+  final previousName = existing == null ? '' : '${existing['username'] ?? ''}';
+  final nameTaken = bilgiUsernameChangeTaken(
+    all,
+    nextName: merged.username,
+    currentName: previousName,
+    exceptId: id,
+  );
   final guest = incoming.email.trim().isEmpty && incoming.passwordHash.isEmpty;
   if (guest) {
+    if (nameTaken) throw const BilgiUsernameTaken();
     final saved = merged.copyWith(id: id, banned: banned, banReason: banReason, email: '', passwordHash: '');
     await store.put('users', id, saved.toMap());
     return saved;
@@ -105,6 +118,7 @@ Future<BilgiProfile> mergeBilgiUser(KeyValueStore store, BilgiProfile incoming) 
     final row = await store.get('users', otherId);
     if (row != null) return BilgiProfile.fromMap(row);
   }
+  if (nameTaken) throw const BilgiUsernameTaken();
   final link = await directory.link(
     gameId: GameIds.lunoBilgi,
     progressId: id,

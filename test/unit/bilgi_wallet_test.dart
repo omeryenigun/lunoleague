@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kelimelig/core/constants/user_messages.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_wallet.dart';
@@ -159,6 +160,40 @@ void main() {
       ledger.lines.where((line) => line.userId == 'host' && line.reason == 'invite' && line.asset == 'gold').single.amount,
       100,
     );
+  });
+
+  test('bind rejects a username another profile already has', () async {
+    final store = MemoryKeyValueStore();
+    final ledger = MemoryBilgiLedger();
+    final book = BilgiWalletBook(store, ledger, clock: () => DateTime.utc(2026, 10, 2, 9));
+    final guest = bilgiFreshProfile(
+      id: 'guest',
+      now: DateTime.utc(2026, 10, 1),
+      config: const BilgiConfig(),
+    ).copyWith(username: 'Avatar');
+    await store.put(bilgiWalletUsers, guest.id, guest.toMap());
+
+    final taken = await book.apply({
+      'op': 'bind',
+      'userId': 'ada',
+      'email': 'ada@example.com',
+      'username': 'avatar',
+      'passwordHash': 'abc',
+    });
+    expect(taken.profile, isNull);
+    expect(taken.error, UserMessages.nicknameTaken);
+    expect(await store.get(bilgiWalletUsers, 'ada'), isNull);
+
+    final own = await book.apply({
+      'op': 'bind',
+      'userId': 'guest',
+      'email': 'guest@example.com',
+      'username': 'Avatar',
+      'passwordHash': 'abc',
+    });
+    expect(own.error, isNull);
+    expect(own.profile?.id, 'guest');
+    expect(own.profile?.username, 'Avatar');
   });
 
   test('elapsed life time writes one regen line', () async {

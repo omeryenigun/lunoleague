@@ -66,8 +66,6 @@ bool bilgiPlaceholderUsername(String name) {
   return trimmed.isEmpty || trimmed.toLowerCase() == bilgiGenericUsername.toLowerCase();
 }
 
-String bilgiUsernameNormalized(String raw) => raw.trim().replaceAll(RegExp(r'\s+'), ' ');
-
 /// Length, charset, and shape already used for nicknames. Null when the name is acceptable.
 String? bilgiUsernameIssue(String raw) {
   final name = bilgiUsernameNormalized(raw);
@@ -268,13 +266,7 @@ class LunoBilgiServer {
   }
 
   Future<bool> _usernameTaken(String name, {required String exceptId}) async {
-    final key = bilgiUsernameNormalized(name).toLowerCase();
-    for (final row in await _store.values(_users)) {
-      if ('${row['id'] ?? ''}' == exceptId) continue;
-      final existing = bilgiUsernameNormalized('${row['username'] ?? ''}').toLowerCase();
-      if (existing.isNotEmpty && existing == key) return true;
-    }
-    return false;
+    return bilgiUsernameTaken(await _store.values(_users), name, exceptId: exceptId);
   }
 
   Future<Map<String, int>> _starterJokers() async {
@@ -357,6 +349,8 @@ class LunoBilgiServer {
           : bilgiTakeLeagueGrant(user, saved);
       await _save(next);
       return next;
+    } on BilgiUsernameTaken {
+      rethrow;
     } catch (_) {
       return user;
     }
@@ -527,7 +521,7 @@ class LunoBilgiServer {
     final canReplace = replaceName || _guestLooking(current.username);
     final nextName = canReplace && typed.length >= 2 ? typed : current.username;
     if (await _usernameTaken(nextName, exceptId: current.id)) {
-      return const BilgiResult(message: '⚠️ Bir şeyler ters gitti. Tekrar dene.');
+      return const BilgiResult(message: UserMessages.nicknameTaken);
     }
     final upgraded = current.copyWith(
       username: nextName,
@@ -536,7 +530,13 @@ class LunoBilgiServer {
     );
     final linked = await _stampAccount(upgraded, provider: provider, email: mail, googleId: googleId);
     await _store.putMeta(_active, linked.id);
-    return BilgiResult(profile: await _pushRemote(linked));
+    try {
+      return BilgiResult(profile: await _pushRemote(linked));
+    } on BilgiUsernameTaken {
+      await _save(current);
+      await _store.putMeta(_active, current.id);
+      return const BilgiResult(message: UserMessages.nicknameTaken);
+    }
   }
 
   Future<BilgiProfile> _stampAccount(
@@ -1311,6 +1311,8 @@ class LunoBilgiServer {
   Future<BilgiResult> updateProfile({String? username, String? city, String? avatar}) async {
     final user = await profile();
     var next = user;
+    var markChosen = false;
+    String? chosenBefore;
     if (username != null) {
       final issue = bilgiUsernameIssue(username);
       if (issue != null) return BilgiResult(message: issue, profile: user);
@@ -1319,11 +1321,21 @@ class LunoBilgiServer {
         return BilgiResult(message: UserMessages.nicknameTaken, profile: user);
       }
       next = next.copyWith(username: name);
-      await _store.putMeta(_usernameChosenKey(user.id), '1');
+      markChosen = true;
+      chosenBefore = await _store.getMeta(_usernameChosenKey(user.id));
     }
     next = next.copyWith(city: city, avatar: avatar);
     await _save(next);
-    return BilgiResult(profile: await _pushRemote(next));
+    if (markChosen) await _store.putMeta(_usernameChosenKey(user.id), '1');
+    try {
+      return BilgiResult(profile: await _pushRemote(next));
+    } on BilgiUsernameTaken {
+      await _save(user);
+      if (markChosen && chosenBefore != '1') {
+        await _store.putMeta(_usernameChosenKey(user.id), chosenBefore ?? '');
+      }
+      return BilgiResult(message: UserMessages.nicknameTaken, profile: user);
+    }
   }
 
   Future<BilgiResult> claimInvite(String code) async {

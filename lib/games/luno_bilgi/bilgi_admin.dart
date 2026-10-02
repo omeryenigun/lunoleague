@@ -64,6 +64,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   var _bankDiff = '';
   var _bankStatus = '';
   var _bankLang = '';
+  var _bankReviewed = '';
   var _bankPage = 0;
   var _bankPageSize = bilgiBankPageSize;
   var _labels = const <String, String>{};
@@ -101,6 +102,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   List<BilgiLedgerLine> _ledgerLines = const [];
   var _ledgerAsset = '';
   var _ledgerReason = '';
+  var _ledgerFlow = '';
   var _ledgerError = '';
   final _ledgerFrom = TextEditingController();
   final _ledgerTo = TextEditingController();
@@ -1190,6 +1192,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
             }),
           ],
           rejectReason: question.rejectReason,
+          reviewed: question.reviewed,
         ),
     ];
     var saved = 0;
@@ -1429,6 +1432,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       _bankDiff = '';
       _bankStatus = '';
       _bankLang = '';
+      _bankReviewed = '';
       _bankPage = 0;
       _bulkMenu = '';
       _moveCat = '';
@@ -1471,6 +1475,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       difficulty: _bankDiff,
       status: _bankStatus,
       translation: _bankLang,
+      reviewed: _bankReviewed,
       search: _bankSearch.text,
       categorySubs: category?.subs ?? const <String>[],
       isTranslated: _questionReady,
@@ -1540,6 +1545,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                   _select(_bankDiff, [('','Tüm Zorluklar'), ('kolay','Kolay'), ('orta','Orta'), ('zor','Zor'), ('efsane','Efsane')], (v) => setState(() { _bankDiff = v; _bankPage = 0; _selectedIds.clear(); })),
                   _select(_bankStatus, [('','Tüm Durumlar'), ('approved','Onaylı'), ('pending','Bekleyen'), ('draft','Taslak'), ('rejected','Reddedilen')], (v) => setState(() { _bankStatus = v; _bankPage = 0; _selectedIds.clear(); })),
                   _select(_bankLang, [('','Tüm Tercümeler'), ('ready','Tercüme tamam'), ('missing','Tercüme eksik')], (v) => setState(() { _bankLang = v; _bankPage = 0; _selectedIds.clear(); })),
+                  _select(_bankReviewed, [('','Tüm Kontroller'), ('yes','Kontrol edildi'), ('no','Kontrol edilmedi')], (v) => setState(() { _bankReviewed = v; _bankPage = 0; _selectedIds.clear(); })),
                 ],
               ),
             ],
@@ -1648,6 +1654,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
           child: Column(
             children: [
               _bankCells([
+                const Text('KONTROL', style: TextStyle(color: BilgiColors.muted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.6)),
                 Checkbox(
                   tristate: true,
                   value: rows.isEmpty
@@ -1702,7 +1709,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     );
   }
 
-  static const _bankFlex = [1, 2, 4, 2, 3, 3, 2, 2, 3];
+  static const _bankFlex = [1, 1, 2, 4, 2, 3, 3, 2, 2, 3];
 
   Widget _bankCells(List<Widget> cells, {bool header = false}) {
     return Container(
@@ -1722,9 +1729,21 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     );
   }
 
+  Widget _reviewedMark(bool reviewed) {
+    return Tooltip(
+      message: reviewed ? 'Kontrol edildi' : 'Kontrol edilmedi',
+      child: Icon(
+        reviewed ? Icons.check : Icons.close,
+        size: 18,
+        color: reviewed ? const Color(0xFF22C55E) : BilgiColors.error,
+      ),
+    );
+  }
+
   Widget _bankRow(BilgiQuestion question) {
     final pending = question.status == 'pending';
     return _bankCells([
+      _reviewedMark(question.reviewed),
       Checkbox(
         value: _selectedIds.contains(question.id),
         onChanged: _bulkBusy
@@ -2070,6 +2089,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
           tags: draft.tags,
           rejectReason: existing?.rejectReason ?? '',
           translations: draft.translations,
+          reviewed: draft.reviewed,
         );
         if (written.status == 'approved' && !_questionReady(written)) {
           setState(() => _note = bilgiApproveBlocked);
@@ -3332,6 +3352,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                 setState(() {
                   _ledgerUser = user;
                   _ledgerLines = const [];
+                  _ledgerFlow = '';
                   _ledgerError = '';
                 });
                 _loadLedger();
@@ -3439,6 +3460,14 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
           children: [
             _userFilter('Varlık', _select(_ledgerAsset, assets, (value) => setState(() => _ledgerAsset = value))),
             _userFilter('Neden', _select(_ledgerReason, reasons, (value) => setState(() => _ledgerReason = value))),
+            _userFilter(
+              'Yön',
+              _select(_ledgerFlow, const [
+                ('', 'Tümü'),
+                ('in', 'Yükleme'),
+                ('out', 'Tüketim'),
+              ], (value) => setState(() => _ledgerFlow = value)),
+            ),
             SizedBox(
               width: 150,
               child: TextField(
@@ -3457,38 +3486,95 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        Text('${_ledgerLines.length} hareket', style: const TextStyle(color: BilgiColors.muted, fontSize: 12)),
+        Text('${_ledgerVisible().length} hareket', style: const TextStyle(color: BilgiColors.muted, fontSize: 12)),
         if (_ledgerError.isNotEmpty) ...[
           const SizedBox(height: 8),
           Text(_ledgerError, style: const TextStyle(color: BilgiColors.error)),
         ],
         const SizedBox(height: 12),
-        for (final line in _ledgerLines)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: _cardDeco(),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${_ledgerWhen(line.createdAt)} · ${_ledgerLabel(line.asset, assets)} · ${line.amount > 0 ? '+' : ''}${line.amount}',
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Sonraki stok ${line.balanceAfter} · ${_ledgerLabel(line.reason, reasons)}${line.ref.isEmpty ? '' : ' · ${line.ref}'}',
-                    style: const TextStyle(color: BilgiColors.muted, fontSize: 12),
-                  ),
-                  if (line.detail.isNotEmpty)
-                    Text(_ledgerDetail(line.detail), style: const TextStyle(fontSize: 12)),
-                ],
-              ),
-            ),
-          ),
+        _ledgerGrid(assets, reasons),
       ],
+    );
+  }
+
+  List<BilgiLedgerLine> _ledgerVisible() {
+    return [
+      for (final line in _ledgerLines)
+        if (_ledgerFlow == 'in' && line.amount > 0 || _ledgerFlow == 'out' && line.amount < 0 || _ledgerFlow == '') line,
+    ];
+  }
+
+  String _ledgerFlowLabel(int amount) {
+    if (amount > 0) return 'Yükleme';
+    if (amount < 0) return 'Tüketim';
+    return '—';
+  }
+
+  Widget _ledgerGrid(List<(String, String)> assets, List<(String, String)> reasons) {
+    const head = TextStyle(color: BilgiColors.muted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.4);
+    const cell = TextStyle(fontSize: 12, fontWeight: FontWeight.w600);
+    final rows = _ledgerVisible();
+    Widget col(String text, double width, {TextStyle? style, Color? color}) {
+      return SizedBox(
+        width: width,
+        child: Text(
+          text,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: (style ?? cell).copyWith(color: color),
+        ),
+      );
+    }
+
+    Widget lineRow(BilgiLedgerLine? line) {
+      final amount = line == null ? '' : '${line.amount > 0 ? '+' : ''}${line.amount}';
+      final amountColor = line == null
+          ? null
+          : line.amount > 0
+              ? BilgiColors.secondary
+              : line.amount < 0
+                  ? BilgiColors.error
+                  : null;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: line == null ? const Color(0xFF121022) : null,
+          border: const Border(bottom: BorderSide(color: Color(0x08FFFFFF))),
+        ),
+        child: Row(
+          children: [
+            col(line == null ? 'Tarih' : _ledgerWhen(line.createdAt), 132, style: line == null ? head : cell),
+            col(line == null ? 'Varlık' : _ledgerLabel(line.asset, assets), 100, style: line == null ? head : cell),
+            col(line == null ? 'Yön' : _ledgerFlowLabel(line.amount), 88, style: line == null ? head : cell),
+            col(line == null ? 'Tutar' : amount, 72, style: line == null ? head : cell, color: amountColor),
+            col(line == null ? 'Sonraki stok' : '${line.balanceAfter}', 96, style: line == null ? head : cell),
+            col(line == null ? 'Neden' : _ledgerLabel(line.reason, reasons), 130, style: line == null ? head : cell),
+            col(line == null ? 'Referans' : (line.ref.isEmpty ? '—' : line.ref), 168, style: line == null ? head : const TextStyle(fontSize: 11, color: BilgiColors.muted)),
+            col(line == null ? 'Ayrıntı' : (line.detail.isEmpty ? '—' : _ledgerDetail(line.detail)), 280, style: line == null ? head : cell),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      decoration: _cardDeco(),
+      clipBehavior: Clip.antiAlias,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            lineRow(null),
+            if (rows.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('Bu süzgeçte hareket yok.', style: TextStyle(color: BilgiColors.muted, fontSize: 12)),
+              )
+            else
+              for (final line in rows) lineRow(line),
+          ],
+        ),
+      ),
     );
   }
 
@@ -4401,6 +4487,7 @@ class _QuestionDraft {
     required this.asDraft,
     required this.status,
     this.translations = const {},
+    this.reviewed = false,
   });
 
   final String text;
@@ -4413,6 +4500,7 @@ class _QuestionDraft {
   final bool asDraft;
   final String status;
   final Map<String, BilgiTranslation> translations;
+  final bool reviewed;
 }
 
 class _QuestionForm extends StatefulWidget {
@@ -4448,6 +4536,7 @@ class _QuestionFormState extends State<_QuestionForm> {
   late var _sub = widget.initial?.subcategory ?? '';
   late var _difficulty = widget.initial?.difficulty ?? 'kolay';
   late var _status = widget.initial?.status ?? '';
+  late var _reviewed = widget.initial?.reviewed ?? false;
   var _addingTag = false;
   var _busy = false;
   late final _picked = <String>{...?widget.initial?.tags};
@@ -4595,6 +4684,7 @@ class _QuestionFormState extends State<_QuestionForm> {
           tags: tags.toList(),
           asDraft: draft,
           status: draft ? 'draft' : (_status.isEmpty ? 'pending' : _status),
+          reviewed: _reviewed,
           translations: {
             for (final entry in _bag.entries)
               if (entry.key != 'tr' && entry.value.text.isNotEmpty && entry.value.options.every((item) => item.isNotEmpty))
@@ -4679,6 +4769,15 @@ class _QuestionFormState extends State<_QuestionForm> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(child: _drop('Zorluk', _difficulty, const [('kolay', 'Kolay'), ('orta', 'Orta'), ('zor', 'Zor'), ('efsane', 'Efsane')], (v) => setState(() => _difficulty = v))),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _drop(
+                          'Kontrol edildi',
+                          _reviewed ? 'yes' : 'no',
+                          const [('yes', 'Evet'), ('no', 'Hayır')],
+                          (v) => setState(() => _reviewed = v == 'yes'),
+                        ),
+                      ),
                       const SizedBox(width: 16),
                       if (widget.initial != null) ...[
                         Expanded(child: _drop('Durum', _status, const [('pending', 'Bekliyor'), ('approved', 'Onaylı'), ('draft', 'Taslak'), ('rejected', 'Reddedildi')], (v) => setState(() => _status = v))),
@@ -5104,6 +5203,7 @@ List<BilgiQuestion> bilgiFilterBankQuestions(
   String difficulty = '',
   String status = '',
   String translation = '',
+  String reviewed = '',
   String search = '',
   Iterable<String> categorySubs = const [],
   bool Function(BilgiQuestion question)? isTranslated,
@@ -5129,6 +5229,7 @@ List<BilgiQuestion> bilgiFilterBankQuestions(
         difficulty: wantedDifficulty,
         status: wantedStatus,
         translation: translation.trim(),
+        reviewed: reviewed.trim(),
         searching: searching,
         foldedQuery: foldedQuery,
         isTranslated: isTranslated,
@@ -5145,6 +5246,7 @@ bool _bilgiBankVisible(
   required String difficulty,
   required String status,
   required String translation,
+  required String reviewed,
   required bool searching,
   required String foldedQuery,
   required bool Function(BilgiQuestion question)? isTranslated,
@@ -5156,6 +5258,8 @@ bool _bilgiBankVisible(
   final translated = isTranslated?.call(question) ?? false;
   if (translation == 'ready' && !translated) return false;
   if (translation == 'missing' && translated) return false;
+  if (reviewed == 'yes' && !question.reviewed) return false;
+  if (reviewed == 'no' && question.reviewed) return false;
   if (!searching) return true;
   if (_fold(question.text).contains(foldedQuery)) return true;
   for (final option in question.options) {

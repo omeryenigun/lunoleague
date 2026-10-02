@@ -43,6 +43,9 @@ Future<void> migrateBilgiQuestions(Connection db) async {
   await db.execute(
     "alter table bilgi_questions add column if not exists translations_json text not null default '{}'",
   );
+  await db.execute(
+    'alter table bilgi_questions add column if not exists reviewed boolean not null default false',
+  );
   await db.execute('''
     create table if not exists bilgi_labels (
       locale text not null,
@@ -190,7 +193,7 @@ Future<List<Map<String, dynamic>>> drawApprovedBilgiQuestions(
     final rows = await db.execute(
       Sql.named('''
         select id, category_id, text, options_json, correct, difficulty,
-               explanation, status, tags_json, reject_reason, translations_json
+               explanation, status, tags_json, reject_reason, translations_json, reviewed
         from bilgi_questions
         where status = 'approved'
           and (@category = 'tumu' or category_id = @category)
@@ -327,14 +330,14 @@ Future<Response> _list(Connection db, {required bool approvedOnly}) async {
     approvedOnly
         ? '''
             select id, category_id, text, options_json, correct, difficulty,
-                   explanation, status, tags_json, reject_reason, translations_json
+                   explanation, status, tags_json, reject_reason, translations_json, reviewed
             from bilgi_questions
             where status = 'approved'
             order by id
           '''
         : '''
             select id, category_id, text, options_json, correct, difficulty,
-                   explanation, status, tags_json, reject_reason, translations_json
+                   explanation, status, tags_json, reject_reason, translations_json, reviewed
             from bilgi_questions
             order by id
           ''',
@@ -394,10 +397,10 @@ Future<Response> _save(Request request, Connection db) async {
       Sql.named('''
         insert into bilgi_questions (
           id, category_id, text, options_json, correct, difficulty,
-          explanation, status, tags_json, reject_reason, translations_json
+          explanation, status, tags_json, reject_reason, translations_json, reviewed
         ) values (
           @id, @categoryId, @text, @options, @correct, @difficulty,
-          @explanation, @status, @tags, @rejectReason, @translations
+          @explanation, @status, @tags, @rejectReason, @translations, @reviewed
         )
         on conflict (id) do update set
           category_id = excluded.category_id,
@@ -409,7 +412,8 @@ Future<Response> _save(Request request, Connection db) async {
           status = excluded.status,
           tags_json = excluded.tags_json,
           reject_reason = excluded.reject_reason,
-          translations_json = excluded.translations_json
+          translations_json = excluded.translations_json,
+          reviewed = excluded.reviewed
       '''),
       parameters: question,
     );
@@ -466,6 +470,7 @@ Map<String, Object>? _read(Map<String, dynamic> map) {
     'tags': jsonEncode(tags),
     'rejectReason': rejectReason,
     'translations': jsonEncode(translations),
+    'reviewed': map['reviewed'] == true,
   };
 }
 
@@ -614,6 +619,7 @@ Map<String, dynamic> _json(ResultRow row) {
     'tags': _decodeList(row[8]),
     'rejectReason': row[9],
     'translations': row.length > 10 ? _decodeMap(row[10]) : const <String, dynamic>{},
+    'reviewed': row.length > 11 && row[11] == true,
   };
 }
 

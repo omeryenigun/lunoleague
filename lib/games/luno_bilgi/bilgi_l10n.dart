@@ -276,7 +276,7 @@ const _tables = <String, Map<String, String>>{
     'difficulty': 'Zorluk',
     'rival': 'Rakip',
     'continue_btn': 'Devam',
-    'play_again': 'Tekrar Sına',
+    'play_again': 'Bilgini Tekrar Sına',
     'categories': 'Kategoriler',
     'all_mix': 'Tümü Karma',
     'result_great': 'Harika Oyun!',

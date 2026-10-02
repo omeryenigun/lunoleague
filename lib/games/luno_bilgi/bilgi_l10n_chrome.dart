@@ -113,7 +113,7 @@ const bilgiChrome = <String, Map<String, String>>{
     'intro_step3_title': 'Ödülleri Kazan',
     'intro_step3_body': 'Altın, rozet, unvan kazan. Liderlik tablosunda zirveye çık',
     'intro_start': '🚀 Hemen Başla',
-    'play_again_btn': '🔄 Tekrar Sına',
+    'play_again_btn': '🔄 Bilgini Tekrar Sına',
     'retry': '🔄 Tekrar Dene',
     'gold': 'altın',
     'diamond': 'elmas',

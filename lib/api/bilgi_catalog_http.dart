@@ -44,6 +44,7 @@ Future<void> migrateBilgiCatalog(Connection db) async {
     await db.execute("insert into bilgi_catalog_meta (key, value) values ('seeded', '1')");
   }
   await _linkQuestionCategories(db);
+  await _retireSeedCategories(db);
   await _seedGroupLabels(db);
   await db.execute('''
     do \$\$
@@ -168,6 +169,7 @@ Future<Map<String, dynamic>> bilgiAuthoritativeCatalog(Connection db) async {
   final icons = <String, String>{};
   for (final row in subs) {
     final categoryId = '${row[0]}';
+    if (retiredBilgiCategorySubs.containsKey(categoryId)) continue;
     final name = '${row[1]}';
     final emoji = '${row[2]}'.trim();
     byCategory.putIfAbsent(categoryId, () => []).add({'name': name, 'emoji': emoji});
@@ -177,16 +179,17 @@ Future<Map<String, dynamic>> bilgiAuthoritativeCatalog(Connection db) async {
     'authoritative': true,
     'custom': [
       for (final row in categories)
-        {
-          'id': '${row[0]}',
-          'group': '${row[1]}',
-          'name': '${row[2]}',
-          'emoji': '${row[3]}',
-          'subs': [for (final sub in byCategory['${row[0]}'] ?? const []) sub['name']],
-          'active': true,
-          'popular': _isPopular(row[4]),
-          if (bilgiStoredLocales(row[5]) != null) 'locales': bilgiStoredLocales(row[5]),
-        },
+        if (!retiredBilgiCategorySubs.containsKey('${row[0]}'))
+          {
+            'id': '${row[0]}',
+            'group': '${row[1]}',
+            'name': '${row[2]}',
+            'emoji': '${row[3]}',
+            'subs': [for (final sub in byCategory['${row[0]}'] ?? const []) sub['name']],
+            'active': true,
+            'popular': _isPopular(row[4]),
+            if (bilgiStoredLocales(row[5]) != null) 'locales': bilgiStoredLocales(row[5]),
+          },
     ],
     if (icons.isNotEmpty) 'subEmoji': icons,
   };
@@ -337,15 +340,40 @@ Future<Response> _delete(Request request, Connection db, String id) async {
   if (await adminIdOf(db, request) == null) {
     return jsonResponse({'error': 'Oturum geçersiz.'}, status: 401);
   }
-  final key = Uri.decodeComponent(id).trim();
-  if (key.isEmpty) return jsonResponse({'error': 'Kategori bulunamadı.'}, status: 400);
+  final error = await _deleteBilgiCategory(db, Uri.decodeComponent(id));
+  if (error == null) return jsonResponse({'ok': true});
+  return jsonResponse({'error': error}, status: error == 'Bu kategoride soru var.' ? 409 : 400);
+}
+
+Future<Response> _deleteSub(Request request, Connection db, String id, String name) async {
+  if (await adminIdOf(db, request) == null) {
+    return jsonResponse({'error': 'Oturum geçersiz.'}, status: 401);
+  }
+  final error = await _deleteBilgiSubcategory(db, Uri.decodeComponent(id), Uri.decodeComponent(name));
+  if (error == null) return jsonResponse({'ok': true});
+  return jsonResponse({'error': error}, status: error == 'Bu alt kategoride soru var.' ? 409 : 400);
+}
+
+/// Yönetici silme yolu. Soru varsa satır kalır; sorular silinmez.
+Future<void> _retireSeedCategories(Connection db) async {
+  for (final entry in retiredBilgiCategorySubs.entries) {
+    for (final name in entry.value) {
+      await _deleteBilgiSubcategory(db, entry.key, name);
+    }
+    await _deleteBilgiCategory(db, entry.key);
+  }
+}
+
+Future<String?> _deleteBilgiCategory(Connection db, String id) async {
+  final key = id.trim();
+  if (key.isEmpty) return 'Kategori bulunamadı.';
   final used = await db.execute(
     Sql.named('select count(*) from bilgi_questions where category_id = @id'),
     parameters: {'id': key},
   );
   final raw = used.first[0];
   final count = raw is int ? raw : (raw is num ? raw.toInt() : 0);
-  if (count > 0) return jsonResponse({'error': 'Bu kategoride soru var.'}, status: 409);
+  if (count > 0) return 'Bu kategoride soru var.';
   await db.execute(
     Sql.named("delete from bilgi_labels where scope = 'category' and key = @id"),
     parameters: {'id': key},
@@ -366,27 +394,24 @@ Future<Response> _delete(Request request, Connection db, String id) async {
     Sql.named('delete from bilgi_categories where id = @id'),
     parameters: {'id': key},
   );
-  return jsonResponse({'ok': true});
+  return null;
 }
 
-Future<Response> _deleteSub(Request request, Connection db, String id, String name) async {
-  if (await adminIdOf(db, request) == null) {
-    return jsonResponse({'error': 'Oturum geçersiz.'}, status: 401);
-  }
-  final categoryId = Uri.decodeComponent(id).trim();
-  final sub = Uri.decodeComponent(name).trim();
-  if (categoryId.isEmpty || sub.isEmpty) return jsonResponse({'error': 'Alt kategori bulunamadı.'}, status: 400);
+Future<String?> _deleteBilgiSubcategory(Connection db, String categoryId, String name) async {
+  final id = categoryId.trim();
+  final sub = name.trim();
+  if (id.isEmpty || sub.isEmpty) return 'Alt kategori bulunamadı.';
   final used = await db.execute(
     Sql.named('''
       select count(*) from bilgi_questions
       where category_id = @id and tags_json::jsonb @> @tag::jsonb
     '''),
-    parameters: {'id': categoryId, 'tag': jsonEncode([sub])},
+    parameters: {'id': id, 'tag': jsonEncode([sub])},
   );
   final raw = used.first[0];
   final count = raw is int ? raw : (raw is num ? raw.toInt() : 0);
-  if (count > 0) return jsonResponse({'error': 'Bu alt kategoride soru var.'}, status: 409);
-  final key = '$categoryId|$sub';
+  if (count > 0) return 'Bu alt kategoride soru var.';
+  final key = '$id|$sub';
   await db.execute(
     Sql.named("delete from bilgi_labels where scope = 'sub' and key = @key"),
     parameters: {'key': key},
@@ -397,9 +422,9 @@ Future<Response> _deleteSub(Request request, Connection db, String id, String na
   );
   await db.execute(
     Sql.named('delete from bilgi_subcategories where category_id = @id and name = @name'),
-    parameters: {'id': categoryId, 'name': sub},
+    parameters: {'id': id, 'name': sub},
   );
-  return jsonResponse({'ok': true});
+  return null;
 }
 
 List<String> _decodeList(Object? raw) {

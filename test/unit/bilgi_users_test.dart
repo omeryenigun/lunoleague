@@ -1,9 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kelimelig/api/bilgi_users_http.dart';
+import 'package:kelimelig/core/constants/user_messages.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
 import 'package:kelimelig/domain/account/luno_account.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_league.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
 
 BilgiProfile _profile({
   required String id,
@@ -127,6 +129,89 @@ void main() {
     expect(again.banned, isTrue);
     expect(again.gold, 500);
     expect(await store.values(lunoAccountsBox), isEmpty);
+  });
+
+  test('two profiles cannot share a normalized username', () async {
+    final store = MemoryKeyValueStore();
+    final first = await mergeBilgiUser(
+      store,
+      _profile(id: 'a', username: 'Avatar', email: '', passwordHash: ''),
+    );
+    expect(first.username, 'Avatar');
+
+    await expectLater(
+      mergeBilgiUser(store, _profile(id: 'b', username: 'avatar', email: '', passwordHash: '')),
+      throwsA(isA<BilgiUsernameTaken>()),
+    );
+    expect(await store.get('users', 'b'), isNull);
+    expect((await store.values('users')).length, 1);
+
+    final kept = await mergeBilgiUser(
+      store,
+      _profile(id: 'a', username: '  AVATAR  ', email: '', passwordHash: ''),
+    );
+    expect(kept.id, 'a');
+    expect(bilgiUsernameNormalized(kept.username).toLowerCase(), 'avatar');
+
+    final registered = await mergeBilgiUser(
+      store,
+      _profile(id: 'c', username: 'Deniz', email: 'deniz@example.com'),
+    );
+    expect(registered.username, 'Deniz');
+    await expectLater(
+      mergeBilgiUser(store, _profile(id: 'd', username: 'deniz', email: '', passwordHash: '')),
+      throwsA(isA<BilgiUsernameTaken>()),
+    );
+    final again = await mergeBilgiUser(
+      store,
+      _profile(id: 'c', username: 'deniz', email: 'deniz@example.com', gold: 900),
+    );
+    expect(again.id, 'c');
+    expect(again.gold, 500);
+    expect(bilgiUsernameNormalized(again.username).toLowerCase(), 'deniz');
+
+    expect(
+      bilgiUsernameTaken(
+        [
+          {'id': 'a', 'username': ''},
+          {'id': 'b', 'username': '   '},
+        ],
+        '',
+        exceptId: 'c',
+      ),
+      isFalse,
+    );
+    expect(
+      bilgiUsernameTaken(
+        [
+          {'id': 'a', 'username': ''},
+        ],
+        'Avatar',
+        exceptId: 'c',
+      ),
+      isFalse,
+    );
+  });
+
+  test('the phone shows the taken-name message and keeps the previous username', () async {
+    final server = LunoBilgiServer(MemoryKeyValueStore(), clock: () => DateTime.utc(2026, 10, 1));
+    final guest = await server.profile();
+    server.remoteUpsert = (user) async {
+      if (bilgiUsernameNormalized(user.username).toLowerCase() == 'avatar') {
+        throw const BilgiUsernameTaken();
+      }
+      return user.toPublicMap();
+    };
+
+    final taken = await server.updateProfile(username: 'Avatar');
+    expect(taken.ok, isFalse);
+    expect(taken.message, UserMessages.nicknameTaken);
+    expect((await server.profile()).username, guest.username);
+
+    final own = await server.updateProfile(username: guest.username);
+    expect(own.ok, isTrue);
+    expect(own.profile!.id, guest.id);
+    expect(own.profile!.username, guest.username);
   });
 
   test('username and email are enough for admin search fields', () {

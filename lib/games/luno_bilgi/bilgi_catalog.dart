@@ -177,6 +177,11 @@ String? bilgiGroupLabel(String locale, String name) {
 
 const tumuKarmaId = 'tumu';
 
+/// Kod kataloğundan silindi. Soru varsa veritabanı satırı kalabilir; listelerde görünmez.
+const retiredBilgiCategorySubs = <String, List<String>>{
+  'mucit': ['Mucitler', 'İcatlar'],
+};
+
 const bilgiCategories = <BilgiCategory>[
   BilgiCategory(
     id: 'genel',
@@ -225,7 +230,6 @@ const bilgiCategories = <BilgiCategory>[
   BilgiCategory(id: 'fizik', group: 'C. Bilim ve Teknoloji', name: 'Fizik', emoji: '⚛️', subs: ['Kuvvet', 'Enerji']),
   BilgiCategory(id: 'teknoloji', group: 'C. Bilim ve Teknoloji', name: 'Teknoloji', emoji: '💻', subs: ['Bilgisayar', 'İnternet']),
   BilgiCategory(id: 'dijital', group: 'C. Bilim ve Teknoloji', name: 'Dijital', emoji: '📱', subs: ['Yazılım', 'Cihazlar']),
-  BilgiCategory(id: 'mucit', group: 'C. Bilim ve Teknoloji', name: 'Mucitler ve İcatlar', emoji: '🔧', subs: ['Mucitler', 'İcatlar']),
   BilgiCategory(id: 'tip', group: 'C. Bilim ve Teknoloji', name: 'Tıp ve Sağlık', emoji: '🧪', subs: ['Hastalıklar', 'Keşifler']),
   BilgiCategory(id: 'edebiyat', group: 'D. Sanat ve Edebiyat', name: 'Edebiyat', emoji: '📚', subs: ['Türler', 'Akımlar']),
   BilgiCategory(id: 'sinema', group: 'D. Sanat ve Edebiyat', name: 'Sinema', emoji: '🎬', subs: ['Yönetmenler', 'Ödüller']),
@@ -416,7 +420,7 @@ List<BilgiCategory> resolveBilgiCategories(Map<String, dynamic>? catalog, {bool 
     for (final raw in custom) {
       if (raw is! Map) continue;
       final id = '${raw['id'] ?? ''}'.trim();
-      if (id.isEmpty || hidden.contains(id)) continue;
+      if (id.isEmpty || hidden.contains(id) || retiredBilgiCategorySubs.containsKey(id)) continue;
       final active = raw['active'] != false && !inactive.contains(id);
       if (playableOnly && !active) continue;
       final name = '${raw['name'] ?? ''}'.trim();
@@ -513,7 +517,7 @@ List<BilgiCategory> _resolveAuthoritative(Map<String, dynamic> catalog, {require
     if (raw is! Map) continue;
     final id = '${raw['id'] ?? ''}'.trim();
     final name = '${raw['name'] ?? ''}'.trim();
-    if (id.isEmpty || name.isEmpty) continue;
+    if (id.isEmpty || name.isEmpty || retiredBilgiCategorySubs.containsKey(id)) continue;
     final active = raw['active'] != false && !inactive.contains(id);
     if (playableOnly && !active) continue;
     final subs = [

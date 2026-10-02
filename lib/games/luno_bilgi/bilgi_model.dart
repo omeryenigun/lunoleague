@@ -156,6 +156,7 @@ class BilgiQuestion {
     this.tags = const [],
     this.rejectReason = '',
     this.translations = const {},
+    this.reviewed = false,
   });
 
   final String id;
@@ -169,6 +170,9 @@ class BilgiQuestion {
   final List<String> tags;
   final String rejectReason;
   final Map<String, BilgiTranslation> translations;
+
+  /// Admin marks a question reviewed by hand. Missing keys stay unchecked.
+  final bool reviewed;
 
   /// Same question, words for [locale]. Empty text falls back to Turkish.
   BilgiQuestion shown(String locale) {
@@ -192,6 +196,7 @@ class BilgiQuestion {
         'status': status,
         'tags': tags,
         'rejectReason': rejectReason,
+        'reviewed': reviewed,
         if (translations.isNotEmpty)
           'translations': {for (final entry in translations.entries) entry.key: entry.value.toMap()},
       };
@@ -209,6 +214,7 @@ class BilgiQuestion {
       tags: (map['tags'] as List? ?? const []).map((e) => '$e').toList(),
       rejectReason: map['rejectReason'] as String? ?? '',
       translations: BilgiTranslation.mapFrom(map['translations']),
+      reviewed: map['reviewed'] == true,
     );
   }
 
@@ -223,6 +229,7 @@ class BilgiQuestion {
     String? rejectReason,
     List<String>? tags,
     Map<String, BilgiTranslation>? translations,
+    bool? reviewed,
   }) {
     return BilgiQuestion(
       id: id,
@@ -236,6 +243,7 @@ class BilgiQuestion {
       tags: tags ?? this.tags,
       rejectReason: rejectReason ?? this.rejectReason,
       translations: translations ?? this.translations,
+      reviewed: reviewed ?? this.reviewed,
     );
   }
 }
@@ -298,6 +306,7 @@ bool sameStoredBilgiQuestion(BilgiQuestion saved, BilgiQuestion wanted) {
       saved.status == wanted.status &&
       _sameStrings(saved.tags, wanted.tags) &&
       saved.rejectReason == wanted.rejectReason &&
+      saved.reviewed == wanted.reviewed &&
       _sameTranslations(saved.translations, wanted.translations);
 }
 
@@ -323,6 +332,7 @@ class BilgiQuestionFormData {
     required this.tags,
     required this.status,
     this.translations = const {},
+    this.reviewed = false,
   });
 
   final String id;
@@ -336,6 +346,7 @@ class BilgiQuestionFormData {
   final List<String> tags;
   final String status;
   final Map<String, BilgiTranslation> translations;
+  final bool reviewed;
 
   factory BilgiQuestionFormData.fromQuestion(
     BilgiQuestion question, {
@@ -362,6 +373,7 @@ class BilgiQuestionFormData {
       tags: [for (final tag in question.tags) if (tag.isNotEmpty && tag != sub) tag],
       status: question.status,
       translations: question.translations,
+      reviewed: question.reviewed,
     );
   }
 
@@ -377,6 +389,7 @@ class BilgiQuestionFormData {
       status: asDraft ? 'draft' : (status.isEmpty ? 'pending' : status),
       tags: [if (subcategory.isNotEmpty) subcategory, ...tags],
       rejectReason: rejectReason ?? '',
+      reviewed: reviewed,
     );
   }
 }
@@ -409,6 +422,40 @@ Map<String, int> bilgiIntMapFrom(Object? raw) {
   return {
     for (final entry in raw.entries) '${entry.key}': bilgiInt(entry.value, 0),
   };
+}
+
+/// Trim and collapse spaces. Case is compared separately so "Avatar" and "avatar" collide.
+String bilgiUsernameNormalized(String raw) => raw.trim().replaceAll(RegExp(r'\s+'), ' ');
+
+/// Thrown when a profile save would store a username another user id already has.
+class BilgiUsernameTaken implements Exception {
+  const BilgiUsernameTaken();
+}
+
+/// True when [name] is already stored on a different user id.
+/// An empty name matches nobody, including other empty names.
+bool bilgiUsernameTaken(Iterable<Map<String, dynamic>> rows, String name, {required String exceptId}) {
+  final key = bilgiUsernameNormalized(name).toLowerCase();
+  if (key.isEmpty) return false;
+  for (final row in rows) {
+    if ('${row['id'] ?? ''}' == exceptId) continue;
+    final existing = bilgiUsernameNormalized('${row['username'] ?? ''}').toLowerCase();
+    if (existing.isNotEmpty && existing == key) return true;
+  }
+  return false;
+}
+
+/// A user may save the name they already have. A different name must be free.
+bool bilgiUsernameChangeTaken(
+  Iterable<Map<String, dynamic>> rows, {
+  required String nextName,
+  required String currentName,
+  required String exceptId,
+}) {
+  final next = bilgiUsernameNormalized(nextName).toLowerCase();
+  final current = bilgiUsernameNormalized(currentName).toLowerCase();
+  if (next.isEmpty || next == current) return false;
+  return bilgiUsernameTaken(rows, nextName, exceptId: exceptId);
 }
 
 class BilgiProfile {

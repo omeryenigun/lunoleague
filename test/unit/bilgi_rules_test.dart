@@ -41,7 +41,8 @@ void main() {
   });
 
   test('trial questions are gone and categories stay', () {
-    expect(bilgiCategories, hasLength(72));
+    expect(bilgiCategories, hasLength(71));
+    expect(bilgiCategoryById('mucit'), isNull);
     expect(bilgiQuestionLines, isEmpty);
     expect(seedBilgiQuestions(), isEmpty);
     expect(bilgiTrialQuestions, hasLength(115));
@@ -297,7 +298,7 @@ void main() {
     expect(await server.hideCategory('afet'), isNull);
     final stored = resolveBilgiCategories(await server.catalog());
     expect(stored.where((category) => category.id == 'afet'), isEmpty);
-    expect(stored, hasLength(71));
+    expect(stored, hasLength(70));
     await server.addCategory(group: 'A. Temel Bilgi', name: 'Deneme', emoji: '📚');
     final added = resolveBilgiCategories(await server.catalog());
     final created = added.last;
@@ -348,6 +349,20 @@ void main() {
     expect(bilgiStoredLocales(''), isNull);
     expect(bilgiStoredLocales('["tr","en"]'), ['tr', 'en']);
     expect(resolveBilgiCategories({'authoritative': true, 'custom': const []}), isEmpty);
+    final retired = resolveBilgiCategories({
+      'authoritative': true,
+      'custom': [
+        {
+          'id': 'mucit',
+          'group': 'C. Bilim ve Teknoloji',
+          'name': 'Mucitler ve İcatlar',
+          'emoji': '🔧',
+          'subs': ['Mucitler', 'İcatlar'],
+        },
+        {'id': 'bilim', 'group': 'C. Bilim ve Teknoloji', 'name': 'Bilim', 'emoji': '🔬', 'subs': ['Yöntem']},
+      ],
+    });
+    expect(retired.map((category) => category.id), ['bilim']);
   });
 
   test('group headings have a name in every extra language', () {

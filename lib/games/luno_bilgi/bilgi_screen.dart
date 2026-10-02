@@ -10,6 +10,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:kelimelig/core/l10n/game_locale.dart';
 import 'package:kelimelig/core/constants/game_version.dart';
 import 'package:kelimelig/core/services/ad_service.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_avatars.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_controller.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_language_page.dart';
@@ -1602,7 +1603,11 @@ class _BilgiScreenState extends State<BilgiScreen> {
                   child: Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(color: BilgiColors.card, borderRadius: BorderRadius.circular(16)),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF221F3D),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0x738B5CF6)),
+                    ),
                     child: SingleChildScrollView(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1636,6 +1641,25 @@ class _BilgiScreenState extends State<BilgiScreen> {
                   if (i < options.length - 1) const SizedBox(height: 12),
                 ],
               ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 60,
+            width: double.infinity,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Text(
+                revealing ? (shown?.explanation.trim() ?? '') : '',
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF22C55E),
+                  fontSize: 13,
+                  height: 1.35,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
           if (revealing && _game.revealQuestion != null) ...[
@@ -1699,7 +1723,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
       children: [
         if (_game.notice != null) _note(_game.notice!),
         Container(
-          padding: const EdgeInsets.fromLTRB(20, 30, 20, 30),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
           decoration: BoxDecoration(
             gradient: const LinearGradient(
               begin: Alignment.topLeft,
@@ -1710,27 +1734,31 @@ class _BilgiScreenState extends State<BilgiScreen> {
           ),
           child: Column(
             children: [
-              Text(won ? '🎉' : '🎮', style: const TextStyle(fontSize: 40)),
-              const SizedBox(height: 8),
+              Text(won ? '🎉' : '🎮', style: const TextStyle(fontSize: 28)),
+              const SizedBox(height: 4),
               Text(won ? _game.t('result_great') : _game.t('result_done'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
               Text(_game.t('mode_${mode.id}'), style: const TextStyle(color: Color(0xE6FFFFFF), fontSize: 13)),
               if (round.standings.length > 1) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 for (final seat in round.standings)
                   Text(
                     '${seat['name']} • ${seat['score'] ?? '0'}',
                     style: const TextStyle(color: Color(0xE6FFFFFF), fontWeight: FontWeight.w700),
                   ),
               ],
-              const SizedBox(height: 16),
-              Text(_grouped(round.score), style: const TextStyle(fontSize: 56, fontWeight: FontWeight.w900, color: BilgiColors.secondary, height: 1)),
-              const SizedBox(height: 6),
-              const Text('TOPLAM PUAN', style: TextStyle(color: Color(0xCCFFFFFF), fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+              const SizedBox(height: 8),
+              Text(_grouped(round.score), style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w900, color: BilgiColors.secondary, height: 1)),
+              const SizedBox(height: 4),
+              const Text(
+                'Kazanılan Lig Puanı',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Color(0xCCFFFFFF), fontSize: 13, fontWeight: FontWeight.w800),
+              ),
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         Row(
           children: [
             Expanded(child: _statBox(_game.t('correct'), '${round.correct}', BilgiColors.secondary)),
@@ -1740,7 +1768,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
             Expanded(child: _statBox('Hız Bonusu', '+${round.timeBonus}', BilgiColors.warning)),
           ],
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -1772,7 +1800,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.only(top: 6, bottom: 16),
+          padding: const EdgeInsets.only(top: 6, bottom: 12),
           child: Text(
             _game.scoreDoubled ? 'Puan ikiye katlandı.' : '+${_grouped(round.score)} ekstra puan için reklam izle',
             style: const TextStyle(color: BilgiColors.muted, fontSize: 12),
@@ -1796,9 +1824,9 @@ class _BilgiScreenState extends State<BilgiScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         _startButton(_game.replaySetup, label: _game.t('play_again_btn')),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         _adBanner(showNoticeAbove: false),
       ],
     );
@@ -2403,6 +2431,12 @@ class _BilgiScreenState extends State<BilgiScreen> {
     await _game.saveProfile(username: text);
   }
 
+  Future<void> _pickAvatar(BilgiProfile user) async {
+    final emoji = await showBilgiAvatarPicker(context, current: user.avatar);
+    if (emoji == null || !mounted) return;
+    await _game.saveProfile(avatar: emoji);
+  }
+
   Widget _profile(BilgiProfile user) {
     final crown = bilgiPlusActive(user, DateTime.now()) || user.badges.contains('king');
     final intoLevel = user.xp % 5000;
@@ -2431,23 +2465,29 @@ class _BilgiScreenState extends State<BilgiScreen> {
           padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
           child: Column(
             children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    width: 90,
-                    height: 90,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: BilgiColors.card,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: BilgiColors.primary, width: 4),
-                    ),
-                    child: Text(user.avatar, style: const TextStyle(fontSize: 40)),
+              MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: () => _pickAvatar(user),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        width: 90,
+                        height: 90,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: BilgiColors.card,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: BilgiColors.primary, width: 4),
+                        ),
+                        child: Text(user.avatar, style: const TextStyle(fontSize: 40)),
+                      ),
+                      if (crown)
+                        const Positioned(top: -8, right: -4, child: Text('👑', style: TextStyle(fontSize: 22))),
+                    ],
                   ),
-                  if (crown)
-                    const Positioned(top: -8, right: -4, child: Text('👑', style: TextStyle(fontSize: 22))),
-                ],
+                ),
               ),
               const SizedBox(height: 12),
               GestureDetector(
@@ -4723,23 +4763,32 @@ class _BilgiQuizOptionState extends State<_BilgiQuizOption> with SingleTickerPro
 
   @override
   Widget build(BuildContext context) {
-    Color border = Colors.transparent;
+    final idle = switch (widget.letter) {
+      'A' => (border: const Color(0x8C00D9C0), chip: const Color(0xFF0D4F49)),
+      'B' => (border: const Color(0x8C8B5CF6), chip: const Color(0xFF3B2A78)),
+      'C' => (border: const Color(0x8CFFB800), chip: const Color(0xFF6B4E00)),
+      _ => (border: const Color(0x8CFF6B9D), chip: const Color(0xFF6B2E48)),
+    };
+    Color border = idle.border;
     Color fill = BilgiColors.card;
-    Color chip = BilgiColors.bg;
+    Color chip = idle.chip;
+    var borderWidth = 1.0;
     if (widget.correct) {
       border = BilgiColors.secondary;
       fill = const Color(0x2600D9C0);
       chip = BilgiColors.secondary;
+      borderWidth = 2;
     } else if (widget.wrong) {
       border = BilgiColors.error;
       fill = const Color(0x26FF4D6D);
       chip = BilgiColors.error;
+      borderWidth = 2;
     }
     final row = Material(
       color: widget.hidden ? BilgiColors.bg : fill,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: widget.hidden ? Colors.transparent : border, width: 2),
+        side: BorderSide(color: widget.hidden ? Colors.transparent : border, width: borderWidth),
       ),
       child: InkWell(
         onTap: widget.hidden ? null : widget.onTap,
@@ -4753,7 +4802,7 @@ class _BilgiQuizOptionState extends State<_BilgiQuizOption> with SingleTickerPro
                 height: 32,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(color: chip, borderRadius: BorderRadius.circular(10)),
-                child: Text(widget.letter, style: const TextStyle(fontWeight: FontWeight.w800)),
+                child: Text(widget.letter, style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
               ),
               const SizedBox(width: 12),
               Expanded(

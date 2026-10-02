@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:kelimelig/core/constants/user_messages.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
 import 'package:kelimelig/domain/account/luno_account.dart';
 import 'package:kelimelig/domain/game/game_ids.dart';
@@ -599,8 +600,16 @@ class BilgiWalletBook {
     var user = userId.isEmpty ? null : await _load(userId);
     final created = user == null;
     user ??= bilgiFreshProfile(id: userId.isEmpty ? 'u${_clock().microsecondsSinceEpoch}' : userId, now: _clock(), config: config);
-    if (created) await _put(user);
     final name = username.length >= 2 ? username : user.username;
+    if (bilgiUsernameChangeTaken(
+      await store.values(bilgiWalletUsers),
+      nextName: name,
+      currentName: user.username,
+      exceptId: user.id,
+    )) {
+      return const BilgiWalletReply(error: UserMessages.nicknameTaken);
+    }
+    if (created) await _put(user);
     final next = user.copyWith(
       username: name,
       email: email,

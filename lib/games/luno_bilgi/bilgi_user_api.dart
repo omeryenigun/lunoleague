@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'package:kelimelig/core/config/api_config.dart';
+import 'package:kelimelig/core/constants/user_messages.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_wallet.dart';
 
@@ -126,10 +127,15 @@ class BilgiUserApi {
         headers: {'content-type': 'application/json; charset=utf-8'},
         body: jsonEncode(user.toMap()),
       );
+      if (response.statusCode == 409 && _error(response.body) == UserMessages.nicknameTaken) {
+        throw const BilgiUsernameTaken();
+      }
       if (response.statusCode < 200 || response.statusCode >= 300) return null;
       final decoded = jsonDecode(response.body);
       if (decoded is! Map || decoded['user'] is! Map) return null;
       return Map<String, dynamic>.from(decoded['user'] as Map);
+    } on BilgiUsernameTaken {
+      rethrow;
     } catch (_) {
       return null;
     }
