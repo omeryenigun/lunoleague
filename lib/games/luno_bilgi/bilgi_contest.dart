@@ -138,6 +138,22 @@ class BilgiContestAdminResult {
   final String? error;
 }
 
+class BilgiContestDayPaper {
+  const BilgiContestDayPaper({
+    required this.day,
+    required this.title,
+    required this.locked,
+    required this.questions,
+    this.error,
+  });
+
+  final String day;
+  final String title;
+  final bool locked;
+  final List<BilgiQuestion> questions;
+  final String? error;
+}
+
 class BilgiContestApi {
   static Future<BilgiContestPaper?> load(String userId) async {
     try {
@@ -218,6 +234,58 @@ class BilgiContestApi {
           if (day.isNotEmpty) 'day': day,
           'title': ?title,
           if (rebuild) 'rebuild': true,
+        }),
+      ),
+    );
+  }
+
+  static Future<BilgiContestDayPaper> adminPaper(String token, String day) async {
+    try {
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/v1/admin/bilgi-contest').replace(queryParameters: {'day': day}),
+        headers: {'authorization': 'Bearer $token'},
+      );
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return const BilgiContestDayPaper(day: '', title: '', locked: false, questions: [], error: 'Sorular yüklenemedi.');
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return BilgiContestDayPaper(
+          day: day,
+          title: '',
+          locked: false,
+          questions: const [],
+          error: '${decoded['error'] ?? 'Sorular yüklenemedi.'}',
+        );
+      }
+      final questions = <BilgiQuestion>[
+        for (final item in (decoded['questions'] as List? ?? const []))
+          if (item is Map) BilgiQuestion.fromMap(Map<String, dynamic>.from(item)),
+      ];
+      return BilgiContestDayPaper(
+        day: '${decoded['day'] ?? day}',
+        title: '${decoded['title'] ?? ''}'.trim(),
+        locked: decoded['locked'] == true,
+        questions: questions,
+      );
+    } catch (_) {
+      return BilgiContestDayPaper(day: day, title: '', locked: false, questions: const [], error: 'Sorular yüklenemedi.');
+    }
+  }
+
+  static Future<BilgiContestAdminResult> adminSaveQuestions(
+    String token,
+    String day,
+    List<BilgiQuestion> questions,
+  ) {
+    return _admin(
+      http.post(
+        Uri.parse('${ApiConfig.baseUrl}/v1/admin/bilgi-contest'),
+        headers: {
+          'authorization': 'Bearer $token',
+          'content-type': 'application/json; charset=utf-8',
+        },
+        body: jsonEncode({
+          'day': day,
+          'questions': [for (final question in questions) question.toMap()],
         }),
       ),
     );

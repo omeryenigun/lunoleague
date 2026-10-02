@@ -174,6 +174,7 @@ Future<List<Map<String, dynamic>>> drawApprovedBilgiQuestions(
   required int count,
   Set<String> exclude = const {},
   String locale = '',
+  bool fullLocales = false,
 }) async {
   if (difficulty == bilgiMixDifficulty) {
     return _drawMixedApproved(
@@ -189,7 +190,9 @@ Future<List<Map<String, dynamic>>> drawApprovedBilgiQuestions(
   final picked = <Map<String, dynamic>>[];
   final seen = <String>{...exclude};
   final narrowed = difficulty.isNotEmpty && difficulty != 'hepsi';
-  for (var attempt = 0; attempt < 6 && picked.length < count; attempt++) {
+  final attempts = fullLocales ? 8 : 6;
+  for (var attempt = 0; attempt < attempts && picked.length < count; attempt++) {
+    final need = count - picked.length;
     final rows = await db.execute(
       Sql.named('''
         select id, category_id, text, options_json, correct, difficulty,
@@ -206,7 +209,7 @@ Future<List<Map<String, dynamic>>> drawApprovedBilgiQuestions(
         'category': categoryId == tumuKarmaId ? 'tumu' : categoryId,
         'difficulty': narrowed ? difficulty : '',
         'sub': subcategory,
-        'limit': count - picked.length,
+        'limit': fullLocales ? need * 10 : need,
       },
     );
     if (rows.isEmpty) break;
@@ -226,6 +229,12 @@ Future<List<Map<String, dynamic>>> drawApprovedBilgiQuestions(
         locale: locale,
       )) {
         continue;
+      }
+      if (fullLocales) {
+        final owner = categories.where((category) => category.id == question.categoryId).firstOrNull;
+        if (owner == null || !bilgiQuestionLanguagesReady(question, locales: owner.publishLocales)) {
+          continue;
+        }
       }
       picked.add(item);
       if (picked.length >= count) break;

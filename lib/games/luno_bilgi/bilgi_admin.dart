@@ -901,6 +901,34 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     _applyContest(loaded);
   }
 
+  Color _contestRowColor(BilgiContestDay day) {
+    if (day.locked) return const Color(0xFF7F1D1D);
+    if (day.count > 0) return const Color(0xFF166534);
+    return BilgiColors.card;
+  }
+
+  Future<void> _openContestPaper(BilgiContestDay day, {required bool editing}) async {
+    final paper = await BilgiContestApi.adminPaper(sl<ApiSession>().adminToken ?? '', day.day);
+    if (!mounted) return;
+    if (paper.error != null) {
+      setState(() => _note = paper.error!);
+      return;
+    }
+    if (paper.locked && editing) {
+      setState(() => _note = 'Bu gün kilitli.');
+      return;
+    }
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => _ContestPaperDialog(
+        day: day.day,
+        questions: paper.questions,
+        editing: editing && !paper.locked,
+      ),
+    );
+    if (saved == true) await _loadContest();
+  }
+
   Widget _dailyContest() {
     final monthLabel = _contestMonthKey;
     return ListView(
@@ -919,7 +947,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
         ),
         const SizedBox(height: 8),
         const Text(
-          'Kilitli güne dokunulmaz. Dolu gün yeniden yazılmaz. Boş gün set alır.',
+          'Soruları oluşan gün yeşil taslaktır. Kilitli gün kırmızıya döner ve değişmez.',
           style: TextStyle(color: BilgiColors.muted, fontSize: 12),
         ),
         const SizedBox(height: 16),
@@ -930,40 +958,63 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(color: BilgiColors.card, borderRadius: BorderRadius.circular(12)),
-                child: Row(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(color: _contestRowColor(day), borderRadius: BorderRadius.circular(12)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(width: 96, child: Text(day.day, style: const TextStyle(fontWeight: FontWeight.w700))),
-                    SizedBox(
-                      width: 72,
-                      child: Text(
-                        day.count == 0 ? 'Boş' : '${day.count} soru',
-                        style: const TextStyle(color: BilgiColors.muted, fontSize: 12),
-                      ),
-                    ),
-                    if (day.locked)
-                      const Text('Kilitli', style: TextStyle(color: BilgiColors.warning, fontWeight: FontWeight.w700))
-                    else ...[
-                      SizedBox(
-                        width: 220,
-                        child: TextField(
-                          controller: _contestTitles[day.day],
-                          maxLength: 40,
-                          style: const TextStyle(color: Colors.white, fontSize: 13),
-                          decoration: const InputDecoration(
-                            hintText: 'Özel ad',
-                            counterText: '',
-                            isDense: true,
-                            border: OutlineInputBorder(),
+                    Row(
+                      children: [
+                        SizedBox(width: 96, child: Text(day.day, style: const TextStyle(fontWeight: FontWeight.w700))),
+                        SizedBox(
+                          width: 72,
+                          child: Text(
+                            day.count == 0 ? 'Boş' : '${day.count} soru',
+                            style: const TextStyle(color: Colors.white70, fontSize: 12),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      _ghost('Adı kaydet', () => _buildContestDay(day.day)),
-                      const SizedBox(width: 8),
-                      _ghost(day.count == 0 ? 'Günü oluştur' : 'Yeniden yaz', () => _buildContestDay(day.day, rebuild: true)),
-                    ],
+                        if (day.locked)
+                          const Text('Kilitli', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800))
+                        else if (day.count > 0)
+                          const Text('Taslak', style: TextStyle(color: Color(0xFF86EFAC), fontWeight: FontWeight.w800))
+                        else
+                          const Spacer(),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        if (day.locked)
+                          _ghost('Görüntüle', () => _openContestPaper(day, editing: false))
+                        else ...[
+                          SizedBox(
+                            width: 220,
+                            child: TextField(
+                              controller: _contestTitles[day.day],
+                              maxLength: 40,
+                              style: const TextStyle(color: Colors.white, fontSize: 13),
+                              decoration: const InputDecoration(
+                                hintText: 'Özel ad',
+                                counterText: '',
+                                isDense: true,
+                                filled: true,
+                                fillColor: Color(0x66000000),
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                          _ghost('Adı kaydet', () => _buildContestDay(day.day)),
+                          _ghost(day.count == 0 ? 'Günü oluştur' : 'Yeniden yaz', () => _buildContestDay(day.day, rebuild: true)),
+                          if (day.count > 0) ...[
+                            _ghost('Görüntüle', () => _openContestPaper(day, editing: false)),
+                            _ghost('Düzenle', () => _openContestPaper(day, editing: true)),
+                          ],
+                        ],
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -5890,4 +5941,277 @@ class _DashedPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _ContestPaperDialog extends StatefulWidget {
+  const _ContestPaperDialog({required this.day, required this.questions, required this.editing});
+
+  final String day;
+  final List<BilgiQuestion> questions;
+  final bool editing;
+
+  @override
+  State<_ContestPaperDialog> createState() => _ContestPaperDialogState();
+}
+
+class _ContestPaperDialogState extends State<_ContestPaperDialog> {
+  late List<BilgiQuestion> _questions = [...widget.questions];
+  var _busy = false;
+  var _error = '';
+
+  Future<void> _edit(int? index) async {
+    final current = index == null ? null : _questions[index];
+    final next = await showDialog<BilgiQuestion>(
+      context: context,
+      builder: (context) => _ContestQuestionDialog(day: widget.day, question: current, index: index ?? _questions.length),
+    );
+    if (next == null || !mounted) return;
+    setState(() {
+      if (index == null) {
+        _questions = [..._questions, next];
+      } else {
+        final copy = [..._questions];
+        copy[index] = next;
+        _questions = copy;
+      }
+    });
+  }
+
+  Future<void> _save() async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = '';
+    });
+    final loaded = await BilgiContestApi.adminSaveQuestions(
+      sl<ApiSession>().adminToken ?? '',
+      widget.day,
+      _questions,
+    );
+    if (!mounted) return;
+    if (loaded.error != null) {
+      setState(() {
+        _busy = false;
+        _error = loaded.error!;
+      });
+      return;
+    }
+    Navigator.pop(context, true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: BilgiColors.bg,
+      child: SizedBox(
+        width: 720,
+        height: 640,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                widget.editing ? '${widget.day} düzenle' : widget.day,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18),
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: ListView(
+                  children: [
+                    for (var i = 0; i < _questions.length; i++)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(color: BilgiColors.card, borderRadius: BorderRadius.circular(12)),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${i + 1}. ${_questions[i].difficulty} · ${_questions[i].correctLetter}',
+                                style: const TextStyle(color: BilgiColors.secondary, fontWeight: FontWeight.w800, fontSize: 12),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(_questions[i].text, style: const TextStyle(color: Colors.white)),
+                              const SizedBox(height: 6),
+                              for (var n = 0; n < _questions[i].options.length; n++)
+                                Text(
+                                  '${['A', 'B', 'C', 'D'][n]}. ${_questions[i].options[n]}',
+                                  style: TextStyle(
+                                    color: n == _questions[i].correct ? const Color(0xFF86EFAC) : BilgiColors.muted,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              if (widget.editing) ...[
+                                const SizedBox(height: 8),
+                                Wrap(
+                                  spacing: 8,
+                                  children: [
+                                    _dialogGhost('Düzenle', () => _edit(i)),
+                                    _dialogGhost('Çıkar', () => setState(() => _questions = [..._questions]..removeAt(i))),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (_error.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(_error, style: const TextStyle(color: BilgiColors.warning)),
+              ],
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  if (widget.editing) _dialogGhost('Soru ekle', () => _edit(null)),
+                  const Spacer(),
+                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('Kapat')),
+                  if (widget.editing) ...[
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      onPressed: _busy ? null : _save,
+                      child: Text(_busy ? 'Kaydediliyor' : 'Kaydet'),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+Widget _dialogGhost(String text, VoidCallback onTap) => OutlinedButton(
+      style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: Color(0x33FFFFFF))),
+      onPressed: onTap,
+      child: Text(text),
+    );
+
+class _ContestQuestionDialog extends StatefulWidget {
+  const _ContestQuestionDialog({required this.day, required this.index, this.question});
+
+  final String day;
+  final int index;
+  final BilgiQuestion? question;
+
+  @override
+  State<_ContestQuestionDialog> createState() => _ContestQuestionDialogState();
+}
+
+class _ContestQuestionDialogState extends State<_ContestQuestionDialog> {
+  late final TextEditingController _text = TextEditingController(text: widget.question?.text ?? '');
+  late final List<TextEditingController> _options = [
+    for (var i = 0; i < 4; i++) TextEditingController(text: widget.question != null && widget.question!.options.length > i ? widget.question!.options[i] : ''),
+  ];
+  late int _correct = widget.question?.correct ?? 0;
+  late String _difficulty = widget.question?.difficulty ?? 'kolay';
+  var _error = '';
+
+  @override
+  void dispose() {
+    _text.dispose();
+    for (final field in _options) {
+      field.dispose();
+    }
+    super.dispose();
+  }
+
+  void _submit() {
+    final text = _text.text.trim();
+    final options = [for (final field in _options) field.text.trim()];
+    if (text.isEmpty || options.any((item) => item.isEmpty)) {
+      setState(() => _error = 'Soru ve dört şık dolu olmalı.');
+      return;
+    }
+    final current = widget.question;
+    final next = BilgiQuestion(
+      id: current?.id ?? 'gun-${widget.day}-${widget.index}',
+      categoryId: current?.categoryId ?? tumuKarmaId,
+      text: text,
+      options: options,
+      correct: _correct.clamp(0, 3),
+      difficulty: _difficulty,
+      explanation: current?.explanation ?? '',
+      status: current?.status ?? 'approved',
+      tags: current?.tags ?? const [],
+      rejectReason: current?.rejectReason ?? '',
+      translations: current?.translations ?? const {},
+      reviewed: current?.reviewed ?? false,
+    );
+    Navigator.pop(context, next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: BilgiColors.card,
+      child: SizedBox(
+        width: 520,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(widget.question == null ? 'Soru ekle' : 'Soruyu düzenle', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 12),
+              TextField(controller: _text, maxLines: 3, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'Soru')),
+              for (var i = 0; i < 4; i++)
+                TextField(
+                  controller: _options[i],
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(labelText: '${['A', 'B', 'C', 'D'][i]} şıkkı'),
+                ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<int>(
+                initialValue: _correct,
+                dropdownColor: BilgiColors.card,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(labelText: 'Doğru şık'),
+                items: const [
+                  DropdownMenuItem(value: 0, child: Text('A')),
+                  DropdownMenuItem(value: 1, child: Text('B')),
+                  DropdownMenuItem(value: 2, child: Text('C')),
+                  DropdownMenuItem(value: 3, child: Text('D')),
+                ],
+                onChanged: (value) => setState(() => _correct = value ?? 0),
+              ),
+              DropdownButtonFormField<String>(
+                initialValue: _difficulty,
+                dropdownColor: BilgiColors.card,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(labelText: 'Zorluk'),
+                items: const [
+                  DropdownMenuItem(value: 'kolay', child: Text('Kolay')),
+                  DropdownMenuItem(value: 'orta', child: Text('Orta')),
+                  DropdownMenuItem(value: 'zor', child: Text('Zor')),
+                  DropdownMenuItem(value: 'efsane', child: Text('Efsane')),
+                ],
+                onChanged: (value) => setState(() => _difficulty = value ?? 'kolay'),
+              ),
+              if (_error.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(_error, style: const TextStyle(color: BilgiColors.warning)),
+              ],
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('Vazgeç')),
+                  const SizedBox(width: 8),
+                  FilledButton(onPressed: _submit, child: const Text('Soruyu kaydet')),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

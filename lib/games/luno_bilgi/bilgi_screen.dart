@@ -368,12 +368,16 @@ class _BilgiScreenState extends State<BilgiScreen> {
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              _homePillButton(
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 132),
+                                child: _homePillButton(
                                 label: switch (_game.contestPhase) {
-                                  'open' => 'Devam Et',
-                                  'done' => 'Sıralama',
+                                  'open' => 'Kaldığın Yerden Devam Et',
+                                  'done' => 'Yeni Yarışma Yükleniyor...',
                                   _ => 'Başla',
                                 },
+                                maxLines: 3,
+                                textAlign: TextAlign.center,
                                 onTap: () {
                                   if (_game.contestPhase == 'done') {
                                     _game.open('contest_board');
@@ -384,7 +388,8 @@ class _BilgiScreenState extends State<BilgiScreen> {
                                 },
                                 background: Colors.white,
                                 foreground: const Color(0xFF059669),
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              ),
                               ),
                             ],
                           ),
@@ -746,6 +751,8 @@ class _BilgiScreenState extends State<BilgiScreen> {
     required EdgeInsets padding,
     double fontSize = 12,
     BoxShadow? shadow,
+    int? maxLines,
+    TextAlign textAlign = TextAlign.start,
   }) {
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -761,7 +768,12 @@ class _BilgiScreenState extends State<BilgiScreen> {
           onTap: onTap,
           child: Padding(
             padding: padding,
-            child: Text(label, style: _homeInter(size: fontSize, weight: FontWeight.w700, color: foreground)),
+            child: Text(
+              label,
+              maxLines: maxLines,
+              textAlign: textAlign,
+              style: _homeInter(size: fontSize, weight: FontWeight.w700, color: foreground),
+            ),
           ),
         ),
       ),
@@ -1679,20 +1691,19 @@ class _BilgiScreenState extends State<BilgiScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                for (var i = 0; i < options.length; i++)
+                for (var i = 0; i < options.length; i++) ...[
                   Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.only(bottom: i < options.length - 1 ? 16 : 0),
-                      child: _quizOption(
-                        letters[i],
-                        options[i],
-                        hidden: !revealing && round.hidden.contains(i),
-                        correct: revealing && i == _game.revealCorrect,
-                        wrong: revealing && i == _game.lastPick && i != _game.revealCorrect,
-                        onTap: revealing || round.hidden.contains(i) || _game.picked ? null : () => _game.pick(i),
-                      ),
+                    child: _quizOption(
+                      letters[i],
+                      options[i],
+                      hidden: !revealing && round.hidden.contains(i),
+                      correct: revealing && i == _game.revealCorrect,
+                      wrong: revealing && i == _game.lastPick && i != _game.revealCorrect,
+                      onTap: revealing || round.hidden.contains(i) || _game.picked ? null : () => _game.pick(i),
                     ),
                   ),
+                  if (i < options.length - 1) const SizedBox(height: 16),
+                ],
                 const SizedBox(height: 6),
                 SizedBox(
                   height: 40,
@@ -2009,10 +2020,13 @@ class _BilgiScreenState extends State<BilgiScreen> {
                   },
                   icon: const Icon(Icons.arrow_back, color: Colors.white),
                 ),
-              Expanded(
-                child: Text(heading, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-              ),
-              if (heading == 'Kategori Ligleri')
+              if (heading == 'Genel Lig' || heading == 'Kategori Ligleri')
+                const Spacer()
+              else
+                Expanded(
+                  child: Text(heading, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+                ),
+              if (heading == 'Genel Lig' || heading == 'Kategori Ligleri')
                 IconButton(
                   tooltip: 'Lig Ödülleri',
                   onPressed: () => _game.open('league_rewards'),

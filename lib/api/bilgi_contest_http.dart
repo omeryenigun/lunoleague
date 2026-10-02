@@ -96,6 +96,7 @@ Future<List<Map<String, dynamic>>> _draw(Connection db, Set<String> exclude) asy
       difficulty: bilgiDifficultyLevels[i],
       count: count,
       exclude: seen,
+      fullLocales: true,
     );
     for (final item in batch) {
       seen.add('${item['id']}');
@@ -155,6 +156,8 @@ Future<Response> _adminMonth(Request request, Connection db, KeyValueStore store
   if (await adminIdOf(db, request) == null) {
     return jsonResponse({'error': 'Oturum geçersiz.'}, status: 401);
   }
+  final day = (request.url.queryParameters['day'] ?? '').trim();
+  if (day.isNotEmpty) return _adminDay(store, day);
   final month = (request.url.queryParameters['month'] ?? '').trim();
   final days = bilgiContestMonthDays(month);
   if (days.isEmpty) return jsonResponse({'error': 'Ay geçersiz.'}, status: 400);
@@ -182,6 +185,17 @@ Future<Response> _adminBuild(Request request, Connection db, KeyValueStore store
     return jsonResponse({'error': 'Bu gün kilitli.'}, status: 409);
   }
   final stored = await store.get(bilgiContestPaperBox, day);
+  final incoming = body['questions'];
+  if (incoming is List) {
+    final cleaned = _cleanQuestions(incoming);
+    if (cleaned == null) return jsonResponse({'error': 'Soru eksik veya şıklar dört değil.'}, status: 400);
+    await store.put(bilgiContestPaperBox, day, {
+      'day': day,
+      'title': _titleOf(stored),
+      'questions': cleaned,
+    });
+    return jsonResponse(await _monthPayload(store, day.substring(0, 7), bilgiContestMonthDays(day.substring(0, 7))));
+  }
   final rebuild = body['rebuild'] == true;
   final hasTitle = body.containsKey('title');
   var title = _titleOf(stored);
@@ -257,6 +271,50 @@ List<Map<String, dynamic>> _questionsOf(Map<String, dynamic>? row) {
   final saved = row?['questions'];
   if (saved is! List) return const [];
   return [for (final item in saved) if (item is Map) Map<String, dynamic>.from(item)];
+}
+
+Future<Response> _adminDay(KeyValueStore store, String day) async {
+  if (!bilgiContestMonthDays(day.length >= 7 ? day.substring(0, 7) : '').contains(day)) {
+    return jsonResponse({'error': 'Gün geçersiz.'}, status: 400);
+  }
+  final stored = await store.get(bilgiContestPaperBox, day);
+  final locked = (await _lockedDays(store)).contains(day);
+  final questions = _questionsOf(stored);
+  return jsonResponse({
+    'day': day,
+    'title': _titleOf(stored),
+    'locked': locked,
+    'count': questions.length,
+    'questions': questions,
+  });
+}
+
+List<Map<String, dynamic>>? _cleanQuestions(List<dynamic> raw) {
+  if (raw.length > 40) return null;
+  final out = <Map<String, dynamic>>[];
+  for (final item in raw) {
+    if (item is! Map) return null;
+    final map = Map<String, dynamic>.from(item);
+    final text = '${map['text'] ?? ''}'.trim();
+    final options = map['options'];
+    if (text.isEmpty || options is! List || options.length != 4) return null;
+    final opts = [for (final option in options) '$option'.trim()];
+    if (opts.any((option) => option.isEmpty)) return null;
+    final correct = bilgiInt(map['correct'], -1);
+    if (correct < 0 || correct > 3) return null;
+    final difficulty = '${map['difficulty'] ?? 'kolay'}'.trim();
+    if (!bilgiDifficultyLevels.contains(difficulty)) return null;
+    final id = '${map['id'] ?? ''}'.trim();
+    map['id'] = id.isEmpty ? 'gun${DateTime.now().microsecondsSinceEpoch}${out.length}' : id;
+    map['text'] = text;
+    map['options'] = opts;
+    map['correct'] = correct;
+    map['difficulty'] = difficulty;
+    map['categoryId'] = '${map['categoryId'] ?? tumuKarmaId}'.trim();
+    map['explanation'] = '${map['explanation'] ?? ''}'.trim();
+    out.add(map);
+  }
+  return out;
 }
 
 void _takeIds(List<Map<String, dynamic>> questions, Set<String> into) {

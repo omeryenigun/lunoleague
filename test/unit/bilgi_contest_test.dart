@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_contest.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_league.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_rules.dart';
 
 BilgiBoardEntry _player(String id, int score) => BilgiBoardEntry(
@@ -52,6 +54,37 @@ void main() {
     expect(bilgiContestMonthDays('2026-10').first, '2026-10-01');
     expect(bilgiContestMonthDays('2026-10').last, '2026-10-31');
     expect(bilgiContestMonthDays('nope'), isEmpty);
+  });
+
+  test('a daily question must be filled in every published language', () {
+    const english = BilgiTranslation(text: 'Q', options: ['A', 'B', 'C', 'D'], explanation: 'Because');
+    const question = BilgiQuestion(
+      id: 'q1',
+      categoryId: 'felsefe',
+      text: 'Soru',
+      options: ['A', 'B', 'C', 'D'],
+      correct: 0,
+      difficulty: 'kolay',
+      explanation: 'Çünkü',
+      translations: {'en': english},
+    );
+    const englishOnly = BilgiCategory(
+      id: 'felsefe',
+      group: 'kultur',
+      name: 'Felsefe',
+      emoji: '🧘',
+      subs: const ['Etik'],
+      locales: ['tr', 'en'],
+    );
+    const everyLanguage = BilgiCategory(
+      id: 'felsefe',
+      group: 'kultur',
+      name: 'Felsefe',
+      emoji: '🧘',
+      subs: const ['Etik'],
+    );
+    expect(bilgiQuestionLanguagesReady(question, locales: englishOnly.publishLocales), isTrue);
+    expect(bilgiQuestionLanguagesReady(question, locales: everyLanguage.publishLocales), isFalse);
   });
 
   test('countdown reaches the next Istanbul midnight', () {
