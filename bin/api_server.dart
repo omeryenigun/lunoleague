@@ -14,6 +14,7 @@ import 'package:kelimelig/api/bilgi_reports_http.dart';
 import 'package:kelimelig/api/bilgi_league_http.dart';
 import 'package:kelimelig/api/bilgi_users_http.dart';
 import 'package:kelimelig/api/bilgi_wallet_http.dart';
+import 'package:kelimelig/api/bilgi_contest_http.dart';
 import 'package:kelimelig/api/mail_http.dart';
 import 'package:kelimelig/api/privacy_page.dart';
 import 'package:kelimelig/core/constants/game_version.dart';
@@ -163,6 +164,7 @@ Future<void> main() async {
   final bilgiStore = ScopedKeyValueStore(PostgresKv(db), GameIds.lunoBilgi);
   final bilgiLedger = PostgresBilgiLedger(db);
   mountBilgiWallet(router, db, bilgiStore);
+  mountBilgiContest(router, db, bilgiStore);
   mountBilgiLeague(router, bilgiStore);
   watchBilgiLeague(bilgiStore, ledger: bilgiLedger);
   mountSiteCards(router, db);

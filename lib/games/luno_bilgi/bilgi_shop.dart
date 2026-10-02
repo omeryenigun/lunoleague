@@ -11,6 +11,7 @@ class BilgiPlaySku {
     required this.months,
     this.basePlanId,
     this.purchaseOptionId,
+    this.includedGold = 0,
   });
 
   /// Play product id. Gold packs and Plus are queried with this id.
@@ -25,6 +26,9 @@ class BilgiPlaySku {
 
   final int gold;
   final int months;
+
+  /// Gold granted with a Plus period. Gold packs leave this at zero.
+  final int includedGold;
 
   bool get consumable => gold > 0;
   bool get plus => months > 0;
@@ -49,6 +53,7 @@ const bilgiPlusAylik = BilgiPlaySku(
   basePlanId: 'luno-plus-aylik',
   gold: 0,
   months: 1,
+  includedGold: 2000,
 );
 
 const bilgiPlus6Ay = BilgiPlaySku(
@@ -56,6 +61,7 @@ const bilgiPlus6Ay = BilgiPlaySku(
   basePlanId: 'luno-plus-6ay',
   gold: 0,
   months: 6,
+  includedGold: 14000,
 );
 
 const bilgiPlusYillik = BilgiPlaySku(
@@ -63,6 +69,7 @@ const bilgiPlusYillik = BilgiPlaySku(
   basePlanId: 'luno-plus-yillik',
   gold: 0,
   months: 12,
+  includedGold: 30000,
 );
 
 const bilgiPlaySkus = <BilgiPlaySku>[
@@ -133,6 +140,7 @@ bool bilgiPlusActive(BilgiProfile user, DateTime now) {
 BilgiProfile applyBilgiPlayReward(BilgiProfile user, BilgiPlaySku sku, DateTime now) {
   if (sku.gold > 0) return user.copyWith(gold: user.gold + sku.gold);
   return user.copyWith(
+    gold: user.gold + sku.includedGold,
     premium: true,
     premiumUntil: bilgiPlusUntil(now, user.premiumUntil, sku.months),
   );

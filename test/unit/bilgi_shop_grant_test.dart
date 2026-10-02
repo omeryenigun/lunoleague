@@ -117,6 +117,7 @@ void main() {
     );
     expect(month.profile!.premium, isTrue);
     expect(month.profile!.premiumUntil, DateTime.utc(2026, 11, 1));
+    expect(month.profile!.gold, 2500);
     expect(pushed, [true]);
 
     final today = DateKeys.dayKey(now);
@@ -133,6 +134,7 @@ void main() {
       orderId: 'order-month',
     );
     expect(replay.profile!.premiumUntil, DateTime.utc(2026, 11, 1));
+    expect(replay.profile!.gold, 2500);
 
     final year = await server.grantPlayPurchase(
       productId: 'luno_plus',

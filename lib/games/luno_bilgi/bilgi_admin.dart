@@ -8,6 +8,7 @@ import 'package:kelimelig/domain/account/luno_account.dart';
 import 'package:kelimelig/domain/game/game_ids.dart';
 import 'package:kelimelig/core/l10n/game_locale.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_contest.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_league.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_league_api.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_csv.dart';
@@ -35,6 +36,10 @@ class BilgiAdminScreen extends StatefulWidget {
 class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   var _index = 0;
   var _note = '';
+  DateTime _contestMonth = DateTime(DateTime.now().year, DateTime.now().month);
+  List<BilgiContestDay> _contestDays = const [];
+  var _contestBusy = false;
+  final _contestTitles = <String, TextEditingController>{};
   List<BilgiQuestion> _questions = const [];
   List<BilgiProfile> _users = const [];
   List<BilgiProfile> _leagueUsers = const [];
@@ -131,6 +136,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     (group: 'KULLANICILAR', emoji: '👑', label: 'Premium'),
     (group: 'OYUN', emoji: '⚙️', label: 'Oyun Ayarları'),
     (group: 'OYUN', emoji: '🎮', label: 'Mod Ayarları'),
+    (group: 'OYUN', emoji: '📅', label: 'Günlük Oyun'),
     (group: 'OYUN', emoji: '🃏', label: 'Joker Ayarları'),
     (group: 'OYUN', emoji: '❤️', label: 'Can Sistemi'),
     (group: 'EKONOMİ', emoji: '🪙', label: 'Ekonomi'),
@@ -174,6 +180,9 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     _mailHtml.dispose();
     _mailText.dispose();
     _mailTestTo.dispose();
+    for (final field in _contestTitles.values) {
+      field.dispose();
+    }
     _ledgerFrom.dispose();
     _ledgerTo.dispose();
     super.dispose();
@@ -326,9 +335,9 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       6 => 'Reddedilen Sorular',
       13 => 'Banlı Kullanıcılar',
       14 => 'Premium Kullanıcılar',
-      19 => 'Ekonomi Ayarları',
-      25 => 'Genel Ayarlar',
-      27 => 'E-posta şablonu',
+      20 => 'Ekonomi Ayarları',
+      26 => 'Genel Ayarlar',
+      28 => 'E-posta şablonu',
       _ => _nav[_index].label,
     };
   }
@@ -347,11 +356,12 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       12 => '${_users.length} kullanıcı • ${_users.where((u) => u.premium).length} premium',
       13 => '$_bannedCount kullanıcı banlı',
       14 => '${_users.where((u) => u.premium).length} premium üye',
-      21 => '7 günlük ödül takvimi',
-      22 => 'Reklam stratejisi ve limitleri',
-      23 => '${_events.where((e) => e['status'] == 'active').length} aktif • ${_events.where((e) => e['status'] == 'pending').length} bekleyen',
-      24 => 'Detaylı analiz ve raporlar',
-      25 => 'Uygulama geneli yapılandırma',
+      17 => 'Ayın her günü için ortak soru seti',
+      22 => '7 günlük ödül takvimi',
+      23 => 'Reklam stratejisi ve limitleri',
+      24 => '${_events.where((e) => e['status'] == 'active').length} aktif • ${_events.where((e) => e['status'] == 'pending').length} bekleyen',
+      25 => 'Detaylı analiz ve raporlar',
+      26 => 'Uygulama geneli yapılandırma',
       _ => 'Luno Bilgi yönetim',
     };
   }
@@ -470,7 +480,14 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => i == 4 ? _openEditor() : setState(() => _index = i),
+          onTap: () {
+            if (i == 4) {
+              _openEditor();
+              return;
+            }
+            setState(() => _index = i);
+            if (i == 17) _loadContest();
+          },
           hoverColor: const Color(0x146C3CE9),
           child: Container(
             decoration: BoxDecoration(
@@ -829,6 +846,132 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     );
   }
 
+  String get _contestMonthKey =>
+      '${_contestMonth.year}-${_contestMonth.month.toString().padLeft(2, '0')}';
+
+  Future<void> _loadContest() async {
+    final loaded = await BilgiContestApi.adminLoad(sl<ApiSession>().adminToken ?? '', _contestMonthKey);
+    if (!mounted) return;
+    _applyContest(loaded);
+  }
+
+  void _applyContest(BilgiContestAdminResult loaded) {
+    final month = loaded.month;
+    setState(() {
+      _note = loaded.error ?? '';
+      if (month == null) return;
+      _contestDays = month.days;
+      for (final day in month.days) {
+        _contestTitles.putIfAbsent(day.day, () => TextEditingController(text: day.title));
+      }
+    });
+  }
+
+  Future<void> _shiftContest(int delta) async {
+    setState(() {
+      _contestMonth = DateTime(_contestMonth.year, _contestMonth.month + delta);
+      _contestDays = const [];
+    });
+    await _loadContest();
+  }
+
+  Future<void> _buildContestMonth() async {
+    if (_contestBusy) return;
+    setState(() => _contestBusy = true);
+    final loaded = await BilgiContestApi.adminSave(
+      sl<ApiSession>().adminToken ?? '',
+      month: _contestMonthKey,
+    );
+    if (!mounted) return;
+    setState(() => _contestBusy = false);
+    _applyContest(loaded);
+  }
+
+  Future<void> _buildContestDay(String day, {bool rebuild = false}) async {
+    if (_contestBusy) return;
+    setState(() => _contestBusy = true);
+    final loaded = await BilgiContestApi.adminSave(
+      sl<ApiSession>().adminToken ?? '',
+      day: day,
+      title: _contestTitles[day]?.text.trim() ?? '',
+      rebuild: rebuild,
+    );
+    if (!mounted) return;
+    setState(() => _contestBusy = false);
+    _applyContest(loaded);
+  }
+
+  Widget _dailyContest() {
+    final monthLabel = _contestMonthKey;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+      children: [
+        Row(
+          children: [
+            _ghost('‹', () => _shiftContest(-1)),
+            const SizedBox(width: 12),
+            Text(monthLabel, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+            const SizedBox(width: 12),
+            _ghost('›', () => _shiftContest(1)),
+            const Spacer(),
+            _primary(_contestBusy ? 'Yazılıyor' : 'Ayı oluştur', _contestBusy ? () {} : _buildContestMonth),
+          ],
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Kilitli güne dokunulmaz. Dolu gün yeniden yazılmaz. Boş gün set alır.',
+          style: TextStyle(color: BilgiColors.muted, fontSize: 12),
+        ),
+        const SizedBox(height: 16),
+        if (_contestDays.isEmpty)
+          _ghost('Ayı yükle', _loadContest)
+        else
+          for (final day in _contestDays)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(color: BilgiColors.card, borderRadius: BorderRadius.circular(12)),
+                child: Row(
+                  children: [
+                    SizedBox(width: 96, child: Text(day.day, style: const TextStyle(fontWeight: FontWeight.w700))),
+                    SizedBox(
+                      width: 72,
+                      child: Text(
+                        day.count == 0 ? 'Boş' : '${day.count} soru',
+                        style: const TextStyle(color: BilgiColors.muted, fontSize: 12),
+                      ),
+                    ),
+                    if (day.locked)
+                      const Text('Kilitli', style: TextStyle(color: BilgiColors.warning, fontWeight: FontWeight.w700))
+                    else ...[
+                      SizedBox(
+                        width: 220,
+                        child: TextField(
+                          controller: _contestTitles[day.day],
+                          maxLength: 40,
+                          style: const TextStyle(color: Colors.white, fontSize: 13),
+                          decoration: const InputDecoration(
+                            hintText: 'Özel ad',
+                            counterText: '',
+                            isDense: true,
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _ghost('Adı kaydet', () => _buildContestDay(day.day)),
+                      const SizedBox(width: 8),
+                      _ghost(day.count == 0 ? 'Günü oluştur' : 'Yeniden yaz', () => _buildContestDay(day.day, rebuild: true)),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+      ],
+    );
+  }
+
   Widget _body() {
     return switch (_index) {
       0 => _summary(),
@@ -848,17 +991,18 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       14 => _userList(false, premium: true),
       15 => _toggles(),
       16 => _modes(),
-      17 => _jokers(),
-      18 => _lives(),
-      19 => _economy(),
-      20 => _packs(),
-      21 => _rewards(),
-      22 => _ads(),
-      23 => _eventEditor(),
-      24 => _stats(),
-      25 => _general(),
-      26 => _admins(),
-      27 => _mail(),
+      17 => _dailyContest(),
+      18 => _jokers(),
+      19 => _lives(),
+      20 => _economy(),
+      21 => _packs(),
+      22 => _rewards(),
+      23 => _ads(),
+      24 => _eventEditor(),
+      25 => _stats(),
+      26 => _general(),
+      27 => _admins(),
+      28 => _mail(),
       _ => _admins(),
     };
   }
@@ -3685,7 +3829,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        const Text('Günlük giriş ve seviye atlama canı 0. Sakin mod ve günün sorusu can harcamaz.', style: TextStyle(color: BilgiColors.muted, fontSize: 12)),
+        const Text('Günlük giriş ve seviye atlama canı 0. Günün yarışması ve günün sorusu can harcamaz.', style: TextStyle(color: BilgiColors.muted, fontSize: 12)),
       ],
     );
   }

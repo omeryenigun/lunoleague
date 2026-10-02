@@ -190,24 +190,29 @@ class LunoBilgiServer {
     var user = raw == null ? _newProfile(jokers: await _starterJokers(), lives: (await config()).startLives) : BilgiProfile.fromMap(raw);
     final cfg = await config();
     final now = _clock();
-    final lives = regeneratedLives(
-      lives: user.lives,
-      livesAt: user.livesAt,
-      now: now,
-      maxLives: cfg.maxLives,
-      minutesPerLife: cfg.lifeMinutes,
-    );
-    final clock = livesClockAfterRegen(
-      lives: user.lives,
-      livesAt: user.livesAt,
-      now: now,
-      maxLives: cfg.maxLives,
-      minutesPerLife: cfg.lifeMinutes,
-    );
+    final walletOwnsLives = remoteWallet != null;
+    final lives = walletOwnsLives
+        ? user.lives
+        : regeneratedLives(
+            lives: user.lives,
+            livesAt: user.livesAt,
+            now: now,
+            maxLives: cfg.maxLives,
+            minutesPerLife: cfg.lifeMinutes,
+          );
+    final clock = walletOwnsLives
+        ? user.livesAt
+        : livesClockAfterRegen(
+            lives: user.lives,
+            livesAt: user.livesAt,
+            now: now,
+            maxLives: cfg.maxLives,
+            minutesPerLife: cfg.lifeMinutes,
+          );
     final today = DateKeys.dayKey(now);
     user = user.copyWith(
       lives: lives,
-      livesAt: lives >= cfg.maxLives ? now : clock,
+      livesAt: walletOwnsLives ? user.livesAt : (lives >= cfg.maxLives ? now : clock),
       adGoldToday: user.adDay == today ? user.adGoldToday : 0,
       adJokerToday: user.adDay == today ? user.adJokerToday : 0,
       adLifeToday: user.adDay == today ? user.adLifeToday : 0,
@@ -344,7 +349,7 @@ class LunoBilgiServer {
     try {
       final saved = await push(user);
       if (saved == null) return user;
-      final next = saved.containsKey('lives')
+      final next = saved['lives'] != null
           ? bilgiApplyWallet(user, BilgiProfile.fromMap(saved))
           : bilgiTakeLeagueGrant(user, saved);
       await _save(next);
@@ -364,7 +369,7 @@ class LunoBilgiServer {
     try {
       final reply = await hook(op: 'sync', body: {'userId': user.id});
       if (reply.profile == null) return user;
-      final next = bilgiApplyWallet(user, reply.profile!);
+      final next = bilgiApplyWallet(user, reply.profile!, livesReported: reply.livesReported);
       await _save(next);
       return next;
     } catch (_) {
@@ -382,12 +387,12 @@ class LunoBilgiServer {
         return BilgiResult(message: reply.error ?? 'Bağlantı kurulamadı.', round: round);
       }
       final local = await profile();
+      final next = bilgiApplyWallet(local, reply.profile!, livesReported: reply.livesReported);
       if (reply.profile!.id != local.id) {
-        await _store.putMeta(_active, reply.profile!.id);
-        await _save(reply.profile!);
-        return BilgiResult(profile: reply.profile, round: round);
+        await _store.putMeta(_active, next.id);
+        await _save(next);
+        return BilgiResult(profile: next, round: round);
       }
-      final next = bilgiApplyWallet(local, reply.profile!);
       await _save(next);
       return BilgiResult(profile: next, round: round);
     } catch (_) {
@@ -635,6 +640,12 @@ class LunoBilgiServer {
     List<BilgiQuestion>? fixedQuestions,
     BilgiQuestion? fixedSpare,
     String roomCode = '',
+    bool chargeLife = true,
+    int startIndex = 0,
+    int startScore = 0,
+    int startCorrect = 0,
+    int startWrong = 0,
+    int startStreak = 0,
   }) async {
     final user = await profile();
     final cfg = await config();
@@ -682,35 +693,38 @@ class LunoBilgiServer {
     final spare = drawn.spare;
     final today = DateKeys.dayKey(_clock());
     final roundId = 'g${_clock().microsecondsSinceEpoch}';
-    var next = user.copyWith(
-      lives: cfg.livesEnabled ? user.lives - mode.lifeCost : user.lives,
-      livesAt: user.lives >= cfg.maxLives ? _clock() : user.livesAt,
-      gamesPlayed: user.gamesPlayed + 1,
-      adFreeLeft: user.adFreeLeft > 0 ? user.adFreeLeft - 1 : 0,
-      lastPlayDay: today,
-      freePlaysUsed: user.adFreeLeft > 0
-          ? user.freePlaysUsed
-          : (user.lastPlayDay == today ? user.freePlaysUsed : 0) + (needsAd(user, cfg) ? 0 : 1),
-    );
-    if (mode.lifeCost > 0 && user.lives == cfg.maxLives) {
-      next = next.copyWith(livesAt: _clock());
-    }
-    if (remoteWallet != null) {
-      final remote = await _serverWallet('life_spend', {
-        'userId': user.id,
-        'modeId': mode.id,
-        'roundId': roundId,
-      });
-      if (remote == null || remote.profile == null) {
-        return remote ?? BilgiResult(message: 'Bağlantı kurulamadı.', profile: user);
-      }
-      next = bilgiApplyWallet(next, remote.profile!).copyWith(
-        adFreeLeft: next.adFreeLeft,
-        lastPlayDay: next.lastPlayDay,
-        freePlaysUsed: next.freePlaysUsed,
+    var next = user;
+    if (chargeLife) {
+      next = user.copyWith(
+        lives: cfg.livesEnabled ? user.lives - mode.lifeCost : user.lives,
+        livesAt: user.lives >= cfg.maxLives ? _clock() : user.livesAt,
+        gamesPlayed: user.gamesPlayed + 1,
+        adFreeLeft: user.adFreeLeft > 0 ? user.adFreeLeft - 1 : 0,
+        lastPlayDay: today,
+        freePlaysUsed: user.adFreeLeft > 0
+            ? user.freePlaysUsed
+            : (user.lastPlayDay == today ? user.freePlaysUsed : 0) + (needsAd(user, cfg) ? 0 : 1),
       );
+      if (mode.lifeCost > 0 && user.lives == cfg.maxLives) {
+        next = next.copyWith(livesAt: _clock());
+      }
+      if (remoteWallet != null) {
+        final remote = await _serverWallet('life_spend', {
+          'userId': user.id,
+          'modeId': mode.id,
+          'roundId': roundId,
+        });
+        if (remote == null || remote.profile == null) {
+          return remote ?? BilgiResult(message: 'Bağlantı kurulamadı.', profile: user);
+        }
+        next = bilgiApplyWallet(next, remote.profile!).copyWith(
+          adFreeLeft: next.adFreeLeft,
+          lastPlayDay: next.lastPlayDay,
+          freePlaysUsed: next.freePlaysUsed,
+        );
+      }
+      await _save(next);
     }
-    await _save(next);
     final round = BilgiRound(
       id: roundId,
       userId: next.id,
@@ -727,6 +741,11 @@ class LunoBilgiServer {
       roomCode: roomCode,
       spare: spare,
       startedAt: _clock(),
+      index: startIndex.clamp(0, pool.length),
+      score: startScore,
+      correct: startCorrect,
+      wrong: startWrong,
+      streak: startStreak,
     );
     _rounds[round.id] = round;
     await _store.put(_games, round.id, round.toMap());
@@ -902,7 +921,7 @@ class LunoBilgiServer {
     if (!right && round.doubleLeft > 0) {
       round.doubleLeft -= 1;
       round.hidden = {...round.hidden, option}.toList();
-      return BilgiResult(round: round, profile: await profile());
+      return BilgiResult(round: round);
     }
     final totalTime = round.totalSeconds > 0 ? round.totalSeconds : round.seconds;
     if (right) {
@@ -931,7 +950,7 @@ class LunoBilgiServer {
       return finish(roundId);
     }
     await _store.put(_games, round.id, round.toMap());
-    return BilgiResult(round: round, profile: await profile());
+    return BilgiResult(round: round);
   }
 
   Future<BilgiResult> timeout(String roundId) {
@@ -1010,6 +1029,10 @@ class LunoBilgiServer {
       final user = await profile();
       var gold = goldForScore(round.score, round.multiplier);
       var xp = xpForScore(round.score);
+      if (round.modeId == 'yarisma') {
+        gold = bilgiContestGold(round.correct);
+        xp = bilgiContestXp(round.correct);
+      }
       if (round.modeId == 'gunluk' && round.correct > 0) {
         gold = 100;
         xp = 50;
@@ -1045,8 +1068,12 @@ class LunoBilgiServer {
       }
       round.finished = true;
       final level = applyXp(level: user.level, xp: user.xp, gained: xp);
-      final cats = {...user.categoriesPlayed, round.categoryId}.toList();
-      final scored = bilgiAddScore(user, points: round.score, categoryId: round.categoryId, now: _clock());
+      final cats = round.modeId == 'yarisma'
+          ? user.categoriesPlayed
+          : {...user.categoriesPlayed, round.categoryId}.toList();
+      final scored = round.modeId == 'yarisma'
+          ? user
+          : bilgiAddScore(user, points: round.score, categoryId: round.categoryId, now: _clock());
       final duelWins = user.duelWins +
           ((round.modeId == 'duello' &&
                   round.opponentName.isNotEmpty &&

@@ -92,6 +92,39 @@ void main() {
     expect(kept.username, 'Ada');
   });
 
+  test('a league round spends one life', () async {
+    final book = BilgiWalletBook(
+      MemoryKeyValueStore(),
+      MemoryBilgiLedger(),
+      clock: () => DateTime.utc(2026, 10, 2, 9),
+    );
+    await book.apply({'op': 'sync', 'userId': 'ada'});
+    final spent = await book.apply({
+      'op': 'life_spend',
+      'userId': 'ada',
+      'modeId': 'lig',
+      'roundId': 'round-lig',
+    });
+    expect(spent.profile?.lives, 4);
+  });
+
+  test('a wallet reply without lives keeps the phone count', () {
+    final phone = bilgiFreshProfile(
+      id: 'ada',
+      now: DateTime.utc(2026, 10, 1),
+      config: const BilgiConfig(),
+    ).copyWith(lives: 3);
+    final remote = phone.copyWith(lives: 5);
+    final kept = bilgiApplyWallet(phone, remote, livesReported: false);
+    expect(kept.lives, 3);
+    expect(kept.livesAt, phone.livesAt);
+  });
+
+  test('a numeric lives field is kept', () {
+    final parsed = BilgiProfile.fromMap({'id': 'ada', 'lives': 3.0});
+    expect(parsed.lives, 3);
+  });
+
   test('a new day clears every ad counter before the next reward', () async {
     final store = MemoryKeyValueStore();
     final book = BilgiWalletBook(store, MemoryBilgiLedger(), clock: () => DateTime.utc(2026, 10, 2, 9));

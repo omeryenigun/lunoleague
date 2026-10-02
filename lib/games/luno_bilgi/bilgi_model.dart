@@ -661,7 +661,7 @@ class BilgiProfile {
       xp: map['xp'] as int? ?? 0,
       gold: map['gold'] as int? ?? 500,
       diamond: map['diamond'] as int? ?? 0,
-      lives: map['lives'] as int? ?? 5,
+      lives: bilgiInt(map['lives'], 5),
       livesAt: DateTime.tryParse(map['livesAt'] as String? ?? '') ?? DateTime.now(),
       title: map['title'] as String? ?? 'Çaylak',
       premium: map['premium'] as bool? ?? false,
@@ -919,11 +919,12 @@ const bilgiModes = <BilgiMode>[
   BilgiMode(id: 'hizli', name: 'Hızlı Tur', emoji: '⚡', blurb: '10 soru • 15 sn • 1.5x puan', questions: 10, seconds: 15, totalSeconds: 0, multiplier: 1.5, lifeCost: 1, jokerMax: 3, group: 'solo'),
   BilgiMode(id: 'klasik', name: 'Klasik Tur', emoji: '🎯', blurb: '20 soru • 20 sn • 1x puan', questions: 20, seconds: 20, totalSeconds: 0, multiplier: 1, lifeCost: 1, jokerMax: 3, group: 'solo'),
   BilgiMode(id: 'maraton', name: 'Maraton', emoji: '🏃', blurb: '50 soru • 15 dk toplam süre', questions: 50, seconds: 0, totalSeconds: 900, multiplier: 2, lifeCost: 3, jokerMax: 5, group: 'solo'),
-  BilgiMode(id: 'sakin', name: 'Sakin Mod', emoji: '🧘', blurb: '10 soru • Süresiz • 0.5x puan', questions: 10, seconds: 0, totalSeconds: 0, multiplier: 0.5, lifeCost: 0, jokerMax: 3, group: 'solo'),
+  BilgiMode(id: 'sakin', name: 'Sakin Mod', emoji: '🧘', blurb: '10 soru • Süresiz • 0.5x puan', questions: 10, seconds: 0, totalSeconds: 0, multiplier: 0.5, lifeCost: 1, jokerMax: 3, group: 'solo'),
   BilgiMode(id: 'duello', name: 'Düello', emoji: '⚔️', blurb: 'Birebir • 10 sn • Rakip eşleşme', questions: 10, seconds: 10, totalSeconds: 0, multiplier: 1, lifeCost: 1, jokerMax: 2, group: 'multi'),
   BilgiMode(id: 'grup', name: 'Grup Yarışması', emoji: '👥', blurb: '2-10 kişi • 15 sn', questions: 20, seconds: 15, totalSeconds: 0, multiplier: 1, lifeCost: 1, jokerMax: 3, group: 'multi'),
   BilgiMode(id: 'oda', name: 'Özel Oda', emoji: '🔒', blurb: 'Arkadaşlarınla oda kur', questions: 20, seconds: 15, totalSeconds: 0, multiplier: 1, lifeCost: 1, jokerMax: 3, group: 'multi'),
   BilgiMode(id: 'gunluk', name: 'Günün Sorusu', emoji: '📅', blurb: 'Günde 1 soru • 2x puan', questions: 1, seconds: 30, totalSeconds: 0, multiplier: 2, lifeCost: 0, jokerMax: 0, group: 'special'),
+  BilgiMode(id: 'yarisma', name: 'Günün Yarışması', emoji: '🏁', blurb: '20 soru • Günde 1 • Can yok', questions: 20, seconds: 15, totalSeconds: 0, multiplier: 1, lifeCost: 0, jokerMax: 3, group: 'special'),
   BilgiMode(id: 'lig', name: 'Luno Ligi', emoji: '🏆', blurb: 'Haftalık turnuva • 20 soru', questions: 20, seconds: 15, totalSeconds: 0, multiplier: 1, lifeCost: 1, jokerMax: 3, group: 'special'),
 ];
 

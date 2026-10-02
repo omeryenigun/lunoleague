@@ -27,6 +27,9 @@ int difficultyPoints(
 
 const bilgiMixDifficulty = 'karisik';
 
+/// Günün Yarışması: 8 kolay, 6 orta, 4 zor, 2 efsane.
+const bilgiDailyQuotas = <int>[8, 6, 4, 2];
+
 const bilgiDifficultyLevels = ['kolay', 'orta', 'zor', 'efsane'];
 
 /// Shares [count] across the four difficulties. The first remainder levels get one extra.
@@ -74,6 +77,36 @@ BilgiScore scoreQuestion({
 int goldForScore(int totalScore, double modeMultiplier) {
   if (totalScore <= 0) return 0;
   return ((totalScore / 10) * modeMultiplier).floor();
+}
+
+/// Günün Yarışması: doğru başına 10 altın, tavan 200.
+int bilgiContestGold(int correct) {
+  if (correct <= 0) return 0;
+  final gold = correct * 10;
+  return gold > 200 ? 200 : gold;
+}
+
+/// Günün Yarışması: doğru başına 5 XP, tavan 100.
+int bilgiContestXp(int correct) {
+  if (correct <= 0) return 0;
+  final xp = correct * 5;
+  return xp > 100 ? 100 : xp;
+}
+
+/// `YYYY-MM` içindeki gün anahtarları. Geçersiz ay boş liste döner.
+List<String> bilgiContestMonthDays(String month) {
+  final parts = month.split('-');
+  if (parts.length != 2) return const [];
+  final year = int.tryParse(parts[0]);
+  final mon = int.tryParse(parts[1]);
+  if (year == null || mon == null || mon < 1 || mon > 12 || year < 2000 || year > 2100) {
+    return const [];
+  }
+  final last = DateTime(year, mon + 1, 0).day;
+  return [
+    for (var day = 1; day <= last; day++)
+      '$year-${mon.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}',
+  ];
 }
 
 /// True when [message] is an existing “not enough gold” refusal.

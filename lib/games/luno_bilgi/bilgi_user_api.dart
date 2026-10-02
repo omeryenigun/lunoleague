@@ -73,7 +73,11 @@ class BilgiUserApi {
         final error = '${decoded['error'] ?? ''}'.trim();
         return BilgiWalletReply(error: error.isEmpty ? 'İşlem tamamlanamadı.' : error);
       }
-      return BilgiWalletReply(profile: BilgiProfile.fromMap(Map<String, dynamic>.from(decoded['user'] as Map)));
+      final userMap = Map<String, dynamic>.from(decoded['user'] as Map);
+      return BilgiWalletReply(
+        profile: BilgiProfile.fromMap(userMap),
+        livesReported: userMap['lives'] != null,
+      );
     } catch (_) {
       return const BilgiWalletReply(error: 'Bağlantı kurulamadı.');
     }

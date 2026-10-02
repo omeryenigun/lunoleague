@@ -1,4 +1,4 @@
-import 'dart:async' show unawaited;
+import 'dart:async' show Timer, unawaited;
 import 'dart:math' as math;
 
 import 'dart:ui' show ImageFilter;
@@ -12,6 +12,7 @@ import 'package:kelimelig/core/constants/game_version.dart';
 import 'package:kelimelig/core/services/ad_service.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_avatars.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_contest.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_controller.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_language_page.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_league.dart';
@@ -41,6 +42,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
   bool _loginObscure = true;
   String? _jokerPrompt;
   int? _jokerPromptIndex;
+  String? _jokerBurst;
   bool _rewardBurst = false;
   String _rewardBurstIcon = '🪙';
   String _leagueSort = bilgiLeagueSortAlpha;
@@ -226,6 +228,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
       'game' => _game.round?.modeId == 'gunluk' ? _daily() : _gamePage(),
       'result' => _result(),
       'league' => _league(user!),
+      'contest_board' => _contestBoard(user!),
       'league_rewards' => _leagueRewards(),
       'profile' => _profile(user!),
       'shop' => _shop(user!),
@@ -343,19 +346,41 @@ class _BilgiScreenState extends State<BilgiScreen> {
                           child: Row(
                             children: [
                               Expanded(
-                                child: Text(
-                                  _game.t('free_play'),
-                                  style: _homeInter(size: 14, weight: FontWeight.w700),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _game.t('free_play'),
+                                      style: _homeInter(size: 14, weight: FontWeight.w700),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    const _ContestClock(),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${_game.contestJoined} yarışmacı',
+                                      style: _homeInter(
+                                        size: 11,
+                                        weight: FontWeight.w600,
+                                        color: const Color.fromRGBO(255, 255, 255, 0.85),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                               const SizedBox(width: 8),
                               _homePillButton(
-                                label: _game.t('play_now'),
+                                label: switch (_game.contestPhase) {
+                                  'open' => 'Devam Et',
+                                  'done' => 'Sıralama',
+                                  _ => 'Başla',
+                                },
                                 onTap: () {
-                                  _game.modeId = 'hizli';
-                                  _game.categoryId = tumuKarmaId;
-                                  _game.difficulty = 'hepsi';
-                                  _game.start();
+                                  if (_game.contestPhase == 'done') {
+                                    _game.open('contest_board');
+                                    unawaited(_game.refreshContest());
+                                    return;
+                                  }
+                                  unawaited(_game.playDailyContest());
                                 },
                                 background: Colors.white,
                                 foreground: const Color(0xFF059669),
@@ -603,6 +628,10 @@ class _BilgiScreenState extends State<BilgiScreen> {
                         ),
                       ),
                     ),
+                    _adBanner(
+                      showNoticeAbove: false,
+                      margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                    ),
                   ],
                 ),
               ),
@@ -849,6 +878,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
           },
           icon: const _CategoryStackIcon(),
         ),
+        _adBanner(showNoticeAbove: false),
       ],
     );
   }
@@ -1266,6 +1296,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
         const SizedBox(height: 8),
         _startButton(_game.busy ? null : _game.start, label: _game.t('start_game')),
         const SizedBox(height: 10),
+        _adBanner(showNoticeAbove: false),
       ],
     );
   }
@@ -1507,6 +1538,22 @@ class _BilgiScreenState extends State<BilgiScreen> {
                         letterSpacing: 1.2,
                       ),
                     ),
+                    if (round.modeId == 'yarisma' && _game.contestTitle.trim().isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0x1A10B981),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          _game.contestTitle.trim(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: BilgiColors.secondary, fontSize: 11, fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -1613,7 +1660,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
                 ),
                 const SizedBox(height: 6),
                 SizedBox(
-                  height: 180,
+                  height: 144,
                   child: Container(
                     width: double.infinity,
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -1627,7 +1674,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
                       text,
                       maxLines: 6,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w400, height: 1.35),
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w400, height: 1.35),
                     ),
                   ),
                 ),
@@ -1648,7 +1695,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
                   ),
                 const SizedBox(height: 6),
                 SizedBox(
-                  height: 60,
+                  height: 40,
                   width: double.infinity,
                   child: Align(
                     alignment: Alignment.topLeft,
@@ -1679,7 +1726,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
                 ),
                 const SizedBox(height: 6),
                 SizedBox(
-                  height: 40,
+                  height: 20,
                   child: revealing && _game.revealQuestion != null
                       ? _FaultReport(
                           key: ValueKey(_game.revealQuestion!.id),
@@ -1734,6 +1781,15 @@ class _BilgiScreenState extends State<BilgiScreen> {
         ),
         if (_jokerPrompt != null)
           Positioned.fill(child: _jokerSpendNote(_jokerPrompt!)),
+        if (_jokerBurst != null)
+          Positioned.fill(
+            child: _JokerSpendBurst(
+              emoji: _jokerEmoji(_jokerBurst!),
+              onDone: () {
+                if (mounted) setState(() => _jokerBurst = null);
+              },
+            ),
+          ),
       ],
     );
   }
@@ -1850,9 +1906,34 @@ class _BilgiScreenState extends State<BilgiScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        _startButton(_game.replaySetup, label: _game.t('play_again_btn')),
+        _startButton(_game.replaySetup, label: _game.t('play_again_btn'), horizontalPadding: 0),
         const SizedBox(height: 12),
-        _adBanner(showNoticeAbove: false),
+        _adBanner(showNoticeAbove: false, margin: const EdgeInsets.fromLTRB(0, 0, 0, 16)),
+      ],
+    );
+  }
+
+  Widget _contestBoard(BilgiProfile user) {
+    final rows = _game.contestRows;
+    final podium = rows.take(3).toList();
+    final rest = rows.length > 3 ? rows.sublist(3) : const <BilgiBoardEntry>[];
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 24),
+      children: [
+        _pageHeader('Günün Sıralaması', onBack: _game.back),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+          child: Text(
+            '${_game.contestJoined} yarışmacı',
+            style: const TextStyle(fontWeight: FontWeight.w800, color: BilgiColors.secondary),
+          ),
+        ),
+        if (rows.isEmpty)
+          const Padding(padding: EdgeInsets.all(20), child: Text('Henüz sıralama yok.'))
+        else ...[
+          if (podium.isNotEmpty) _podium(podium, user.id),
+          for (final row in rest) _boardRow(row.rank > 0 ? row.rank : 0, row, row.id == user.id),
+        ],
       ],
     );
   }
@@ -1988,7 +2069,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
                       onTap: () {
                         final categoryId = _game.boardCategoryId;
                         if (categoryOpen && categoryId != null) {
-                          _game.selectCategory(categoryId);
+                          unawaited(_game.playCategoryLeague(categoryId));
                         } else {
                           _game.open('categories');
                         }
@@ -2654,9 +2735,9 @@ class _BilgiScreenState extends State<BilgiScreen> {
       (bilgiGold5000, '5000 altın', '₺99,99', 'assets/images/shop/luno_gold_5000.png'),
     ];
     const plans = [
-      (bilgiPlusAylik, 'Luno Plus Aylık', '₺29,99 / ay', 'assets/images/shop/luno_plus_aylik.png'),
-      (bilgiPlus6Ay, 'Luno Plus 6 Aylık', '₺129,99 • ayda ₺21,67', 'assets/images/shop/luno_plus_6ay.png'),
-      (bilgiPlusYillik, 'Luno Plus Yıllık', '₺199,99 • ayda ₺16,67 • en avantajlı', 'assets/images/shop/luno_plus_yillik.png'),
+      (bilgiPlusAylik, 'Luno Plus Aylık', '₺129,99 / ay\nHer ay 2.000 altın. Oyun öncesi reklam yok.', 'assets/images/shop/luno_plus_aylik.png'),
+      (bilgiPlus6Ay, 'Luno Plus 6 Aylık', '₺559,99 • ayda ₺93,33\nDönem başında 14.000 altın. Altı ay reklamsız oyun.', 'assets/images/shop/luno_plus_6ay.png'),
+      (bilgiPlusYillik, 'Luno Plus Yıllık', '₺869,99 • ayda ₺72,50\nEn avantajlı plan. Dönem başında 30.000 altın. Bir yıl reklamsız oyun.', 'assets/images/shop/luno_plus_yillik.png'),
     ];
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
@@ -3977,10 +4058,10 @@ class _BilgiScreenState extends State<BilgiScreen> {
     );
   }
 
-  Widget _startButton(VoidCallback? onTap, {String? label}) {
+  Widget _startButton(VoidCallback? onTap, {String? label, double horizontalPadding = 20}) {
     final text = label ?? _game.t('start_game');
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SizedBox(
         width: double.infinity,
         child: DecoratedBox(
@@ -4005,7 +4086,10 @@ class _BilgiScreenState extends State<BilgiScreen> {
     );
   }
 
-  Widget _adBanner({bool showNoticeAbove = true}) {
+  Widget _adBanner({
+    bool showNoticeAbove = true,
+    EdgeInsets margin = const EdgeInsets.fromLTRB(20, 0, 20, 16),
+  }) {
     if (!_game.config.bannerEnabled) return const SizedBox.shrink();
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -4015,6 +4099,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
           title: _game.t('ad_watch_title'),
           subtitle: _fill('ad_watch_sub', {'n': '${_game.config.rewardedGold}'}),
           buttonLabel: _game.t('ad_watch_btn'),
+          margin: margin,
           onWatch: () => _game.watchFor('gold'),
         ),
       ],
@@ -4057,7 +4142,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
       color: BilgiColors.card,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
-        onTap: _game.endRound,
+        onTap: _game.leaveRound,
         borderRadius: BorderRadius.circular(12),
         child: const SizedBox(width: 40, height: 40, child: Center(child: Text('✕', style: TextStyle(fontWeight: FontWeight.w800)))),
       ),
@@ -4329,7 +4414,11 @@ class _BilgiScreenState extends State<BilgiScreen> {
     }
     final live = _game.round;
     if (live == null || live.finished || live.index != index) return;
+    final beforeUse = _game.profile?.jokers[type] ?? 0;
     await _game.useJoker(type);
+    if (!mounted) return;
+    final afterUse = _game.profile?.jokers[type] ?? 0;
+    if (afterUse < beforeUse) setState(() => _jokerBurst = type);
   }
 
   Widget _jokerButton(String emoji, String label, int stock, VoidCallback? onTap) {
@@ -4837,19 +4926,23 @@ class _BilgiQuizOptionState extends State<_BilgiQuizOption> with SingleTickerPro
   Widget build(BuildContext context) {
     Color border = Colors.transparent;
     Color fill = BilgiColors.card;
-    Color chip = BilgiColors.bg;
+    Color chip = BilgiColors.card;
+    var letterColor = Colors.white;
     var borderWidth = 1.0;
     if (widget.correct) {
       border = BilgiColors.secondary;
       fill = const Color(0x2600D9C0);
       chip = BilgiColors.secondary;
+      letterColor = Colors.white;
       borderWidth = 2;
     } else if (widget.wrong) {
       border = BilgiColors.error;
       fill = const Color(0x26FF4D6D);
       chip = BilgiColors.error;
+      letterColor = Colors.white;
       borderWidth = 2;
     } else if (widget.hidden) {
+      letterColor = Colors.white;
       chip = switch (widget.letter) {
         'A' => const Color(0xFF0D4F49),
         'B' => const Color(0xFF3B2A78),
@@ -4876,7 +4969,7 @@ class _BilgiQuizOptionState extends State<_BilgiQuizOption> with SingleTickerPro
                   height: 32,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(color: chip, borderRadius: BorderRadius.circular(10)),
-                  child: Text(widget.letter, style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
+                  child: Text(widget.letter, style: TextStyle(fontWeight: FontWeight.w800, color: letterColor)),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -4885,7 +4978,7 @@ class _BilgiQuizOptionState extends State<_BilgiQuizOption> with SingleTickerPro
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 17,
+                      fontSize: 15,
                       fontWeight: FontWeight.w400,
                       height: 1.35,
                       color: widget.hidden ? BilgiColors.muted : BilgiColors.text,
@@ -4946,22 +5039,43 @@ class _BilgiQuizOptionState extends State<_BilgiQuizOption> with SingleTickerPro
   }
 }
 
-class _JokerConsumeBadge extends StatefulWidget {
+class _JokerConsumeBadge extends StatelessWidget {
   const _JokerConsumeBadge({required this.stock});
 
   final int stock;
 
   @override
-  State<_JokerConsumeBadge> createState() => _JokerConsumeBadgeState();
+  Widget build(BuildContext context) {
+    return Container(
+      width: 22,
+      height: 22,
+      alignment: Alignment.center,
+      decoration: const BoxDecoration(color: BilgiColors.primary, shape: BoxShape.circle),
+      child: Text('$stock', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
+    );
+  }
 }
 
-class _JokerConsumeBadgeState extends State<_JokerConsumeBadge> with SingleTickerProviderStateMixin {
-  late final AnimationController _motion = AnimationController(vsync: this, duration: const Duration(milliseconds: 700));
+/// Rising spend mark over the question after a joker is consumed.
+class _JokerSpendBurst extends StatefulWidget {
+  const _JokerSpendBurst({required this.emoji, required this.onDone});
+
+  final String emoji;
+  final VoidCallback onDone;
 
   @override
-  void didUpdateWidget(covariant _JokerConsumeBadge oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.stock < oldWidget.stock) _motion.forward(from: 0);
+  State<_JokerSpendBurst> createState() => _JokerSpendBurstState();
+}
+
+class _JokerSpendBurstState extends State<_JokerSpendBurst> with SingleTickerProviderStateMixin {
+  late final AnimationController _motion = AnimationController(vsync: this, duration: const Duration(milliseconds: 800));
+
+  @override
+  void initState() {
+    super.initState();
+    _motion.forward().whenComplete(() {
+      if (mounted) widget.onDone();
+    });
   }
 
   @override
@@ -4972,36 +5086,27 @@ class _JokerConsumeBadgeState extends State<_JokerConsumeBadge> with SingleTicke
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _motion,
-      builder: (context, child) {
-        final t = Curves.easeOut.transform(_motion.value);
-        final playing = _motion.isAnimating;
-        return Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.center,
+    return IgnorePointer(
+      child: AnimatedBuilder(
+        animation: _motion,
+        builder: (context, child) {
+          final t = Curves.easeOut.transform(_motion.value);
+          return Align(
+            alignment: const Alignment(0, -0.15),
+            child: Opacity(
+              opacity: (1 - t).clamp(0.0, 1.0),
+              child: Transform.translate(offset: Offset(0, -48 * t), child: child),
+            ),
+          );
+        },
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Transform.scale(scale: playing ? 1 - 0.14 * math.sin(t * math.pi) : 1, child: child),
-            if (playing)
-              Transform.translate(
-                offset: Offset(0, -22 * t),
-                child: Opacity(
-                  opacity: (1 - t).clamp(0.0, 1.0),
-                  child: const Text(
-                    '-1',
-                    style: TextStyle(color: BilgiColors.error, fontSize: 13, fontWeight: FontWeight.w800, height: 1),
-                  ),
-                ),
-              ),
+            Text(widget.emoji, style: const TextStyle(fontSize: 36, height: 1)),
+            const SizedBox(height: 4),
+            const Text('−1', style: TextStyle(color: BilgiColors.error, fontSize: 42, fontWeight: FontWeight.w800, height: 1)),
           ],
-        );
-      },
-      child: Container(
-        width: 22,
-        height: 22,
-        alignment: Alignment.center,
-        decoration: const BoxDecoration(color: BilgiColors.primary, shape: BoxShape.circle),
-        child: Text('${widget.stock}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
+        ),
       ),
     );
   }
@@ -5053,59 +5158,78 @@ class _FaultReportState extends State<_FaultReport> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    final status = _error;
+    if (!_open) {
+      return Align(
+        alignment: Alignment.topCenter,
+        child: TextButton(
+          onPressed: _busy
+              ? null
+              : () => setState(() {
+                    _open = true;
+                    _error = '';
+                  }),
+          style: TextButton.styleFrom(
+            foregroundColor: status.isNotEmpty ? BilgiColors.warning : BilgiColors.muted,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: VisualDensity.compact,
+          ),
+          child: Text(
+            status.isNotEmpty ? status : 'Hatalı soru bildir',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12, height: 1.15),
+          ),
+        ),
+      );
+    }
+    final noteHidden = status.isNotEmpty && _note.text.isNotEmpty;
+    return Row(
       children: [
-        if (!_open)
-          Align(
-            alignment: Alignment.topCenter,
-            child: TextButton(
-              onPressed: _busy ? null : () => setState(() => _open = true),
-              style: TextButton.styleFrom(
-                foregroundColor: BilgiColors.muted,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                visualDensity: VisualDensity.compact,
-              ),
-              child: const Text('Hatalı soru bildir', style: TextStyle(fontSize: 12)),
-            ),
-          )
-        else
-          Expanded(
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _note,
-                    maxLines: 1,
-                    style: const TextStyle(color: Colors.white, fontSize: 13),
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      hintText: 'Sorunun nesi hatalı? Açıklama zorunlu.',
-                      hintStyle: TextStyle(color: BilgiColors.muted, fontSize: 12),
+        Expanded(
+          child: noteHidden
+              ? GestureDetector(
+                  onTap: () => setState(() => _error = ''),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      status,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: BilgiColors.warning, fontSize: 12, height: 1.15),
+                    ),
+                  ),
+                )
+              : TextField(
+                  controller: _note,
+                  maxLines: 1,
+                  style: const TextStyle(color: Colors.white, fontSize: 12, height: 1.15),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    isCollapsed: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 2),
+                    border: InputBorder.none,
+                    hintText: status.isNotEmpty ? status : 'Sorunun nesi hatalı? Açıklama zorunlu.',
+                    hintStyle: TextStyle(
+                      color: status.isNotEmpty ? BilgiColors.warning : BilgiColors.muted,
+                      fontSize: 12,
+                      height: 1.15,
                     ),
                   ),
                 ),
-                TextButton(
-                  onPressed: _busy ? null : _send,
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: Text(_busy ? 'Gönderiliyor' : 'Gönder', style: const TextStyle(fontSize: 12)),
-                ),
-              ],
-            ),
+        ),
+        TextButton(
+          onPressed: _busy ? null : _send,
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: VisualDensity.compact,
           ),
-        if (_error.isNotEmpty)
-          Text(
-            _error,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: BilgiColors.warning, fontSize: 11),
-          ),
+          child: Text(_busy ? 'Gönderiliyor' : 'Gönder', style: const TextStyle(fontSize: 12, height: 1.15)),
+        ),
       ],
     );
   }
@@ -5443,6 +5567,39 @@ class _CategoryStackIcon extends StatelessWidget {
           card(const Color(0xFFFF6B9D), 8, 0),
         ],
       ),
+    );
+  }
+}
+
+class _ContestClock extends StatefulWidget {
+  const _ContestClock();
+
+  @override
+  State<_ContestClock> createState() => _ContestClockState();
+}
+
+class _ContestClockState extends State<_ContestClock> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      bilgiContestClock(bilgiContestRemaining(DateTime.now())),
+      style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 0.4),
     );
   }
 }

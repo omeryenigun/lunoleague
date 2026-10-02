@@ -86,10 +86,13 @@ class BilgiLedgerLine {
 }
 
 class BilgiWalletReply {
-  const BilgiWalletReply({this.profile, this.error});
+  const BilgiWalletReply({this.profile, this.error, this.livesReported = true});
 
   final BilgiProfile? profile;
   final String? error;
+
+  /// False when the payload omitted lives. The phone keeps the lives it already shows.
+  final bool livesReported;
 
   bool get ok => error == null && profile != null;
 }
@@ -152,7 +155,7 @@ String bilgiLedgerId(String asset) => 'w${DateTime.now().microsecondsSinceEpoch}
 
 /// Copies the server wallet onto the phone. Ad-free play counters stay on the device.
 /// Locale stays on the device until the server has a chosen locale.
-BilgiProfile bilgiApplyWallet(BilgiProfile local, BilgiProfile remote) {
+BilgiProfile bilgiApplyWallet(BilgiProfile local, BilgiProfile remote, {bool livesReported = true}) {
   final name = remote.username.trim();
   return local.copyWith(
     id: remote.id,
@@ -168,8 +171,8 @@ BilgiProfile bilgiApplyWallet(BilgiProfile local, BilgiProfile remote) {
     xp: remote.xp,
     level: remote.level,
     diamond: remote.diamond,
-    lives: remote.lives,
-    livesAt: remote.livesAt,
+    lives: livesReported ? remote.lives : local.lives,
+    livesAt: livesReported ? remote.livesAt : local.livesAt,
     jokers: remote.jokers,
     totalScore: remote.totalScore,
     weekId: remote.weekId,
@@ -690,6 +693,10 @@ class BilgiWalletBook {
     final opponentScore = bilgiInt(body['opponentScore'], -1);
     var gold = goldForScore(score, multiplier);
     var xp = xpForScore(score);
+    if (modeId == 'yarisma') {
+      gold = bilgiContestGold(correct);
+      xp = bilgiContestXp(correct);
+    }
     if (modeId == 'gunluk' && correct > 0) {
       gold = 100;
       xp = 50;
@@ -698,7 +705,9 @@ class BilgiWalletBook {
       gold = score >= opponentScore ? 50 : 10;
     }
     final level = applyXp(level: user.level, xp: user.xp, gained: xp);
-    final scored = bilgiAddScore(user, points: score, categoryId: categoryId, now: _clock());
+    final scored = modeId == 'yarisma'
+        ? user
+        : bilgiAddScore(user, points: score, categoryId: categoryId, now: _clock());
     final duelWins = user.duelWins +
         ((modeId == 'duello' && opponentName.isNotEmpty && opponentScore >= 0 && score >= opponentScore) ? 1 : 0);
     final next = bilgiWithBadges(scored.copyWith(
@@ -708,7 +717,7 @@ class BilgiWalletBook {
       diamond: scored.diamond + level.diamondsGained,
       correctTotal: scored.correctTotal + correct,
       bestScore: score > scored.bestScore ? score : scored.bestScore,
-      categoriesPlayed: {...user.categoriesPlayed, categoryId}.toList(),
+      categoriesPlayed: modeId == 'yarisma' ? user.categoriesPlayed : {...user.categoriesPlayed, categoryId}.toList(),
       duelWins: duelWins,
       title: level.level >= 10 ? 'Bilge' : user.title,
     ));

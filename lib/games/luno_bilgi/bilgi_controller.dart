@@ -10,6 +10,7 @@ import 'package:kelimelig/core/errors/failures.dart';
 import 'package:kelimelig/core/services/billing_gateway.dart';
 import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_contest.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_l10n.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_league.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_league_api.dart';
@@ -104,6 +105,10 @@ class BilgiController extends ChangeNotifier {
   String leagueTier = '';
   String leagueTitle = '';
   Duration leagueRemaining = Duration.zero;
+  int contestJoined = 0;
+  String contestPhase = 'new';
+  String contestTitle = '';
+  List<BilgiBoardEntry> contestRows = const [];
   List<Map<String, dynamic>> past = const [];
   List<Map<String, dynamic>> eventRows = const [];
   bool picked = false;
@@ -185,6 +190,7 @@ class BilgiController extends ChangeNotifier {
 
     config = await server.config();
     profile = await server.pullRemoteProfile();
+    unawaited(refreshContest());
     resolvingLocale = false;
     await _showLeagueReward();
 
@@ -353,6 +359,7 @@ class BilgiController extends ChangeNotifier {
   Future<void> _reloadProfile() async {
     profile = await server.pullRemoteProfile();
     await _showLeagueReward();
+    await refreshContest();
     notifyListeners();
   }
 
@@ -406,6 +413,10 @@ class BilgiController extends ChangeNotifier {
   }
 
   void selectMode(String id) {
+    if (id == 'yarisma') {
+      unawaited(playDailyContest());
+      return;
+    }
     modeId = id;
     if (id == 'duello') {
       open('duel');
@@ -443,9 +454,117 @@ class BilgiController extends ChangeNotifier {
     if (id.isEmpty || id == tumuKarmaId || id == 'karma') return;
     categoryId = id;
     subName = '';
-    final mode = bilgiModeById(modeId);
-    final solo = mode.group == 'solo' || mode.id == 'lig' ? mode.id : 'lig';
-    await start(forcedMode: solo);
+    await start(forcedMode: 'lig');
+  }
+
+  Future<void> refreshContest() async {
+    final user = profile;
+    if (user == null) return;
+    final paper = await BilgiContestApi.load(user.id);
+    if (!_alive || paper == null) return;
+    _applyContest(paper);
+    notifyListeners();
+  }
+
+  void _applyContest(BilgiContestPaper paper) {
+    contestJoined = paper.joined;
+    contestPhase = paper.phase;
+    contestTitle = paper.title.trim();
+    contestRows = bilgiDailyBoard(paper.ranking);
+  }
+
+  Future<void> _syncContest(BilgiRound live) async {
+    final user = profile;
+    if (user == null || live.modeId != 'yarisma') return;
+    final paper = await BilgiContestApi.save(
+      userId: user.id,
+      username: user.username,
+      avatar: user.avatar,
+      index: live.index,
+      score: live.score,
+      correct: live.correct,
+      wrong: live.wrong,
+      streak: live.streak,
+      finished: live.finished,
+    );
+    if (!_alive || paper == null) return;
+    _applyContest(paper);
+    notifyListeners();
+  }
+
+  /// Shared daily paper. A half-finished run continues at the saved question.
+  Future<void> playDailyContest() async {
+    final user = profile;
+    if (user == null) return;
+    if (contestPhase == 'done') {
+      open('contest_board');
+      unawaited(refreshContest());
+      return;
+    }
+    if (busy) return;
+    busy = true;
+    roundLoading = true;
+    notice = null;
+    notifyListeners();
+    final paper = await BilgiContestApi.load(user.id);
+    if (!_alive) return;
+    if (paper == null) {
+      _clearRoundLoading();
+      notice = 'Bağlantı kurulamadı.';
+      notifyListeners();
+      return;
+    }
+    if (paper.questions.isEmpty) {
+      _clearRoundLoading();
+      notice = '❓ Bu kategoride yeterli soru yok.';
+      notifyListeners();
+      return;
+    }
+    _applyContest(paper);
+    if (paper.phase == 'done') {
+      _clearRoundLoading();
+      open('contest_board');
+      return;
+    }
+    final mine = paper.me;
+    final result = await server.startRound(
+      modeId: 'yarisma',
+      categoryId: tumuKarmaId,
+      difficulty: bilgiMixDifficulty,
+      questionCount: paper.questions.length,
+      fixedQuestions: paper.questions,
+      adCleared: true,
+      chargeLife: mine == null,
+      startIndex: mine?.index ?? 0,
+      startScore: mine?.score ?? 0,
+      startCorrect: mine?.correct ?? 0,
+      startWrong: mine?.wrong ?? 0,
+      startStreak: mine?.streak ?? 0,
+    );
+    if (!_alive) return;
+    profile = result.profile ?? profile;
+    final started = result.round;
+    if (result.message != null || started == null) {
+      _clearRoundLoading();
+      notice = result.message ?? '⚠️ Bir şeyler ters gitti. Tekrar dene.';
+      notifyListeners();
+      return;
+    }
+    if (mine == null) unawaited(_syncContest(started));
+    _clearRoundLoading();
+    _begin(started);
+  }
+
+  void leaveRound() {
+    final live = round;
+    if (live != null && live.modeId == 'yarisma' && !live.finished) {
+      unawaited(_syncContest(live));
+      _timer?.cancel();
+      round = null;
+      tab('home');
+      return;
+    }
+    unawaited(endRound());
   }
 
   void selectSub(String name) {
@@ -769,6 +888,8 @@ class BilgiController extends ChangeNotifier {
     );
     profile = result.profile ?? profile;
     round = result.round ?? live;
+    final played = round ?? live;
+    if (played.modeId == 'yarisma') unawaited(_syncContest(played));
     if (result.message != null && result.round == null) {
       notice = result.message;
       picked = false;
@@ -1051,7 +1172,7 @@ class BilgiController extends ChangeNotifier {
       profile = result.profile;
       final acknowledge = purchase.acknowledge;
       if (acknowledge != null) await acknowledge();
-      notice = sku.gold > 0 ? '${sku.gold} altın eklendi.' : 'Luno Plus açıldı.';
+      notice = sku.gold > 0 ? '${sku.gold} altın eklendi.' : 'Luno Plus açıldı. ${sku.includedGold} altın eklendi.';
     } on AppFailure catch (error) {
       notice = error.message;
     } catch (_) {

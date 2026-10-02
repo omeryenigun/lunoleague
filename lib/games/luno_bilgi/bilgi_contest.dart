@@ -1,0 +1,279 @@
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+import 'package:kelimelig/core/config/api_config.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_league.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
+
+/// Time left until the next Istanbul midnight, when the shared paper turns over.
+Duration bilgiContestRemaining(DateTime now) {
+  final wall = bilgiIstanbulWall(now);
+  final next = DateTime(wall.year, wall.month, wall.day).add(const Duration(days: 1));
+  final left = next.difference(wall);
+  if (left.isNegative) return Duration.zero;
+  return left;
+}
+
+String bilgiContestClock(Duration left) {
+  final hours = left.inHours.toString().padLeft(2, '0');
+  final minutes = left.inMinutes.remainder(60).toString().padLeft(2, '0');
+  final seconds = left.inSeconds.remainder(60).toString().padLeft(2, '0');
+  return '$hours:$minutes:$seconds';
+}
+
+/// Real scores stay on top. Seeds only fill empty places up to 100.
+List<BilgiBoardEntry> bilgiDailyBoard(List<BilgiBoardEntry> real) {
+  final ranked = [...real]..sort((a, b) => b.score.compareTo(a.score));
+  final placed = <BilgiBoardEntry>[
+    for (var i = 0; i < ranked.length; i++)
+      BilgiBoardEntry(
+        id: ranked[i].id,
+        name: ranked[i].name,
+        avatar: ranked[i].avatar,
+        score: ranked[i].score,
+        seed: false,
+        city: ranked[i].city,
+        rank: i + 1,
+      ),
+  ];
+  if (placed.length >= bilgiLeagueRealLimit) {
+    return placed.take(bilgiLeagueRealLimit).toList();
+  }
+  final filler = <BilgiBoardEntry>[];
+  for (final seed in bilgiSeedBoard()) {
+    if (placed.length + filler.length >= bilgiLeagueRealLimit) break;
+    filler.add(
+      BilgiBoardEntry(
+        id: seed.id,
+        name: seed.name,
+        avatar: seed.avatar,
+        score: 0,
+        seed: true,
+        rank: placed.length + filler.length + 1,
+      ),
+    );
+  }
+  return [...placed, ...filler];
+}
+
+class BilgiContestProgress {
+  const BilgiContestProgress({
+    required this.index,
+    required this.score,
+    required this.correct,
+    required this.wrong,
+    required this.streak,
+    required this.finished,
+  });
+
+  final int index;
+  final int score;
+  final int correct;
+  final int wrong;
+  final int streak;
+  final bool finished;
+
+  factory BilgiContestProgress.fromMap(Map<String, dynamic> map) {
+    return BilgiContestProgress(
+      index: bilgiInt(map['index'], 0),
+      score: bilgiInt(map['score'], 0),
+      correct: bilgiInt(map['correct'], 0),
+      wrong: bilgiInt(map['wrong'], 0),
+      streak: bilgiInt(map['streak'], 0),
+      finished: map['finished'] == true,
+    );
+  }
+}
+
+class BilgiContestPaper {
+  const BilgiContestPaper({
+    required this.day,
+    required this.questions,
+    required this.joined,
+    required this.ranking,
+    this.title = '',
+    this.me,
+  });
+
+  final String day;
+  final String title;
+  final List<BilgiQuestion> questions;
+  final int joined;
+  final List<BilgiBoardEntry> ranking;
+  final BilgiContestProgress? me;
+
+  String get phase {
+    final mine = me;
+    if (mine == null) return 'new';
+    if (mine.finished) return 'done';
+    return 'open';
+  }
+}
+
+class BilgiContestDay {
+  const BilgiContestDay({
+    required this.day,
+    required this.title,
+    required this.count,
+    required this.locked,
+  });
+
+  final String day;
+  final String title;
+  final int count;
+  final bool locked;
+}
+
+class BilgiContestMonth {
+  const BilgiContestMonth({required this.month, required this.days});
+
+  final String month;
+  final List<BilgiContestDay> days;
+}
+
+class BilgiContestAdminResult {
+  const BilgiContestAdminResult({this.month, this.error});
+
+  final BilgiContestMonth? month;
+  final String? error;
+}
+
+class BilgiContestApi {
+  static Future<BilgiContestPaper?> load(String userId) async {
+    try {
+      final uri = Uri.parse('${ApiConfig.baseUrl}/v1/bilgi/contest').replace(
+        queryParameters: {if (userId.trim().isNotEmpty) 'userId': userId.trim()},
+      );
+      final response = await http.get(uri);
+      if (response.statusCode < 200 || response.statusCode >= 300) return null;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return null;
+      return _paper(Map<String, dynamic>.from(decoded));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<BilgiContestPaper?> save({
+    required String userId,
+    required String username,
+    required String avatar,
+    required int index,
+    required int score,
+    required int correct,
+    required int wrong,
+    required int streak,
+    required bool finished,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/v1/bilgi/contest'),
+        headers: {'content-type': 'application/json; charset=utf-8'},
+        body: jsonEncode({
+          'userId': userId,
+          'username': username,
+          'avatar': avatar,
+          'index': index,
+          'score': score,
+          'correct': correct,
+          'wrong': wrong,
+          'streak': streak,
+          'finished': finished,
+        }),
+      );
+      if (response.statusCode < 200 || response.statusCode >= 300) return null;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return null;
+      return _paper(Map<String, dynamic>.from(decoded));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<BilgiContestAdminResult> adminLoad(String token, String month) {
+    return _admin(
+      http.get(
+        Uri.parse('${ApiConfig.baseUrl}/v1/admin/bilgi-contest').replace(queryParameters: {'month': month}),
+        headers: {'authorization': 'Bearer $token'},
+      ),
+    );
+  }
+
+  static Future<BilgiContestAdminResult> adminSave(
+    String token, {
+    String month = '',
+    String day = '',
+    String? title,
+    bool rebuild = false,
+  }) {
+    return _admin(
+      http.post(
+        Uri.parse('${ApiConfig.baseUrl}/v1/admin/bilgi-contest'),
+        headers: {
+          'authorization': 'Bearer $token',
+          'content-type': 'application/json; charset=utf-8',
+        },
+        body: jsonEncode({
+          if (month.isNotEmpty) 'month': month,
+          if (day.isNotEmpty) 'day': day,
+          'title': ?title,
+          if (rebuild) 'rebuild': true,
+        }),
+      ),
+    );
+  }
+
+  static Future<BilgiContestAdminResult> _admin(Future<http.Response> call) async {
+    try {
+      final response = await call;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return const BilgiContestAdminResult(error: 'Günlük oyun yüklenemedi.');
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return BilgiContestAdminResult(error: '${decoded['error'] ?? 'Günlük oyun yüklenemedi.'}');
+      }
+      final days = <BilgiContestDay>[
+        for (final item in (decoded['days'] as List? ?? const []))
+          if (item is Map)
+            BilgiContestDay(
+              day: '${item['day'] ?? ''}',
+              title: '${item['title'] ?? ''}'.trim(),
+              count: bilgiInt(item['count'], 0),
+              locked: item['locked'] == true,
+            ),
+      ];
+      return BilgiContestAdminResult(
+        month: BilgiContestMonth(month: '${decoded['month'] ?? ''}', days: days),
+      );
+    } catch (_) {
+      return const BilgiContestAdminResult(error: 'Günlük oyun yüklenemedi.');
+    }
+  }
+
+  static BilgiContestPaper _paper(Map<String, dynamic> map) {
+    final questions = <BilgiQuestion>[
+      for (final item in (map['questions'] as List? ?? const []))
+        if (item is Map) BilgiQuestion.fromMap(Map<String, dynamic>.from(item)),
+    ];
+    final ranking = <BilgiBoardEntry>[
+      for (final item in (map['ranking'] as List? ?? const []))
+        if (item is Map)
+          BilgiBoardEntry(
+            id: '${item['id'] ?? ''}',
+            name: '${item['name'] ?? ''}',
+            avatar: '${item['avatar'] ?? '😎'}',
+            score: bilgiInt(item['score'], 0),
+            seed: false,
+          ),
+    ];
+    final meRaw = map['me'];
+    final rawTitle = '${map['title'] ?? ''}'.trim();
+    return BilgiContestPaper(
+      day: '${map['day'] ?? ''}',
+      title: rawTitle.length > 40 ? rawTitle.substring(0, 40) : rawTitle,
+      questions: questions,
+      joined: bilgiInt(map['joined'], 0),
+      ranking: ranking,
+      me: meRaw is Map ? BilgiContestProgress.fromMap(Map<String, dynamic>.from(meRaw)) : null,
+    );
+  }
+}
