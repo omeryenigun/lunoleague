@@ -187,6 +187,18 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     }
   }
 
+  void _rememberSaved(List<BilgiQuestion> questions) {
+    if (!mounted || questions.isEmpty) return;
+    setState(() {
+      final pending = {for (final question in questions) question.id: question};
+      final next = <BilgiQuestion>[
+        for (final question in _questions) pending.remove(question.id) ?? question,
+      ];
+      next.addAll(pending.values);
+      _questions = next;
+    });
+  }
+
   Future<void> _deleteRemote(String id) async {
     final error = await BilgiQuestionApi.delete(sl<ApiSession>().adminToken ?? '', id);
     if (error != null) throw StateError(error);
@@ -1400,7 +1412,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
           setState(() => _note = 'Tercüme kaydediliyor... (${i + 1}/${chosen.length})');
           await _saveRemote([written]);
           translated++;
-          await _load();
+          _rememberSaved([written]);
         } on StateError catch (error) {
           failed++;
           if (!mounted) return;
@@ -1815,7 +1827,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   Widget _rowTranslateBtn(BilgiQuestion question) {
     final busy = _translatingId == question.id;
     return Tooltip(
-      message: 'Tüm dilleri çevir',
+      message: 'Seçili dilleri çevir',
       child: InkWell(
         onTap: busy ? null : () => _translateRow(question),
         child: Padding(
@@ -1872,8 +1884,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     try {
       setState(() => _note = 'Tercüme kaydediliyor...');
       await _saveRemote([written]);
-      await _load();
       if (!mounted) return;
+      _rememberSaved([written]);
       setState(() {
         _translatingId = null;
         _note = 'Soru çevrildi ve kaydedildi.';
@@ -2097,11 +2109,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
         }
         try {
           await _saveRemote([written]);
-          await _load();
-          final stored = _questions.where((question) => question.id == id).firstOrNull;
-          if (stored == null || !sameStoredBilgiQuestion(stored, written)) {
-            throw StateError('Soru kaydedilemedi.');
-          }
+          if (!mounted) return;
+          _rememberSaved([written]);
         } on StateError catch (error) {
           setState(() => _note = error.message);
           rethrow;
@@ -2117,7 +2126,6 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
               : (draft.asDraft ? 'Taslak güncellendi.' : 'Soru güncellendi.');
           if (existing != null) _index = 1;
         });
-        await _load();
       },
     );
   }
@@ -2934,6 +2942,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
               children: [
                 _LangNameFields(
                   fields: fields,
+                  published: category.publishLocales.toSet(),
                   saveNames: (names) => _saveNameLabels(scope: 'sub', key: '${category.id}|${fields['tr']!.text.trim()}', names: names),
                 ),
                 TextField(controller: emojiField, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'Simge')),
@@ -2953,7 +2962,11 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     );
     final next = fields['tr']!.text.trim();
     final emoji = emojiField.text.trim();
-    final names = {for (final entry in fields.entries) if (entry.key != 'tr') entry.key: entry.value.text.trim()};
+    final allowed = category.publishLocales.toSet();
+    final names = {
+      for (final entry in fields.entries)
+        if (entry.key != 'tr' && allowed.contains(entry.key)) entry.key: entry.value.text.trim(),
+    };
     for (final field in fields.values) {
       field.dispose();
     }
@@ -4602,7 +4615,7 @@ class _QuestionFormState extends State<_QuestionForm> {
       _translating = true;
       _translateNote = 'Çevriliyor...';
     });
-    final targets = bilgiExtraLocales(_cat?.locales);
+    final targets = bilgiExtraLocales(_publishedLocales.toList());
     if (targets.isEmpty) {
       setState(() {
         _translating = false;
@@ -4650,7 +4663,14 @@ class _QuestionFormState extends State<_QuestionForm> {
     });
   }
 
+  Set<String> get _publishedLocales {
+    final category = _cat;
+    if (category == null) return {'tr'};
+    return category.publishLocales.toSet();
+  }
+
   void _showLang(String lang) {
+    if (!_publishedLocales.contains(lang)) return;
     _storeLang();
     final row = _bag[lang];
     _text.text = row?.text ?? '';
@@ -4687,7 +4707,10 @@ class _QuestionFormState extends State<_QuestionForm> {
           reviewed: _reviewed,
           translations: {
             for (final entry in _bag.entries)
-              if (entry.key != 'tr' && entry.value.text.isNotEmpty && entry.value.options.every((item) => item.isNotEmpty))
+              if (entry.key != 'tr' &&
+                  _publishedLocales.contains(entry.key) &&
+                  entry.value.text.isNotEmpty &&
+                  entry.value.options.every((item) => item.isNotEmpty))
                 entry.key: entry.value,
           },
         ),
@@ -4726,14 +4749,18 @@ class _QuestionFormState extends State<_QuestionForm> {
                   children: [
                     Expanded(
                       child: _BilgiLangTabs(
-                        selected: _lang,
+                        selected: _publishedLocales.contains(_lang) ? _lang : 'tr',
                         onSelect: _showLang,
                         wrap: true,
                         filled: _langFilled,
+                        published: _publishedLocales,
                       ),
                     ),
                     const SizedBox(width: 12),
-                    _translateAllButton(busy: _translating, onPressed: _translateAll),
+                    _translateAllButton(
+                      busy: _translating,
+                      onPressed: bilgiExtraLocales(_publishedLocales.toList()).isEmpty ? null : _translateAll,
+                    ),
                   ],
                 ),
                 if (_translateNote.isNotEmpty) ...[
@@ -4759,7 +4786,15 @@ class _QuestionFormState extends State<_QuestionForm> {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(child: _drop('Ana Kategori', _category, [for (final c in widget.categories) (c.id, '${c.emoji} ${c.name}')], (v) => setState(() { _category = v; _sub = ''; }))),
+                      Expanded(child: _drop('Ana Kategori', _category, [for (final c in widget.categories) (c.id, '${c.emoji} ${c.name}')], (v) {
+                        final next = widget.categories.where((category) => category.id == v).firstOrNull;
+                        final allowed = next?.publishLocales.toSet() ?? {'tr'};
+                        if (!allowed.contains(_lang)) _showLang('tr');
+                        setState(() {
+                          _category = v;
+                          _sub = '';
+                        });
+                      })),
                       const SizedBox(width: 16),
                       Expanded(child: _drop('Alt Kategori', _sub, [for (final name in subs) (name, name)], (v) => setState(() => _sub = v), enabled: subs.isNotEmpty, emptyHint: _cat == null ? 'Önce ana kategori' : 'Bu kategoride alt kategori yok')),
                     ],
@@ -5514,10 +5549,7 @@ class _LangNameFieldsState extends State<_LangNameFields> {
       _translating = true;
       _note = 'Çevriliyor...';
     });
-    final targets = [
-      for (final id in bilgiExtraLocales(null))
-        if (widget.published == null || widget.published!.contains(id)) id,
-    ];
+    final targets = bilgiExtraLocales(widget.published?.toList());
     if (targets.isEmpty) {
       setState(() {
         _translating = false;
@@ -5598,7 +5630,7 @@ Widget _translateAllButton({required bool busy, required VoidCallback? onPressed
     onPressed: busy ? null : onPressed,
     child: busy
         ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-        : const Text('Tüm dilleri çevir'),
+        : const Text('Seçili dilleri çevir'),
   );
 }
 
@@ -5632,12 +5664,17 @@ class _BilgiLangTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tabs = [
+    final locked = published != null && onTogglePublished == null;
+    final locales = [
       for (final locale in GameLocale.all)
+        if (!locked || locale.id == 'tr' || published!.contains(locale.id)) locale,
+    ];
+    final tabs = [
+      for (final locale in locales)
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (published != null)
+            if (published != null && !locked)
               Checkbox(
                 value: locale.id == 'tr' || published!.contains(locale.id),
                 onChanged: locale.id == 'tr' ? null : (_) => onTogglePublished?.call(locale.id),

@@ -208,15 +208,23 @@ class BilgiStatChip extends StatelessWidget {
 }
 
 class BilgiPrimaryButton extends StatelessWidget {
-  const BilgiPrimaryButton({super.key, required this.label, required this.onTap});
+  const BilgiPrimaryButton({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.verticalPadding = 18,
+    this.horizontalPadding = 20,
+  });
 
   final String label;
   final VoidCallback? onTap;
+  final double verticalPadding;
+  final double horizontalPadding;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SizedBox(
         width: double.infinity,
         child: DecoratedBox(
@@ -236,7 +244,7 @@ class BilgiPrimaryButton extends StatelessWidget {
               onTap: onTap,
               borderRadius: BorderRadius.circular(bilgiRadius),
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 18),
+                padding: EdgeInsets.symmetric(vertical: verticalPadding),
                 child: Text(
                   label,
                   textAlign: TextAlign.center,
