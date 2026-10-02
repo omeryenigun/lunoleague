@@ -47,7 +47,6 @@ Future<void> migrateBilgiRooms(Connection db) async {
 void mountBilgiRooms(Router router, Connection db) {
   router
     ..post('/v1/bilgi/rooms', (request) => _create(request, db))
-    ..get('/v1/bilgi/rooms/open', (request) => _open(request, db))
     ..get('/v1/bilgi/rooms/<code>', (Request request, String code) => _poll(db, code))
     ..post('/v1/bilgi/rooms/<code>/join', (Request request, String code) => _join(request, db, code))
     ..post('/v1/bilgi/rooms/<code>/start', (Request request, String code) => _start(request, db, code))
@@ -96,25 +95,6 @@ Future<Response> _create(Request request, Connection db) async {
   );
   await _seat(db, code: code, playerId: playerId, name: name, role: 'host');
   return jsonResponse(await _payload(db, code, includeQuestions: false));
-}
-
-Future<Response> _open(Request request, Connection db) async {
-  final kind = (request.url.queryParameters['kind'] ?? 'grup').trim();
-  if (kind != 'grup') return jsonResponse({'error': 'Açık grup odası yok.'}, status: 404);
-  final rows = await db.execute('''
-    select code from bilgi_rooms
-    where kind = 'grup' and status = 'lobby'
-    order by created_at
-    limit 8
-  ''');
-  for (final row in rows) {
-    final code = '${row[0]}';
-    final players = await _players(db, code);
-    if (players.length < 10) {
-      return jsonResponse(await _payload(db, code, includeQuestions: false));
-    }
-  }
-  return jsonResponse({'error': 'Açık grup odası yok.'}, status: 404);
 }
 
 Future<Response> _join(Request request, Connection db, String code) async {
@@ -225,10 +205,9 @@ Future<Response> _poll(Connection db, String code) async {
 }
 
 Future<String?> _freshCode(Connection db) async {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   final random = Random();
-  for (var attempt = 0; attempt < 6; attempt++) {
-    final code = 'LB${List.generate(4, (_) => alphabet[random.nextInt(alphabet.length)]).join()}';
+  for (var attempt = 0; attempt < 8; attempt++) {
+    final code = random.nextInt(1000000).toString().padLeft(6, '0');
     final taken = await db.execute(
       Sql.named('select 1 from bilgi_rooms where code = @code'),
       parameters: {'code': code},

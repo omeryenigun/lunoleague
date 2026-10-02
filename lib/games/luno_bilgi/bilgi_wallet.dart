@@ -654,7 +654,7 @@ class BilgiWalletBook {
     final config = await _config();
     final mode = config.resolvedMode(bilgiModeById('${body['modeId'] ?? ''}'));
     if (config.livesEnabled && user.lives < mode.lifeCost) {
-      return const BilgiWalletReply(error: '❤️ Canın bitti! Yenilenmesini bekle veya satın al.');
+      return BilgiWalletReply(error: bilgiNoLivesNotice(config.lifeMinutes));
     }
     var next = user.copyWith(gamesPlayed: user.gamesPlayed + 1);
     if (config.livesEnabled && mode.lifeCost > 0) {

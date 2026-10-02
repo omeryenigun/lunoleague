@@ -365,15 +365,59 @@ void main() {
     expect(retired.map((category) => category.id), ['bilim']);
   });
 
+  test('special event questions stay out unless that category is chosen', () {
+    const event = BilgiCategory(
+      id: 'etkinlik-ozel',
+      group: bilgiSpecialEventGroup,
+      name: 'Sonbahar',
+      emoji: '🍂',
+      subs: ['Tur'],
+    );
+    const normal = BilgiCategory(
+      id: 'felsefe',
+      group: 'E. Felsefe ve İnanç',
+      name: 'Felsefe',
+      emoji: '🤔',
+      subs: ['Antik'],
+    );
+    const eventQuestion = BilgiQuestion(
+      id: 'q1',
+      categoryId: 'etkinlik-ozel',
+      text: 'Soru',
+      options: ['A', 'B', 'C', 'D'],
+      correct: 0,
+      difficulty: 'kolay',
+      explanation: '',
+      tags: ['Tur'],
+    );
+    const normalQuestion = BilgiQuestion(
+      id: 'q2',
+      categoryId: 'felsefe',
+      text: 'Soru',
+      options: ['A', 'B', 'C', 'D'],
+      correct: 0,
+      difficulty: 'kolay',
+      explanation: '',
+      tags: ['Antik'],
+    );
+    final categories = [event, normal];
+    expect(bilgiPlayableQuestion(eventQuestion, categories, categoryId: tumuKarmaId), isFalse);
+    expect(bilgiPlayableQuestion(eventQuestion, categories, categoryId: 'felsefe'), isFalse);
+    expect(bilgiPlayableQuestion(eventQuestion, categories, categoryId: 'etkinlik-ozel'), isTrue);
+    expect(bilgiPlayableQuestion(eventQuestion, categories, categoryId: 'etkinlik-ozel', subcategory: 'Tur'), isTrue);
+    expect(bilgiPlayableQuestion(normalQuestion, categories, categoryId: tumuKarmaId), isTrue);
+  });
+
   test('group headings have a name in every extra language', () {
     const locales = ['en', 'de', 'es', 'fr', 'it', 'ru', 'nl', 'pt', 'pl'];
     for (final group in bilgiGroups) {
       expect(bilgiGroupLabel('tr', group), isNull);
+      final prefixed = group.length > 2 && group[1] == '.';
       for (final locale in locales) {
         final label = bilgiGroupLabel(locale, group);
         expect(label, isNotNull);
         expect(label!.trim(), isNotEmpty);
-        expect(label.startsWith(group.substring(0, 2)), isTrue);
+        if (prefixed) expect(label.startsWith(group.substring(0, 2)), isTrue);
       }
     }
   });

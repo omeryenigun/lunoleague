@@ -152,6 +152,7 @@ List<String> bilgiLeagueCatalog(Map<String, int> publishedCounts) {
     for (final category in bilgiCategories)
       if (category.id != tumuKarmaId &&
           category.id != 'karma' &&
+          !bilgiSpecialEventCategory(category) &&
           bilgiCategoryListed(category.id, publishedCounts[category.id]))
         category.id,
   ];

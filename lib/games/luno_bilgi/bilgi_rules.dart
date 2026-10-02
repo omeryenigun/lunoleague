@@ -223,6 +223,10 @@ DateTime livesClockAfterRegen({
   return livesAt.add(Duration(minutes: gained * minutesPerLife));
 }
 
+String bilgiNoLivesNotice(int minutes) {
+  return '❤️ Canın bitti! Yenilenmesini bekle veya satın al. ($minutes dk\'da bir can otomatik yüklenir.)';
+}
+
 /// First page after boot. Language comes before intro/home.
 String bilgiBootPage({
   required bool maintenance,

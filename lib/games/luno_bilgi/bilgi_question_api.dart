@@ -137,6 +137,50 @@ class BilgiQuestionApi {
     return (names: out, error: null);
   }
 
+  static Future<({String? error, String difficulty, String status, String rejectReason, String verdict})> reviewQuestion(
+    String token,
+    String id,
+  ) async {
+    const empty = (error: 'Kontrol yapılamadı.', difficulty: '', status: '', rejectReason: '', verdict: '');
+    if (token.isEmpty) {
+      return (error: 'Yönetici oturumu gerekli.', difficulty: '', status: '', rejectReason: '', verdict: '');
+    }
+    try {
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/v1/admin/bilgi-review'),
+        headers: {
+          'authorization': 'Bearer $token',
+          'content-type': 'application/json; charset=utf-8',
+        },
+        body: jsonEncode({'id': id}),
+      );
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return empty;
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return (
+          error: '${decoded['error'] ?? 'Kontrol yapılamadı.'}',
+          difficulty: '',
+          status: '',
+          rejectReason: '',
+          verdict: '',
+        );
+      }
+      final difficulty = '${decoded['difficulty'] ?? ''}'.trim();
+      final status = '${decoded['status'] ?? ''}'.trim();
+      final verdict = '${decoded['verdict'] ?? ''}'.trim();
+      if (difficulty.isEmpty || status.isEmpty || (verdict != 'keep' && verdict != 'reject')) return empty;
+      return (
+        error: null,
+        difficulty: difficulty,
+        status: status,
+        rejectReason: '${decoded['rejectReason'] ?? ''}'.trim(),
+        verdict: verdict,
+      );
+    } catch (_) {
+      return (error: 'Kontrol servisi yanıt vermedi.', difficulty: '', status: '', rejectReason: '', verdict: '');
+    }
+  }
+
   static Future<({Map<String, dynamic>? body, String? error})> _translate(String token, Map<String, Object> body) async {
     if (token.isEmpty) return (body: null, error: 'Yönetici oturumu gerekli.');
     try {

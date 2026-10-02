@@ -80,7 +80,12 @@ class BilgiCountSnapshot {
   }
 
   /// Kapalı kategori ve alt kategori cevapta yer almaz. Soru satırı okunmaz.
-  BilgiCountSnapshot visible(Set<String> openCategories, Set<String> openSubs) {
+  /// [eventCategories] kendi sayısını korur, tümü havuzuna girmez.
+  BilgiCountSnapshot visible(
+    Set<String> openCategories,
+    Set<String> openSubs, {
+    Set<String> eventCategories = const {},
+  }) {
     final shownCategories = <String, int>{};
     var total = 0;
     final shownDiff = <String, int>{};
@@ -88,7 +93,7 @@ class BilgiCountSnapshot {
       if (entry.key == tumuKarmaId || entry.value <= 0) continue;
       if (!openCategories.contains(entry.key)) continue;
       shownCategories[entry.key] = entry.value;
-      total += entry.value;
+      if (!eventCategories.contains(entry.key)) total += entry.value;
     }
     if (total > 0) shownCategories[tumuKarmaId] = total;
 
@@ -110,7 +115,9 @@ class BilgiCountSnapshot {
         final categoryId = wide[0];
         if (categoryId == tumuKarmaId || !openCategories.contains(categoryId)) continue;
         shownSlices[entry.key] = entry.value;
-        shownDiff[wide[1]] = (shownDiff[wide[1]] ?? 0) + entry.value;
+        if (!eventCategories.contains(categoryId)) {
+          shownDiff[wide[1]] = (shownDiff[wide[1]] ?? 0) + entry.value;
+        }
         continue;
       }
       final parts = entry.key.split('|');

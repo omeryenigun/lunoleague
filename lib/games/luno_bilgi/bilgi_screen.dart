@@ -119,7 +119,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
   /// Active categories whose approved count is loaded and at least [bilgiMinPublishedQuestions].
   List<BilgiCategory> get _listedCategories => [
         for (final category in _game.categories)
-          if (bilgiCategoryListed(category.id, _game.categoryCounts[category.id])) category,
+          if (!bilgiSpecialEventCategory(category) && bilgiCategoryListed(category.id, _game.categoryCounts[category.id])) category,
       ];
 
   @override
@@ -207,7 +207,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
 
   String _navId() {
     return switch (_game.page) {
-      'categories' || 'detail' || 'setup' || 'group' || 'room' => 'play',
+      'categories' || 'detail' || 'setup' || 'room' => 'play',
       'achievements' => 'profile',
       'league_rewards' => 'league',
       _ => _game.page,
@@ -233,7 +233,6 @@ class _BilgiScreenState extends State<BilgiScreen> {
       'profile' => _profile(user!),
       'shop' => _shop(user!),
       'duel' => _duel(),
-      'group' => _group(),
       'room' => _room(),
       'daily' => _daily(),
       'event' => _events(),
@@ -349,8 +348,21 @@ class _BilgiScreenState extends State<BilgiScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
+                                    if (_game.contestTitle.trim().isNotEmpty) ...[
+                                      Text(
+                                        _game.contestTitle.trim(),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: _homeInter(size: 13, weight: FontWeight.w800, color: const Color(0xFFFDE68A)),
+                                      ),
+                                      const SizedBox(height: 4),
+                                    ],
                                     Text(
-                                      _game.t('free_play'),
+                                      switch (_game.contestPhase) {
+                                        'open' => 'Kaldığın Yerden Devam Et',
+                                        'done' => 'Yeni Yarışma Yükleniyor...',
+                                        _ => _game.t('free_play'),
+                                      },
                                       style: _homeInter(size: 14, weight: FontWeight.w700),
                                     ),
                                     const SizedBox(height: 4),
@@ -372,11 +384,11 @@ class _BilgiScreenState extends State<BilgiScreen> {
                                 constraints: const BoxConstraints(maxWidth: 132),
                                 child: _homePillButton(
                                 label: switch (_game.contestPhase) {
-                                  'open' => 'Kaldığın Yerden Devam Et',
-                                  'done' => 'Yeni Yarışma Yükleniyor...',
+                                  'open' => 'Devam Et',
+                                  'done' => 'Bugün Tamamlandı',
                                   _ => 'Başla',
                                 },
-                                maxLines: 3,
+                                maxLines: 2,
                                 textAlign: TextAlign.center,
                                 onTap: () {
                                   if (_game.contestPhase == 'done') {
@@ -867,7 +879,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
 
   Widget _modes() {
     final solo = [for (final mode in bilgiModes) if (mode.group == 'solo') mode];
-    final multi = [for (final mode in bilgiModes) if (mode.group == 'multi' && mode.id != 'grup') mode];
+    final multi = [for (final mode in bilgiModes) if (mode.group == 'multi') mode];
     final special = [for (final mode in bilgiModes) if (mode.group == 'special') mode];
     final categoryCount = _listedCategories.length;
     return ListView(
@@ -1541,6 +1553,10 @@ class _BilgiScreenState extends State<BilgiScreen> {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 2),
+                    if (category != null && bilgiSpecialEventCategory(category)) ...[
+                      const SizedBox(height: 4),
+                      const Center(child: _SpecialEventTag()),
+                    ],
                     Text(
                       _game.t('hdr_question'),
                       style: const TextStyle(
@@ -1680,7 +1696,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
                     decoration: BoxDecoration(
                       color: const Color(0xFF221F3D),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0x738B5CF6)),
+                      border: Border.all(color: const Color(0xD9F4F1FB), width: 1.5),
                     ),
                     child: Text(
                       text,
@@ -2951,16 +2967,6 @@ class _BilgiScreenState extends State<BilgiScreen> {
     );
   }
 
-  Widget _group() {
-    return ListView(
-      children: [
-        _pageHeader(_game.t('page_group'), onBack: _game.back),
-        _tile('➕', 'Grup kur', 'Kod oluştur • 20 soru', () => _game.makeRoom('grup')),
-        _joinForm(),
-      ],
-    );
-  }
-
   Widget _room() {
     final room = _game.room;
     final title = switch (room?.kind) {
@@ -3737,9 +3743,9 @@ class _BilgiScreenState extends State<BilgiScreen> {
         _pageHeader('Can', onBack: _game.back),
         Padding(
           padding: const EdgeInsets.only(top: 20),
-          child: _note('❤️ Canın bitti! Yenilenmesini bekle veya satın al.'),
+          child: _note(bilgiNoLivesNotice(_game.config.lifeMinutes)),
         ),
-        if (_game.notice != null) _note(_game.notice!),
+        if (_game.notice != null && !_game.notice!.contains('Canın bitti')) _note(_game.notice!),
         _tile(
           '🪙',
           'Luno altınlarınla doldur',
@@ -4865,6 +4871,7 @@ class _FormCardState extends State<_FormCard> {
           for (var i = 0; i < widget.fields.length; i++)
             TextField(
               controller: _fields[i],
+              keyboardType: widget.fields[i] == 'Kod' ? TextInputType.number : null,
               obscureText: widget.fields[i].toLowerCase().contains('şifre'),
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(labelText: widget.fields[i]),
@@ -4938,11 +4945,11 @@ class _BilgiQuizOptionState extends State<_BilgiQuizOption> with SingleTickerPro
 
   @override
   Widget build(BuildContext context) {
-    Color border = Colors.transparent;
+    Color border = const Color(0xD9F4F1FB);
     Color fill = BilgiColors.card;
     Color chip = BilgiColors.card;
     var letterColor = Colors.white;
-    var borderWidth = 1.0;
+    var borderWidth = 1.5;
     if (widget.correct) {
       border = BilgiColors.secondary;
       fill = const Color(0x2600D9C0);
@@ -5590,6 +5597,33 @@ class _ContestClock extends StatefulWidget {
 
   @override
   State<_ContestClock> createState() => _ContestClockState();
+}
+
+class _SpecialEventTag extends StatelessWidget {
+  const _SpecialEventTag();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: const Color(0x33F59E0B),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0x66F59E0B)),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.celebration, size: 14, color: Color(0xFFFBBF24)),
+          SizedBox(width: 4),
+          Text(
+            bilgiSpecialEventGroup,
+            style: TextStyle(color: Color(0xFFFBBF24), fontSize: 11, fontWeight: FontWeight.w800),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _ContestClockState extends State<_ContestClock> {

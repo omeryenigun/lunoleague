@@ -18,7 +18,6 @@ class BilgiRoomHooks {
     required this.poll,
     required this.start,
     required this.score,
-    required this.openGroup,
   });
 
   final Future<BilgiRoomSync> Function({
@@ -49,6 +48,4 @@ class BilgiRoomHooks {
     required int score,
     required int index,
   }) score;
-
-  final Future<BilgiRoomSync> Function() openGroup;
 }

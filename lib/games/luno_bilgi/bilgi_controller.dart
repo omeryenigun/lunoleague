@@ -14,6 +14,7 @@ import 'package:kelimelig/games/luno_bilgi/bilgi_contest.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_l10n.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_league.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_league_api.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_league_run.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_mail.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_question_api.dart';
@@ -160,7 +161,6 @@ class BilgiController extends ChangeNotifier {
         'settings',
         'profile',
         'shop',
-        'group',
         'room',
         'result',
         'history',
@@ -324,6 +324,11 @@ class BilgiController extends ChangeNotifier {
   }
 
   void back() {
+    final live = round;
+    if (page == 'game' && live != null && !live.finished && (live.modeId == 'yarisma' || bilgiLeagueResumable(live.modeId))) {
+      leaveRound();
+      return;
+    }
     _timer?.cancel();
     _syncBeat = 0;
     if (stack.length > 1) stack.removeLast();
@@ -420,10 +425,6 @@ class BilgiController extends ChangeNotifier {
     modeId = id;
     if (id == 'duello') {
       open('duel');
-      return;
-    }
-    if (id == 'grup') {
-      open('group');
       return;
     }
     if (id == 'oda') {
@@ -564,7 +565,25 @@ class BilgiController extends ChangeNotifier {
       tab('home');
       return;
     }
+    if (live != null && bilgiLeagueResumable(live.modeId) && !live.finished) {
+      unawaited(_leaveLeague(live));
+      return;
+    }
     unawaited(endRound());
+  }
+
+  Future<void> _leaveLeague(BilgiRound live) async {
+    _timer?.cancel();
+    final saved = await BilgiLeagueRunApi.save(live, finished: false);
+    if (!_alive || round?.id != live.id) return;
+    if (!saved) {
+      notice = 'Bağlantı kurulamadı.';
+      _armPlay();
+      notifyListeners();
+      return;
+    }
+    round = null;
+    tab('home');
   }
 
   void selectSub(String name) {
@@ -619,6 +638,25 @@ class BilgiController extends ChangeNotifier {
 
   Future<void> start({bool adCleared = false, int? count, String? forcedMode}) async {
     if (busy) return;
+    final mode = forcedMode ?? modeId;
+    final pending = round;
+    if (pending != null && !pending.finished && bilgiLeagueResumable(pending.modeId)) {
+      if (pending.categoryId == categoryId && pending.modeId == mode) {
+        _begin(pending);
+        return;
+      }
+      busy = true;
+      notifyListeners();
+      final parked = await BilgiLeagueRunApi.save(pending, finished: false);
+      busy = false;
+      if (!_alive) return;
+      if (!parked) {
+        notice = 'Bağlantı kurulamadı.';
+        notifyListeners();
+        return;
+      }
+      round = null;
+    }
     final epoch = ++_startEpoch;
     busy = true;
     roundLoading = true;
@@ -629,15 +667,39 @@ class BilgiController extends ChangeNotifier {
 
     _setLoadPhase(0.28, 'load_status_sending');
     notifyListeners();
-    final result = await server.startRound(
-      modeId: forcedMode ?? modeId,
-      categoryId: categoryId,
-      subcategory: subName,
-      difficulty: difficulty,
-      questionCount: count ?? questionChoice,
-      adCleared: adCleared,
-    );
+    final resume = bilgiLeagueResumable(mode) ? await _openLeagueRun(mode) : null;
     if (epoch != _startEpoch) return;
+    if (resume == false) {
+      _clearRoundLoading();
+      notice = 'Bağlantı kurulamadı.';
+      notifyListeners();
+      return;
+    }
+    final saved = resume is BilgiLeagueOpen ? resume : null;
+    final result = await server.startRound(
+      modeId: mode,
+      categoryId: categoryId,
+      subcategory: saved?.subcategory ?? subName,
+      difficulty: saved?.difficulty ?? difficulty,
+      questionCount: count ?? questionChoice,
+      adCleared: saved != null || adCleared,
+      fixedQuestions: saved?.questions,
+      fixedSpare: saved?.spare,
+      chargeLife: saved == null,
+      startIndex: saved?.index ?? 0,
+      startScore: saved?.score ?? 0,
+      startCorrect: saved?.correct ?? 0,
+      startWrong: saved?.wrong ?? 0,
+      startStreak: saved?.streak ?? 0,
+      startJokersUsed: saved?.jokersUsed ?? 0,
+      startDoubleLeft: saved?.doubleLeft ?? 0,
+      startHidden: saved?.hidden ?? const [],
+      startHint: saved?.hint ?? '',
+    );
+    if (epoch != _startEpoch) {
+      _keepUnfinished(result.round, fresh: saved == null);
+      return;
+    }
 
     _setLoadPhase(0.72, 'load_status_received');
     notifyListeners();
@@ -677,9 +739,38 @@ class BilgiController extends ChangeNotifier {
     _setLoadPhase(1.0, 'load_status_ready');
     notifyListeners();
     await Future<void>.delayed(const Duration(milliseconds: 320));
-    if (epoch != _startEpoch) return;
+    if (epoch != _startEpoch) {
+      _keepUnfinished(started, fresh: saved == null);
+      return;
+    }
     _clearRoundLoading();
+    if (saved == null && bilgiLeagueResumable(started.modeId) && !started.finished) {
+      await _syncLeague(started, fresh: true);
+    }
+    if (epoch != _startEpoch) return;
     _begin(started);
+  }
+
+  /// `false` means the open-run lookup failed. `null` means there is no run.
+  Future<Object?> _openLeagueRun(String mode) async {
+    final user = profile;
+    if (user == null || !bilgiLeagueResumable(mode)) return null;
+    if (categoryId.isEmpty) return null;
+    final loaded = await BilgiLeagueRunApi.load(user.id, categoryId, mode);
+    if (!loaded.ok) return false;
+    final run = loaded.run;
+    if (run == null || run.modeId != mode || run.questions.isEmpty || run.index >= run.questions.length) return null;
+    return run;
+  }
+
+  void _keepUnfinished(BilgiRound? live, {required bool fresh}) {
+    if (live == null || live.finished || !bilgiLeagueResumable(live.modeId)) return;
+    unawaited(_syncLeague(live, fresh: fresh));
+  }
+
+  Future<void> _syncLeague(BilgiRound live, {bool fresh = false}) async {
+    if (!bilgiLeagueResumable(live.modeId) || live.categoryId.isEmpty) return;
+    await BilgiLeagueRunApi.save(live, finished: live.finished, fresh: fresh);
   }
 
   void _begin(BilgiRound started) {
@@ -890,6 +981,7 @@ class BilgiController extends ChangeNotifier {
     round = result.round ?? live;
     final played = round ?? live;
     if (played.modeId == 'yarisma') unawaited(_syncContest(played));
+    if (bilgiLeagueResumable(played.modeId)) unawaited(_syncLeague(played));
     if (result.message != null && result.round == null) {
       notice = result.message;
       picked = false;
@@ -952,6 +1044,10 @@ class BilgiController extends ChangeNotifier {
     }
     if (type == 'time' && result.message == null) pauseLeft = 10;
     notice = result.message;
+    final saved = round;
+    if (saved != null && bilgiLeagueResumable(saved.modeId) && result.message == null) {
+      unawaited(_syncLeague(saved));
+    }
     notifyListeners();
   }
 
@@ -964,6 +1060,7 @@ class BilgiController extends ChangeNotifier {
     profile = result.profile ?? profile;
     round = result.round ?? live;
     if (live.modeId == 'gunluk') dailyQuestionUsed = true;
+    if (bilgiLeagueResumable(live.modeId)) unawaited(_syncLeague(result.round ?? live));
     newBadgeIds = (profile?.badges ?? const []).where((id) => !beforeBadges.contains(id)).toList();
     revealing = false;
     stack
@@ -1341,24 +1438,6 @@ class BilgiController extends ChangeNotifier {
     back();
   }
 
-  Future<void> findGroupMatch() async {
-    final found = await server.openGroupRoom();
-    if (found == null) {
-      notice = 'Açık grup odası yok.';
-      notifyListeners();
-      return;
-    }
-    final result = await server.joinRoom(found.code);
-    notice = result.message;
-    room = result.room ?? room;
-    if (room != null) {
-      modeId = 'grup';
-      if (page != 'room') open('room');
-      _armRoom();
-    }
-    notifyListeners();
-  }
-
   Future<void> makeRoom(String kind) async {
     room = await server.createRoom(
       kind: kind,
@@ -1371,7 +1450,7 @@ class BilgiController extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    modeId = kind == 'grup' ? 'grup' : kind == 'duello' ? 'duello' : 'oda';
+    modeId = kind == 'duello' ? 'duello' : 'oda';
     open('room');
     _armRoom();
   }
@@ -1413,11 +1492,7 @@ class BilgiController extends ChangeNotifier {
     }
     categoryId = current.categoryId;
     difficulty = current.difficulty;
-    modeId = switch (current.kind) {
-      'grup' => 'grup',
-      'duello' => 'duello',
-      _ => 'oda',
-    };
+    modeId = current.kind == 'duello' ? 'duello' : 'oda';
     await start(count: current.questionCount, forcedMode: modeId);
   }
 
@@ -1463,11 +1538,7 @@ class BilgiController extends ChangeNotifier {
     categoryId = current.categoryId;
     subName = current.subcategory;
     difficulty = current.difficulty.isEmpty ? 'hepsi' : current.difficulty;
-    modeId = switch (current.kind) {
-      'grup' => 'grup',
-      'duello' => 'duello',
-      _ => 'oda',
-    };
+    modeId = current.kind == 'duello' ? 'duello' : 'oda';
     notice = null;
     notifyListeners();
     final result = await server.startRound(

@@ -42,6 +42,7 @@ bool bilgiPlayableQuestion(
   final owner = categories.where((category) => category.id == question.categoryId).firstOrNull;
   if (owner == null || !question.tags.any(owner.subs.contains)) return false;
   if (locale.isNotEmpty && !owner.publishesIn(locale)) return false;
+  if (bilgiSpecialEventCategory(owner) && categoryId != owner.id) return false;
   if (categoryId == tumuKarmaId) return true;
   if (question.categoryId != categoryId) return false;
   if (subcategory.isEmpty) return true;
@@ -612,12 +613,12 @@ class LunoBilgiServer {
     return BilgiResult(profile: await _pushRemote(linked));
   }
 
-  Future<String?> startGate(BilgiProfile user, BilgiMode mode) async {
+  Future<String?> startGate(BilgiProfile user, BilgiMode mode, {bool spendLife = true}) async {
     final cfg = await config();
     if (cfg.maintenance) return '🔧 Bakımdayız';
     if (user.banned) return '🚫 Hesabın askıya alındı.';
-    if (cfg.livesEnabled && user.lives < mode.lifeCost) {
-      return '❤️ Canın bitti! Yenilenmesini bekle veya satın al.';
+    if (spendLife && cfg.livesEnabled && user.lives < mode.lifeCost) {
+      return bilgiNoLivesNotice(cfg.lifeMinutes);
     }
     return null;
   }
@@ -646,6 +647,10 @@ class LunoBilgiServer {
     int startCorrect = 0,
     int startWrong = 0,
     int startStreak = 0,
+    int startJokersUsed = 0,
+    int startDoubleLeft = 0,
+    List<int> startHidden = const [],
+    String startHint = '',
   }) async {
     final user = await profile();
     final cfg = await config();
@@ -663,7 +668,7 @@ class LunoBilgiServer {
         }
       }
     }
-    final blocked = await startGate(user, mode);
+    final blocked = await startGate(user, mode, spendLife: chargeLife);
     if (blocked != null) return BilgiResult(message: blocked, profile: user);
     if (needsAd(user, cfg) && !adCleared) {
       return BilgiResult(message: 'ad', profile: user);
@@ -746,6 +751,10 @@ class LunoBilgiServer {
       correct: startCorrect,
       wrong: startWrong,
       streak: startStreak,
+      jokersUsed: startJokersUsed,
+      hidden: startHidden,
+      doubleLeft: startDoubleLeft,
+      hint: startHint,
     );
     _rounds[round.id] = round;
     await _store.put(_games, round.id, round.toMap());
@@ -1499,7 +1508,7 @@ class LunoBilgiServer {
       );
       return sync.room;
     }
-    final code = 'LB${_random.nextInt(90) + 10}';
+    final code = _random.nextInt(1000000).toString().padLeft(6, '0');
     final room = BilgiRoom(
       code: code,
       hostId: user.id,
@@ -1557,20 +1566,6 @@ class LunoBilgiServer {
   Future<BilgiRoom?> room(String code) async {
     final raw = await _store.get(_rooms, code);
     return raw == null ? null : BilgiRoom.fromMap(raw);
-  }
-
-  Future<BilgiRoom?> openGroupRoom() async {
-    final remote = remoteRooms;
-    if (remote != null) {
-      final sync = await remote.openGroup();
-      return sync.room;
-    }
-    final rows = await _store.values(_rooms);
-    for (final raw in rows) {
-      final room = BilgiRoom.fromMap(raw);
-      if (room.kind == 'grup' && room.players.length < 10) return room;
-    }
-    return null;
   }
 
   Future<void> cancelDuel(String? id) async {

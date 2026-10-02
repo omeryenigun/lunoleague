@@ -66,6 +66,8 @@ class BilgiCategory {
   String get karmaName => '$name Karma';
 }
 
+const bilgiSpecialEventGroup = 'Özel Etkinlik';
+
 const bilgiGroups = <String>[
   'A. Temel Bilgi',
   'B. Tarih ve Medeniyet',
@@ -75,7 +77,10 @@ const bilgiGroups = <String>[
   'F. Spor ve Oyun',
   'G. Yaşam ve Pratik',
   'H. Popüler Kültür',
+  bilgiSpecialEventGroup,
 ];
+
+bool bilgiSpecialEventCategory(BilgiCategory category) => category.group == bilgiSpecialEventGroup;
 
 const bilgiGroupLabels = <String, Map<String, String>>{
   'A. Temel Bilgi': {
@@ -165,6 +170,17 @@ const bilgiGroupLabels = <String, Map<String, String>>{
     'nl': 'H. Popcultuur',
     'pt': 'H. Cultura popular',
     'pl': 'H. Kultura popularna',
+  },
+  bilgiSpecialEventGroup: {
+    'en': 'Special Event',
+    'de': 'Sonderveranstaltung',
+    'es': 'Evento especial',
+    'fr': 'Événement spécial',
+    'it': 'Evento speciale',
+    'ru': 'Особое событие',
+    'nl': 'Speciaal evenement',
+    'pt': 'Evento especial',
+    'pl': 'Wydarzenie specjalne',
   },
 };
 

@@ -921,7 +921,6 @@ const bilgiModes = <BilgiMode>[
   BilgiMode(id: 'maraton', name: 'Maraton', emoji: '🏃', blurb: '50 soru • 15 dk toplam süre', questions: 50, seconds: 0, totalSeconds: 900, multiplier: 2, lifeCost: 3, jokerMax: 5, group: 'solo'),
   BilgiMode(id: 'sakin', name: 'Sakin Mod', emoji: '🧘', blurb: '10 soru • Süresiz • 0.5x puan', questions: 10, seconds: 0, totalSeconds: 0, multiplier: 0.5, lifeCost: 1, jokerMax: 3, group: 'solo'),
   BilgiMode(id: 'duello', name: 'Düello', emoji: '⚔️', blurb: 'Birebir • 10 sn • Rakip eşleşme', questions: 10, seconds: 10, totalSeconds: 0, multiplier: 1, lifeCost: 1, jokerMax: 2, group: 'multi'),
-  BilgiMode(id: 'grup', name: 'Grup Yarışması', emoji: '👥', blurb: '2-10 kişi • 15 sn', questions: 20, seconds: 15, totalSeconds: 0, multiplier: 1, lifeCost: 1, jokerMax: 3, group: 'multi'),
   BilgiMode(id: 'oda', name: 'Özel Oda', emoji: '🔒', blurb: 'Arkadaşlarınla oda kur', questions: 20, seconds: 15, totalSeconds: 0, multiplier: 1, lifeCost: 1, jokerMax: 3, group: 'multi'),
   BilgiMode(id: 'gunluk', name: 'Günün Sorusu', emoji: '📅', blurb: 'Günde 1 soru • 2x puan', questions: 1, seconds: 30, totalSeconds: 0, multiplier: 2, lifeCost: 0, jokerMax: 0, group: 'special'),
   BilgiMode(id: 'yarisma', name: 'Günün Yarışması', emoji: '🏁', blurb: '20 soru • Günde 1 • Can yok', questions: 20, seconds: 15, totalSeconds: 0, multiplier: 1, lifeCost: 0, jokerMax: 3, group: 'special'),

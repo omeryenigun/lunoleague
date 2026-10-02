@@ -24,6 +24,28 @@ import 'package:kelimelig/games/luno_bilgi/bilgi_user_api.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_wallet.dart';
 import 'package:kelimelig/injection.dart';
 
+Widget _specialEventTag({bool compact = false}) {
+  return Container(
+    padding: EdgeInsets.symmetric(horizontal: compact ? 6 : 8, vertical: 2),
+    decoration: BoxDecoration(
+      color: const Color(0x33F59E0B),
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: const Color(0x66F59E0B)),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.celebration, size: compact ? 12 : 14, color: const Color(0xFFFBBF24)),
+        const SizedBox(width: 4),
+        Text(
+          bilgiSpecialEventGroup,
+          style: TextStyle(color: const Color(0xFFFBBF24), fontSize: compact ? 10 : 11, fontWeight: FontWeight.w800),
+        ),
+      ],
+    ),
+  );
+}
+
 class BilgiAdminScreen extends StatefulWidget {
   const BilgiAdminScreen({super.key, required this.onLeave});
 
@@ -80,6 +102,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   var _bulkMenu = '';
   var _formSerial = 0;
   String? _translatingId;
+  String? _reviewingId;
   BilgiQuestion? _editing;
   var _csvName = '';
   final _csvText = TextEditingController();
@@ -1936,6 +1959,30 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     );
   }
 
+  bool _eventQuestion(BilgiQuestion question) {
+    final category = _categories.where((item) => item.id == question.categoryId).firstOrNull;
+    return category != null && bilgiSpecialEventCategory(category);
+  }
+
+  Widget _questionLine(BilgiQuestion question) {
+    final reason = question.rejectReason.trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_eventQuestion(question)) ...[
+          _specialEventTag(compact: true),
+          const SizedBox(height: 4),
+        ],
+        Text(question.text, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 13)),
+        if (reason.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(reason, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: BilgiColors.error, fontSize: 12, fontWeight: FontWeight.w700)),
+          ),
+      ],
+    );
+  }
+
   Widget _reviewedMark(bool reviewed) {
     return Tooltip(
       message: reviewed ? 'Kontrol edildi' : 'Kontrol edilmedi',
@@ -1972,7 +2019,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
             _langOk(),
             const SizedBox(width: 6),
           ],
-          Expanded(child: Text(question.text, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 13))),
+          Expanded(child: _questionLine(question)),
         ],
       ),
       Text(_catLabel(question.categoryId), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13)),
@@ -2004,6 +2051,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
             onTap: () => _openEditor(question),
           ),
           _rowTranslateBtn(question),
+          _rowReviewBtn(question),
           if (!pending)
             _rowActionBtn(
               icon: Icons.delete_outline,
@@ -2017,6 +2065,70 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
         ],
       ),
     ]);
+  }
+
+  Widget _rowReviewBtn(BilgiQuestion question) {
+    final busy = _reviewingId == question.id;
+    return Tooltip(
+      message: 'Bu soruyu kontrol et',
+      child: InkWell(
+        onTap: busy ? null : () => _reviewQuestion(question.id),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: busy
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: BilgiColors.secondary),
+                )
+              : const Text(
+                  'Kontrol',
+                  style: TextStyle(color: BilgiColors.secondary, fontSize: 11, fontWeight: FontWeight.w800),
+                ),
+        ),
+      ),
+    );
+  }
+
+  Future<({String? error, String difficulty, String status, String rejectReason, String verdict})?> _reviewQuestion(String id) async {
+    if (_reviewingId != null) return null;
+    final current = _questions.where((question) => question.id == id).firstOrNull;
+    if (current == null) {
+      setState(() => _note = 'Soru bulunamadı.');
+      return null;
+    }
+    setState(() {
+      _reviewingId = id;
+      _note = 'Kontrol ediliyor...';
+    });
+    final result = await BilgiQuestionApi.reviewQuestion(sl<ApiSession>().adminToken ?? '', id);
+    if (!mounted) return null;
+    if (result.error != null) {
+      setState(() {
+        _reviewingId = null;
+        _note = result.error!;
+      });
+      return result;
+    }
+    final written = current.copyWith(
+      difficulty: result.difficulty,
+      status: result.status,
+      rejectReason: result.rejectReason,
+      reviewed: true,
+    );
+    try {
+      await _server.saveQuestion(written);
+    } catch (_) {}
+    if (!mounted) return result;
+    _rememberSaved([written]);
+    setState(() {
+      _reviewingId = null;
+      if (_editing?.id == id) _editing = written;
+      _note = result.verdict == 'reject'
+          ? 'Reddedildi: ${result.rejectReason}'
+          : 'Kontrol edildi. Zorluk: ${_diffName(result.difficulty)}';
+    });
+    return result;
   }
 
   Widget _rowTranslateBtn(BilgiQuestion question) {
@@ -2115,6 +2227,10 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(children: [
+                  if (_eventQuestion(question)) ...[
+                    _specialEventTag(compact: true),
+                    const SizedBox(width: 8),
+                  ],
                   Text(question.id, style: const TextStyle(color: BilgiColors.muted, fontWeight: FontWeight.w700)),
                   if (_questionReady(question)) ...[
                     const SizedBox(width: 8),
@@ -2191,7 +2307,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                                 _langOk(),
                                 const SizedBox(width: 6),
                               ],
-                              Expanded(child: Text(question.text, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                              Expanded(child: _questionLine(question)),
                             ],
                           ),
                         ),
@@ -2278,6 +2394,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       categories: _categories,
       knownTags: known,
       initial: initial,
+      rejectReason: existing?.rejectReason ?? '',
+      onReview: existing == null ? null : () => _reviewQuestion(existing.id),
       onCancel: () => setState(() {
         _editing = null;
         _index = 1;
@@ -2535,31 +2653,49 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     for (final category in _categories) {
       groups.putIfAbsent(category.group, () => []).add(category);
     }
+    final order = [
+      for (final group in bilgiGroups)
+        if (groups.containsKey(group) || group == bilgiSpecialEventGroup) group,
+      for (final group in groups.keys)
+        if (!bilgiGroups.contains(group)) group,
+    ];
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       children: [
-        for (final entry in groups.entries) ...[
+        for (var i = 0; i < order.length; i++) ...[
           Padding(
-            padding: EdgeInsets.only(top: entry.key == groups.keys.first ? 0 : 16, bottom: 12),
+            padding: EdgeInsets.only(top: i == 0 ? 0 : 16, bottom: 12),
             child: Row(
               children: [
-                Text(entry.key.toUpperCase(), style: const TextStyle(color: BilgiColors.secondary, fontSize: 13, letterSpacing: 1.5, fontWeight: FontWeight.w800)),
+                Flexible(
+                  child: Text(
+                    order[i].toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: BilgiColors.secondary, fontSize: 13, letterSpacing: 1.5, fontWeight: FontWeight.w800),
+                  ),
+                ),
+                if (order[i] == bilgiSpecialEventGroup) ...[
+                  const SizedBox(width: 8),
+                  _specialEventTag(),
+                ],
                 const SizedBox(width: 8),
-                _catBtn('✏️', () => _editGroup(entry.key)),
+                _catBtn('✏️', () => _editGroup(order[i])),
                 const Spacer(),
-                Text('${entry.value.length} kategori', style: const TextStyle(color: BilgiColors.muted, fontSize: 12, fontWeight: FontWeight.w600)),
+                Text('${(groups[order[i]] ?? const <BilgiCategory>[]).length} kategori', style: const TextStyle(color: BilgiColors.muted, fontSize: 12, fontWeight: FontWeight.w600)),
               ],
             ),
           ),
           LayoutBuilder(
             builder: (context, constraints) {
+              final rows = groups[order[i]] ?? const <BilgiCategory>[];
               final columns = constraints.maxWidth >= 900 ? 3 : constraints.maxWidth >= 620 ? 2 : 1;
               final width = (constraints.maxWidth - (columns - 1) * 12) / columns;
               return Wrap(
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  for (final category in entry.value) _categoryCard(category, width),
+                  for (final category in rows) _categoryCard(category, width),
                 ],
               );
             },
@@ -2606,6 +2742,10 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                     ],
                   ],
                 ),
+                if (bilgiSpecialEventCategory(category)) ...[
+                  const SizedBox(height: 6),
+                  _specialEventTag(compact: true),
+                ],
                 const SizedBox(height: 4),
                 Row(
                   children: [
@@ -2971,7 +3111,15 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Ana Kategori', style: TextStyle(color: BilgiColors.muted, fontSize: 12, fontWeight: FontWeight.w700)),
+              Row(
+                children: [
+                  const Text('Ana Kategori', style: TextStyle(color: BilgiColors.muted, fontSize: 12, fontWeight: FontWeight.w700)),
+                  if (bilgiSpecialEventCategory(selected)) ...[
+                    const SizedBox(width: 8),
+                    _specialEventTag(compact: true),
+                  ],
+                ],
+              ),
               const SizedBox(height: 8),
               _SearchCombo(
                 hint: 'Kategori ara',
@@ -3013,7 +3161,14 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
             ],
           ),
         ),
-        if (showKarma) _subRow('🎲', karmaTitle, 'Aynı soru havuzu • $count soru', gradient: true),
+        if (showKarma)
+          _subRow(
+            '🎲',
+            karmaTitle,
+            'Aynı soru havuzu • $count soru',
+            gradient: true,
+            event: bilgiSpecialEventCategory(selected),
+          ),
         if (selected.subs.isEmpty)
           const Padding(padding: EdgeInsets.only(top: 12), child: Text('Bu kategoride alt kategori yok.', style: TextStyle(color: BilgiColors.muted)))
         else if (visibleSubs.isEmpty && !showKarma)
@@ -3026,6 +3181,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
               _subCountLine(selected.id, sub).label,
               caption: _subCountCaption(selected.id, sub),
               ready: bilgiNamesReady(_labels, 'sub', '${selected.id}|$sub', locales: selected.locales),
+              event: bilgiSpecialEventCategory(selected),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -3246,7 +3402,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
 
   Widget _langOk() => const Icon(Icons.check_circle, color: Color(0xFF3DDC84), size: 18);
 
-  Widget _subRow(String emoji, String title, String hint, {bool gradient = false, bool ready = false, Widget? caption, Widget? trailing}) {
+  Widget _subRow(String emoji, String title, String hint, {bool gradient = false, bool ready = false, bool event = false, Widget? caption, Widget? trailing}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(16),
@@ -3267,6 +3423,10 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                 Row(
                   children: [
                     Flexible(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700))),
+                    if (event) ...[
+                      const SizedBox(width: 6),
+                      _specialEventTag(compact: true),
+                    ],
                     if (ready) ...[
                       const SizedBox(width: 6),
                       _langOk(),
@@ -4719,6 +4879,8 @@ class _QuestionForm extends StatefulWidget {
     required this.onSave,
     required this.onCancel,
     this.initial,
+    this.rejectReason = '',
+    this.onReview,
   });
 
   final List<BilgiCategory> categories;
@@ -4726,6 +4888,8 @@ class _QuestionForm extends StatefulWidget {
   final Future<void> Function(_QuestionDraft draft) onSave;
   final VoidCallback onCancel;
   final BilgiQuestionFormData? initial;
+  final String rejectReason;
+  final Future<({String? error, String difficulty, String status, String rejectReason, String verdict})?> Function()? onReview;
 
   @override
   State<_QuestionForm> createState() => _QuestionFormState();
@@ -4751,6 +4915,8 @@ class _QuestionFormState extends State<_QuestionForm> {
   var _lang = 'tr';
   var _translating = false;
   var _translateNote = '';
+  var _reviewing = false;
+  late var _shownReason = widget.rejectReason;
   late final _bag = <String, BilgiTranslation>{
     ...?widget.initial?.translations,
     'tr': BilgiTranslation(
@@ -4797,6 +4963,42 @@ class _QuestionFormState extends State<_QuestionForm> {
       explanation: _explanation.text.trim(),
     );
   }
+
+  Future<void> _reviewSaved() async {
+    final review = widget.onReview;
+    if (review == null || _reviewing || _busy) return;
+    setState(() {
+      _reviewing = true;
+      _translateNote = 'Kontrol ediliyor...';
+    });
+    final result = await review();
+    if (!mounted) return;
+    if (result == null || result.error != null) {
+      setState(() {
+        _reviewing = false;
+        _translateNote = result?.error ?? 'Kontrol yapılamadı.';
+      });
+      return;
+    }
+    setState(() {
+      _reviewing = false;
+      _difficulty = result.difficulty;
+      _status = result.status;
+      _reviewed = true;
+      _shownReason = result.rejectReason;
+      _translateNote = result.verdict == 'reject'
+          ? 'Reddedildi: ${result.rejectReason}'
+          : 'Kontrol edildi. Zorluk: ${_reviewDiff(result.difficulty)}';
+    });
+  }
+
+  String _reviewDiff(String difficulty) => switch (difficulty) {
+        'kolay' => 'Kolay',
+        'orta' => 'Orta',
+        'zor' => 'Zor',
+        'efsane' => 'Efsane',
+        _ => difficulty,
+      };
 
   Future<void> _translateAll() async {
     if (_translating || _busy) return;
@@ -4956,6 +5158,11 @@ class _QuestionFormState extends State<_QuestionForm> {
                       busy: _translating,
                       onPressed: bilgiExtraLocales(_publishedLocales.toList()).isEmpty ? null : _translateAll,
                     ),
+                    const SizedBox(width: 8),
+                    _kontrolButton(
+                      busy: _reviewing,
+                      onPressed: widget.onReview == null || widget.initial == null || widget.initial!.id.isEmpty ? null : _reviewSaved,
+                    ),
                   ],
                 ),
                 if (_translateNote.isNotEmpty) ...[
@@ -4964,6 +5171,14 @@ class _QuestionFormState extends State<_QuestionForm> {
                 ],
                 const SizedBox(height: 12),
                 _card(_lang == 'tr' ? '1. Soru Metni' : '1. Soru Metni · ${GameLocale.resolve(_lang).nativeName}', [
+                  if (widget.categories.any((category) => category.id == _category && bilgiSpecialEventCategory(category))) ...[
+                    _specialEventTag(),
+                    const SizedBox(height: 8),
+                  ],
+                  if (_shownReason.trim().isNotEmpty) ...[
+                    Text(_shownReason.trim(), style: const TextStyle(color: BilgiColors.error, fontSize: 13, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 8),
+                  ],
                   _label('Soru'),
                   TextField(
                     controller: _text,
@@ -5817,6 +6032,20 @@ class _LangNameFieldsState extends State<_LangNameFields> {
       ],
     );
   }
+}
+
+Widget _kontrolButton({required bool busy, required VoidCallback? onPressed}) {
+  return FilledButton(
+    style: FilledButton.styleFrom(
+      backgroundColor: BilgiColors.secondary,
+      foregroundColor: BilgiColors.bg,
+      minimumSize: const Size(0, 40),
+    ),
+    onPressed: busy ? null : onPressed,
+    child: busy
+        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: BilgiColors.bg))
+        : const Text('Kontrol'),
+  );
 }
 
 Widget _translateAllButton({required bool busy, required VoidCallback? onPressed}) {

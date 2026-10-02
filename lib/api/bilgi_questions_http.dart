@@ -103,7 +103,16 @@ void mountBilgiQuestions(Router router, Connection db) {
 Future<Response> _counts(Connection db) async {
   final snapshot = await loadBilgiCountSnapshot(db);
   final open = await _openSets(db);
-  return jsonResponse(snapshot.visible(open.categories, open.subs).toJson());
+  final events = await _eventCategoryIds(db);
+  return jsonResponse(snapshot.visible(open.categories, open.subs, eventCategories: events).toJson());
+}
+
+Future<Set<String>> _eventCategoryIds(Connection db) async {
+  final rows = await db.execute(
+    Sql.named('select id from bilgi_categories where group_name = @group'),
+    parameters: {'group': bilgiSpecialEventGroup},
+  );
+  return {for (final row in rows) '${row[0]}'};
 }
 
 Future<Response> _daily(Request request, Connection db) async {

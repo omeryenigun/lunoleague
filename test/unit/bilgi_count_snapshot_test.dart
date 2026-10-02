@@ -66,6 +66,25 @@ void main() {
     expect(shown.slices.containsKey('tarih||zor'), isFalse);
   });
 
+  test('special event questions stay out of the mixed pool count', () {
+    final snapshot = BilgiCountSnapshot();
+    snapshot.replaceAll(const [null, null], [
+      _part(),
+      _part(categoryId: 'etkinlik', tags: const ['Tur'], difficulty: 'orta'),
+    ]);
+    final shown = snapshot.visible(
+      {'felsefe', 'etkinlik'},
+      {'felsefe|Antik', 'etkinlik|Tur'},
+      eventCategories: {'etkinlik'},
+    );
+    expect(shown.categories['felsefe'], 1);
+    expect(shown.categories['etkinlik'], 1);
+    expect(shown.categories['tumu'], 1);
+    expect(shown.slices['tumu||kolay'], 1);
+    expect(shown.slices.containsKey('tumu||orta'), isFalse);
+    expect(shown.slices['etkinlik||orta'], 1);
+  });
+
   test('renaming a subcategory moves its count key', () {
     final snapshot = BilgiCountSnapshot();
     snapshot.replaceAll(const [null], [_part(tags: const ['Antik'])]);

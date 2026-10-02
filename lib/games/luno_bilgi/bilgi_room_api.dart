@@ -13,7 +13,6 @@ class BilgiRoomApi {
       poll: poll,
       start: start,
       score: score,
-      openGroup: openGroup,
     );
   }
 
@@ -85,15 +84,6 @@ class BilgiRoomApi {
       return response.statusCode >= 200 && response.statusCode < 300;
     } catch (_) {
       return false;
-    }
-  }
-
-  static Future<BilgiRoomSync> openGroup() async {
-    try {
-      final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/v1/bilgi/rooms/open?kind=grup'));
-      return _read(response.statusCode, response.body);
-    } catch (_) {
-      return const BilgiRoomSync(message: 'Açık grup odası yok.');
     }
   }
 
