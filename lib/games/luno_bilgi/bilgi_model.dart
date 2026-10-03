@@ -964,9 +964,11 @@ class BilgiRound {
     this.waiting = false,
     this.hint = '',
     this.spare,
+    List<BilgiQuestion>? spares,
     this.standings = const [],
     DateTime? startedAt,
-  }) : startedAt = startedAt ?? DateTime.now();
+  })  : spares = spares ?? <BilgiQuestion>[],
+        startedAt = startedAt ?? DateTime.now();
 
   final String id;
   final String userId;
@@ -999,6 +1001,7 @@ class BilgiRound {
   bool waiting;
   String hint;
   BilgiQuestion? spare;
+  final List<BilgiQuestion> spares;
   List<Map<String, String>> standings;
   final DateTime startedAt;
 
@@ -1037,6 +1040,7 @@ class BilgiRound {
         'hint': hint,
         'startedAt': startedAt.toIso8601String(),
         if (spare != null) 'spare': spare!.toMap(),
+        if (spares.isNotEmpty) 'spares': [for (final question in spares) question.toMap()],
         'standings': standings,
       };
 }

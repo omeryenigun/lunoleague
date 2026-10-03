@@ -114,6 +114,25 @@ void main() {
     expect(decision.run?['questions'], [_question('a'), _question('b')]);
   });
 
+  test('a fresh start replaces a short open set', () {
+    final short = bilgiLeagueOpenWrite(
+      userId: userId,
+      categoryId: categoryId,
+      modeId: 'lig',
+      body: body(questions: [_question('only')], fresh: true),
+    );
+    final drawn = [for (var i = 0; i < 20; i++) _question('q$i')];
+    final next = bilgiLeagueOpenWrite(
+      userId: userId,
+      categoryId: categoryId,
+      modeId: 'lig',
+      existing: short.run,
+      body: body(questions: drawn, fresh: true),
+    );
+    expect(next.run?['questions'], drawn);
+    expect(next.run?['index'], 0);
+  });
+
   test('a later save keeps the original mode', () {
     final first = bilgiLeagueOpenWrite(
       userId: userId,

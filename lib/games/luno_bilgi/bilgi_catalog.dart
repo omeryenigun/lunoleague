@@ -374,6 +374,8 @@ const bilgiSubEmoji = <String, String>{
   'Destanlar': '📜',
   'Kutsal Metinler': '📖',
   'Halk Hikâyeleri': '🗣️',
+  'Deprem': '🏚️',
+  'İklim Olayları': '🌪️',
 };
 
 String bilgiSubIcon(String name, String fallback) => bilgiSubEmoji[name] ?? fallback;

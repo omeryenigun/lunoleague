@@ -60,34 +60,69 @@ Future<Response> _save(Request request, Connection db, KeyValueStore store) asyn
 }
 
 class _ContestPaper {
-  const _ContestPaper({required this.title, required this.questions});
+  const _ContestPaper({required this.title, required this.questions, this.spares = const []});
 
   final String title;
   final List<Map<String, dynamic>> questions;
+  final List<Map<String, dynamic>> spares;
 }
 
 Future<_ContestPaper> _openDay(Connection db, KeyValueStore store, String day) async {
   final stored = await store.get(bilgiContestPaperBox, day);
   final ready = _questionsOf(stored);
   if (ready.isNotEmpty) {
-    return _ContestPaper(title: _titleOf(stored), questions: ready);
+    return _withSpares(db, store, day, stored, ready);
   }
   final picked = await _draw(db, await _monthIds(store, day.substring(0, 7), skip: day));
   final again = await store.get(bilgiContestPaperBox, day);
   final raced = _questionsOf(again);
   if (raced.isNotEmpty) {
-    return _ContestPaper(title: _titleOf(again), questions: raced);
+    return _withSpares(db, store, day, again, raced);
   }
   final title = _titleOf(stored);
-  await store.put(bilgiContestPaperBox, day, {'day': day, 'title': title, 'questions': picked});
-  return _ContestPaper(title: title, questions: picked);
+  final exclude = await _monthIds(store, day.substring(0, 7), skip: day);
+  _takeIds(picked, exclude);
+  final spares = await _drawCounted(db, exclude, bilgiContestSpareCounts);
+  await store.put(bilgiContestPaperBox, day, {'day': day, 'title': title, 'questions': picked, 'spares': spares});
+  return _ContestPaper(title: title, questions: picked, spares: spares);
 }
 
-Future<List<Map<String, dynamic>>> _draw(Connection db, Set<String> exclude) async {
+Future<_ContestPaper> _withSpares(
+  Connection db,
+  KeyValueStore store,
+  String day,
+  Map<String, dynamic>? stored,
+  List<Map<String, dynamic>> questions,
+) async {
+  final title = _titleOf(stored);
+  if (stored != null && stored.containsKey('spares')) {
+    return _ContestPaper(title: title, questions: questions, spares: _sparesOf(stored));
+  }
+  final exclude = await _monthIds(store, day.substring(0, 7), skip: day);
+  _takeIds(questions, exclude);
+  final spares = await _drawCounted(db, exclude, bilgiContestSpareCounts);
+  final again = await store.get(bilgiContestPaperBox, day);
+  if (again != null && again.containsKey('spares') && _questionsOf(again).isNotEmpty) {
+    return _ContestPaper(title: _titleOf(again), questions: _questionsOf(again), spares: _sparesOf(again));
+  }
+  await store.put(bilgiContestPaperBox, day, {
+    'day': day,
+    'title': title,
+    'questions': questions,
+    'spares': spares,
+  });
+  return _ContestPaper(title: title, questions: questions, spares: spares);
+}
+
+Future<List<Map<String, dynamic>>> _draw(Connection db, Set<String> exclude) {
+  return _drawCounted(db, exclude, bilgiDailyQuotas);
+}
+
+Future<List<Map<String, dynamic>>> _drawCounted(Connection db, Set<String> exclude, List<int> counts) async {
   final picked = <Map<String, dynamic>>[];
   final seen = {...exclude};
   for (var i = 0; i < bilgiDifficultyLevels.length; i++) {
-    final count = i < bilgiDailyQuotas.length ? bilgiDailyQuotas[i] : 0;
+    final count = i < counts.length ? counts[i] : 0;
     if (count <= 0) continue;
     final batch = await drawApprovedBilgiQuestions(
       db,
@@ -138,6 +173,7 @@ Map<String, dynamic> _payload(
     'day': day,
     'title': paper.title,
     'questions': paper.questions,
+    'spares': paper.spares,
     'joined': runs.length,
     'ranking': ranking,
     if (me != null)
@@ -189,10 +225,13 @@ Future<Response> _adminBuild(Request request, Connection db, KeyValueStore store
   if (incoming is List) {
     final cleaned = _cleanQuestions(incoming);
     if (cleaned == null) return jsonResponse({'error': 'Soru eksik veya şıklar dört değil.'}, status: 400);
+    final exclude = await _monthIds(store, day.substring(0, 7), skip: day);
+    _takeIds(cleaned, exclude);
     await store.put(bilgiContestPaperBox, day, {
       'day': day,
       'title': _titleOf(stored),
       'questions': cleaned,
+      'spares': await _drawCounted(db, exclude, bilgiContestSpareCounts),
     });
     return jsonResponse(await _monthPayload(store, day.substring(0, 7), bilgiContestMonthDays(day.substring(0, 7))));
   }
@@ -204,11 +243,18 @@ Future<Response> _adminBuild(Request request, Connection db, KeyValueStore store
     if (title.length > 40) return jsonResponse({'error': 'Ad 40 karakteri geçemez.'}, status: 400);
   }
   var questions = _questionsOf(stored);
+  var spares = stored != null && stored.containsKey('spares') ? _sparesOf(stored) : null;
   if (rebuild || questions.isEmpty) {
     final exclude = await _monthIds(store, day.substring(0, 7), skip: day);
     questions = await _draw(db, exclude);
+    spares = null;
   }
-  await store.put(bilgiContestPaperBox, day, {'day': day, 'title': title, 'questions': questions});
+  if (spares == null) {
+    final exclude = await _monthIds(store, day.substring(0, 7), skip: day);
+    _takeIds(questions, exclude);
+    spares = await _drawCounted(db, exclude, bilgiContestSpareCounts);
+  }
+  await store.put(bilgiContestPaperBox, day, {'day': day, 'title': title, 'questions': questions, 'spares': spares});
   return jsonResponse(await _monthPayload(store, day.substring(0, 7), bilgiContestMonthDays(day.substring(0, 7))));
 }
 
@@ -218,6 +264,7 @@ Future<void> _fillMonth(Connection db, KeyValueStore store, List<String> days) a
   for (final day in days) {
     final stored = await store.get(bilgiContestPaperBox, day);
     _takeIds(_questionsOf(stored), used);
+    _takeIds(_sparesOf(stored), used);
   }
   for (final day in days) {
     if (locked.contains(day)) continue;
@@ -225,7 +272,14 @@ Future<void> _fillMonth(Connection db, KeyValueStore store, List<String> days) a
     if (_questionsOf(stored).isNotEmpty) continue;
     final picked = await _draw(db, used);
     _takeIds(picked, used);
-    await store.put(bilgiContestPaperBox, day, {'day': day, 'title': _titleOf(stored), 'questions': picked});
+    final spares = await _drawCounted(db, used, bilgiContestSpareCounts);
+    _takeIds(spares, used);
+    await store.put(bilgiContestPaperBox, day, {
+      'day': day,
+      'title': _titleOf(stored),
+      'questions': picked,
+      'spares': spares,
+    });
   }
 }
 
@@ -257,7 +311,9 @@ Future<Set<String>> _monthIds(KeyValueStore store, String month, {required Strin
   final ids = <String>{};
   for (final day in bilgiContestMonthDays(month)) {
     if (day == skip) continue;
-    _takeIds(_questionsOf(await store.get(bilgiContestPaperBox, day)), ids);
+    final stored = await store.get(bilgiContestPaperBox, day);
+    _takeIds(_questionsOf(stored), ids);
+    _takeIds(_sparesOf(stored), ids);
   }
   return ids;
 }
@@ -267,8 +323,11 @@ String _titleOf(Map<String, dynamic>? row) {
   return title.length > 40 ? title.substring(0, 40) : title;
 }
 
-List<Map<String, dynamic>> _questionsOf(Map<String, dynamic>? row) {
-  final saved = row?['questions'];
+List<Map<String, dynamic>> _questionsOf(Map<String, dynamic>? row) => _mapsOf(row?['questions']);
+
+List<Map<String, dynamic>> _sparesOf(Map<String, dynamic>? row) => _mapsOf(row?['spares']);
+
+List<Map<String, dynamic>> _mapsOf(Object? saved) {
   if (saved is! List) return const [];
   return [for (final item in saved) if (item is Map) Map<String, dynamic>.from(item)];
 }

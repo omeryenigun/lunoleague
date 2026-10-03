@@ -310,7 +310,7 @@ class BilgiBottomNav extends StatelessWidget {
         color: BilgiColors.card,
         border: Border(top: BorderSide(color: Color(0x14FFFFFF))),
       ),
-      padding: const EdgeInsets.fromLTRB(0, 10, 0, 16),
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 8),
       child: Row(
         children: [
           _Nav('home', '🏠', home, current, onSelect),

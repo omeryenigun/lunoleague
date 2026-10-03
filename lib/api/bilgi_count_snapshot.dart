@@ -89,9 +89,17 @@ class BilgiCountSnapshot {
     final shownCategories = <String, int>{};
     var total = 0;
     final shownDiff = <String, int>{};
-    for (final entry in categories.entries) {
-      if (entry.key == tumuKarmaId || entry.value <= 0) continue;
-      if (!openCategories.contains(entry.key)) continue;
+    final playable = <String, int>{};
+    for (final entry in subs.entries) {
+      if (entry.value <= 0) continue;
+      final bar = entry.key.indexOf('|');
+      if (bar <= 0) continue;
+      final categoryId = entry.key.substring(0, bar);
+      if (categoryId == tumuKarmaId || !openCategories.contains(categoryId)) continue;
+      if (!openSubs.contains(entry.key)) continue;
+      playable[categoryId] = (playable[categoryId] ?? 0) + entry.value;
+    }
+    for (final entry in playable.entries) {
       shownCategories[entry.key] = entry.value;
       if (!eventCategories.contains(entry.key)) total += entry.value;
     }

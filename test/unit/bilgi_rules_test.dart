@@ -257,6 +257,84 @@ void main() {
     expect(draws, 1);
   });
 
+  test('contest change joker swaps a spare of the same difficulty', () async {
+    final server = LunoBilgiServer(MemoryKeyValueStore(), clock: () => DateTime(2026, 10, 3));
+    BilgiQuestion question(String id, String difficulty) {
+      return BilgiQuestion(
+        id: id,
+        categoryId: tumuKarmaId,
+        text: id,
+        options: const ['A', 'B', 'C', 'D'],
+        correct: 0,
+        difficulty: difficulty,
+        explanation: '',
+        tags: const ['Deneme'],
+      );
+    }
+
+    final started = await server.startRound(
+      modeId: 'yarisma',
+      categoryId: tumuKarmaId,
+      difficulty: bilgiMixDifficulty,
+      questionCount: 1,
+      fixedQuestions: [question('kolay-1', 'kolay')],
+      fixedSpares: [question('efsane-yedek', 'efsane'), question('kolay-yedek', 'kolay')],
+      adCleared: true,
+      chargeLife: false,
+    );
+    expect(started.round, isNotNull);
+    expect(started.round!.questions, hasLength(1));
+    await server.buyJoker('change');
+    final changed = await server.useJoker(roundId: started.round!.id, type: 'change');
+    expect(changed.message, isNull);
+    expect(changed.round!.questions.single.id, 'kolay-yedek');
+    expect(changed.round!.spares.single.id, 'efsane-yedek');
+    await server.buyJoker('change');
+    final again = await server.useJoker(roundId: started.round!.id, type: 'change');
+    expect(again.message, '❓ Bu kategoride yeterli soru yok.');
+    expect(changed.round!.questions.single.id, 'kolay-yedek');
+  });
+
+  test('a league shorter than 20 questions does not start', () async {
+    final server = LunoBilgiServer(MemoryKeyValueStore(), clock: () => DateTime(2026, 10, 3));
+    BilgiQuestion question(String id) {
+      return BilgiQuestion(
+        id: id,
+        categoryId: 'felsefe',
+        text: id,
+        options: const ['A', 'B', 'C', 'D'],
+        correct: 0,
+        difficulty: 'kolay',
+        explanation: '',
+        tags: const ['Antik'],
+      );
+    }
+
+    final short = await server.startRound(
+      modeId: 'lig',
+      categoryId: 'felsefe',
+      difficulty: 'hepsi',
+      questionCount: 20,
+      fixedQuestions: [question('only')],
+      adCleared: true,
+      chargeLife: false,
+    );
+    expect(short.message, '❓ Bu kategoride yeterli soru yok.');
+    expect(short.round, isNull);
+
+    final full = await server.startRound(
+      modeId: 'lig',
+      categoryId: 'felsefe',
+      difficulty: 'hepsi',
+      questionCount: 20,
+      fixedQuestions: [for (var i = 0; i < 20; i++) question('q$i')],
+      adCleared: true,
+      chargeLife: false,
+    );
+    expect(full.message, isNull);
+    expect(full.round!.questions, hasLength(20));
+  });
+
   test('a category round uses the real pool and efsane stays empty', () async {
     final server = LunoBilgiServer(MemoryKeyValueStore(), clock: () => DateTime(2026, 9, 28));
     expect(await server.questionCount('genel'), 0);

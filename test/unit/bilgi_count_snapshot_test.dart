@@ -66,6 +66,19 @@ void main() {
     expect(shown.slices.containsKey('tarih||zor'), isFalse);
   });
 
+  test('a question without an open subcategory does not keep the category listed', () {
+    final snapshot = BilgiCountSnapshot();
+    snapshot.replaceAll(const [null, null, null], [
+      _part(),
+      _part(tags: const []),
+      _part(tags: const ['Yok']),
+    ]);
+    final shown = snapshot.visible({'felsefe'}, {'felsefe|Antik'});
+    expect(shown.categories['felsefe'], 1);
+    expect(shown.categories['tumu'], 1);
+    expect(snapshot.categories['felsefe'], 3);
+  });
+
   test('special event questions stay out of the mixed pool count', () {
     final snapshot = BilgiCountSnapshot();
     snapshot.replaceAll(const [null, null], [

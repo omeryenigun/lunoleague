@@ -92,12 +92,14 @@ class BilgiContestPaper {
     required this.joined,
     required this.ranking,
     this.title = '',
+    this.spares = const [],
     this.me,
   });
 
   final String day;
   final String title;
   final List<BilgiQuestion> questions;
+  final List<BilgiQuestion> spares;
   final int joined;
   final List<BilgiBoardEntry> ranking;
   final BilgiContestProgress? me;
@@ -322,6 +324,10 @@ class BilgiContestApi {
       for (final item in (map['questions'] as List? ?? const []))
         if (item is Map) BilgiQuestion.fromMap(Map<String, dynamic>.from(item)),
     ];
+    final spares = <BilgiQuestion>[
+      for (final item in (map['spares'] as List? ?? const []))
+        if (item is Map) BilgiQuestion.fromMap(Map<String, dynamic>.from(item)),
+    ];
     final ranking = <BilgiBoardEntry>[
       for (final item in (map['ranking'] as List? ?? const []))
         if (item is Map)
@@ -339,6 +345,7 @@ class BilgiContestApi {
       day: '${map['day'] ?? ''}',
       title: rawTitle.length > 40 ? rawTitle.substring(0, 40) : rawTitle,
       questions: questions,
+      spares: spares,
       joined: bilgiInt(map['joined'], 0),
       ranking: ranking,
       me: meRaw is Map ? BilgiContestProgress.fromMap(Map<String, dynamic>.from(meRaw)) : null,

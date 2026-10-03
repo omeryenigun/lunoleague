@@ -1939,7 +1939,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     );
   }
 
-  static const _bankFlex = [1, 1, 2, 4, 2, 3, 3, 2, 2, 3];
+  static const _bankFlex = [1, 1, 2, 3, 2, 2, 3, 2, 2, 5];
 
   Widget _bankCells(List<Widget> cells, {bool header = false}) {
     return Container(

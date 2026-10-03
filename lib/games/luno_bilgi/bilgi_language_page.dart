@@ -52,6 +52,10 @@ class _BilgiLanguagePageState extends State<BilgiLanguagePage>
   @override
   Widget build(BuildContext context) {
     final selected = widget.selectedId;
+    final title = bilgiT(selected, 'game_name');
+    final international = bilgiT('en', 'game_name');
+    final continueLabel = bilgiT(selected, 'continue');
+    final continueEn = bilgiT('en', 'continue');
     return SafeArea(
         child: FadeTransition(
           opacity: _fade,
@@ -93,20 +97,22 @@ class _BilgiLanguagePageState extends State<BilgiLanguagePage>
                         ),
                         const SizedBox(height: 20),
                         ShimmerTitle(
-                          text: bilgiT('tr', 'game_name'),
+                          text: title,
                           fontSize: 32,
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          bilgiT('en', 'game_name'),
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: BilgiColors.text.withValues(alpha: 0.7),
-                            fontWeight: FontWeight.w700,
-                            fontSize: 18,
-                            letterSpacing: 0.2,
+                        if (title != international) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            international,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: BilgiColors.text.withValues(alpha: 0.7),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 18,
+                              letterSpacing: 0.2,
+                            ),
                           ),
-                        ),
+                        ],
                         const SizedBox(height: 10),
                         Container(
                           width: 88,
@@ -150,8 +156,8 @@ class _BilgiLanguagePageState extends State<BilgiLanguagePage>
                     ),
                   ),
                   CosmicContinueButton(
-                    label: bilgiT('tr', 'continue'),
-                    subtitle: bilgiT('en', 'continue'),
+                    label: continueLabel,
+                    subtitle: continueLabel == continueEn ? null : continueEn,
                     showArrow: false,
                     onPressed: widget.onConfirm,
                   ),

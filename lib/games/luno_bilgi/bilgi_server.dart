@@ -640,6 +640,7 @@ class LunoBilgiServer {
     bool adCleared = false,
     List<BilgiQuestion>? fixedQuestions,
     BilgiQuestion? fixedSpare,
+    List<BilgiQuestion> fixedSpares = const [],
     String roomCode = '',
     bool chargeLife = true,
     int startIndex = 0,
@@ -687,15 +688,17 @@ class LunoBilgiServer {
       locale: user.locale,
       fixedQuestions: fixedQuestions,
       fixedSpare: fixedSpare,
+      fixedSpares: fixedSpares,
     );
     if (drawn == null) {
       return const BilgiResult(message: 'Sorular alınamadı. Bağlantını kontrol et.');
     }
-    if (drawn.questions.isEmpty) {
+    if (drawn.questions.isEmpty || (mode.id == 'lig' && drawn.questions.length < wanted)) {
       return const BilgiResult(message: '❓ Bu kategoride yeterli soru yok.');
     }
     final pool = drawn.questions;
     final spare = drawn.spare;
+    final spares = List<BilgiQuestion>.of(drawn.spares);
     final today = DateKeys.dayKey(_clock());
     final roundId = 'g${_clock().microsecondsSinceEpoch}';
     var next = user;
@@ -745,6 +748,7 @@ class LunoBilgiServer {
       lifeCost: mode.lifeCost,
       roomCode: roomCode,
       spare: spare,
+      spares: spares,
       startedAt: _clock(),
       index: startIndex.clamp(0, pool.length),
       score: startScore,
@@ -761,7 +765,7 @@ class LunoBilgiServer {
     return BilgiResult(profile: next, round: round);
   }
 
-  Future<({List<BilgiQuestion> questions, BilgiQuestion? spare})?> _openingQuestions({
+  Future<({List<BilgiQuestion> questions, BilgiQuestion? spare, List<BilgiQuestion> spares})?> _openingQuestions({
     required BilgiMode mode,
     required String categoryId,
     required String subcategory,
@@ -770,16 +774,17 @@ class LunoBilgiServer {
     required String locale,
     List<BilgiQuestion>? fixedQuestions,
     BilgiQuestion? fixedSpare,
+    List<BilgiQuestion> fixedSpares = const [],
   }) async {
     if (fixedQuestions != null) {
-      return (questions: fixedQuestions, spare: fixedSpare);
+      return (questions: fixedQuestions, spare: fixedSpare, spares: fixedSpares);
     }
     if (mode.id == 'gunluk') {
       final daily = remoteDaily;
       if (daily != null) {
         final one = await daily(locale: locale);
         if (one == null) return null;
-        return (questions: one, spare: null);
+        return (questions: one, spare: null, spares: const <BilgiQuestion>[]);
       }
     }
     final ask = mode.jokerMax > 0 && wanted > 0 ? wanted + 1 : wanted;
@@ -791,8 +796,8 @@ class LunoBilgiServer {
       locale: locale,
     );
     if (pool == null) return null;
-    if (pool.length <= wanted) return (questions: pool, spare: null);
-    return (questions: pool.sublist(0, wanted), spare: pool[wanted]);
+    if (pool.length <= wanted) return (questions: pool, spare: null, spares: const <BilgiQuestion>[]);
+    return (questions: pool.sublist(0, wanted), spare: pool[wanted], spares: const <BilgiQuestion>[]);
   }
 
   Future<List<BilgiQuestion>?> _draw({
@@ -984,7 +989,7 @@ class LunoBilgiServer {
     if (stock <= 0) return BilgiResult(message: 'joker', profile: user);
     final question = round.current;
     if (question == null) return const BilgiResult(message: '❓ Bu kategoride yeterli soru yok.');
-    if (type == 'change' && round.spare == null) {
+    if (type == 'change' && _takeSpare(round, question.difficulty, remove: false) == null) {
       return BilgiResult(message: '❓ Bu kategoride yeterli soru yok.', profile: user);
     }
     BilgiProfile saved;
@@ -1021,14 +1026,27 @@ class LunoBilgiServer {
         correct: question.correct,
       );
     } else if (type == 'change') {
-      final next = round.spare;
-      round.spare = null;
+      final next = _takeSpare(round, question.difficulty, remove: true);
       round.questions[round.index] = next!;
       round.hidden = const [];
       round.hint = '';
     }
     if (remoteWallet == null) await _save(saved);
     return BilgiResult(profile: saved, round: round);
+  }
+
+  /// Aynı zorluktaki yedeği alır. Günlük kâğıtta liste, diğer oyunlarda tek yedek durur.
+  BilgiQuestion? _takeSpare(BilgiRound round, String difficulty, {required bool remove}) {
+    final index = round.spares.indexWhere((question) => question.difficulty == difficulty);
+    if (index >= 0) {
+      return remove ? round.spares.removeAt(index) : round.spares[index];
+    }
+    if (round.spares.isEmpty && round.spare != null) {
+      final next = round.spare;
+      if (remove) round.spare = null;
+      return next;
+    }
+    return null;
   }
 
   Future<BilgiResult> finish(String roundId) async {

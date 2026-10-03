@@ -54,7 +54,7 @@ Future<Response> _save(Request request, KeyValueStore store) async {
   return jsonResponse({'run': decision.run});
 }
 
-/// Keeps the first question list. A later save can move the index forward, not swap the set.
+/// A later save moves the index forward. A fresh start replaces the question list.
 BilgiLeagueOpenWrite bilgiLeagueOpenWrite({
   required String userId,
   required String categoryId,
@@ -69,16 +69,17 @@ BilgiLeagueOpenWrite bilgiLeagueOpenWrite({
   final open = existing != null && existing['closed'] != true ? existing : null;
   final storedQuestions = _questionsOf(open);
   final incoming = _questionsOf(body);
-  final questions = storedQuestions.isNotEmpty ? storedQuestions : incoming;
+  final replace = body['fresh'] == true && incoming.isNotEmpty;
+  final questions = replace || storedQuestions.isEmpty ? incoming : storedQuestions;
   if (questions.isEmpty) return const BilgiLeagueOpenWrite.rejected();
   final index = bilgiInt(body['index'], 0);
-  if (open != null && index < bilgiInt(open['index'], 0)) return BilgiLeagueOpenWrite.keep(open);
+  if (!replace && open != null && index < bilgiInt(open['index'], 0)) return BilgiLeagueOpenWrite.keep(open);
   if (index >= questions.length) return const BilgiLeagueOpenWrite.closed();
-  final Object? spare = storedQuestions.isEmpty ? body['spare'] : open?['spare'];
+  final Object? spare = replace || storedQuestions.isEmpty ? body['spare'] : open?['spare'];
   return BilgiLeagueOpenWrite.store({
     'userId': userId,
     'categoryId': categoryId,
-    'modeId': '${open?['modeId'] ?? modeId}',
+    'modeId': '${replace ? modeId : (open?['modeId'] ?? modeId)}',
     'difficulty': '${body['difficulty'] ?? open?['difficulty'] ?? ''}',
     'subcategory': '${body['subcategory'] ?? open?['subcategory'] ?? ''}',
     'questions': questions,

@@ -30,6 +30,9 @@ const bilgiMixDifficulty = 'karisik';
 /// Günün Yarışması: 8 kolay, 6 orta, 4 zor, 2 efsane.
 const bilgiDailyQuotas = <int>[8, 6, 4, 2];
 
+/// Değiştir jokeri için 20 sorunun dışında: kolay, orta, zor 3; efsane 2.
+const bilgiContestSpareCounts = <int>[3, 3, 3, 2];
+
 const bilgiDifficultyLevels = ['kolay', 'orta', 'zor', 'efsane'];
 
 /// Shares [count] across the four difficulties. The first remainder levels get one extra.
