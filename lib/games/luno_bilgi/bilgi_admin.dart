@@ -1689,8 +1689,68 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
         _applyBulkCategory();
       case 'translate':
         _translateSelected();
+      case 'review':
+        _reviewSelected();
       case 'delete':
         _deleteSelected();
+    }
+  }
+
+  Future<void> _reviewSelected() async {
+    if (_bulkBusy) return;
+    if (_selectedIds.isEmpty) {
+      setState(() => _note = 'Önce soru seç.');
+      return;
+    }
+    final chosen = _questions.where((question) => _selectedIds.contains(question.id)).toList();
+    if (chosen.isEmpty) {
+      setState(() => _note = 'Önce soru seç.');
+      return;
+    }
+    setState(() => _bulkBusy = true);
+    var kept = 0;
+    var rejected = 0;
+    var failed = 0;
+    try {
+      for (var i = 0; i < chosen.length; i++) {
+        if (!mounted) return;
+        final question = chosen[i];
+        setState(() {
+          _reviewingId = question.id;
+          _note = 'Kontrol ediliyor... (${i + 1}/${chosen.length})';
+        });
+        final result = await BilgiQuestionApi.reviewQuestion(sl<ApiSession>().adminToken ?? '', question.id);
+        if (!mounted) return;
+        if (result.error != null) {
+          failed++;
+          setState(() => _note = result.error!);
+          continue;
+        }
+        final written = question.copyWith(
+          difficulty: result.difficulty,
+          status: result.status,
+          rejectReason: result.rejectReason,
+          reviewed: true,
+        );
+        try {
+          await _server.saveQuestion(written);
+        } catch (_) {}
+        if (!mounted) return;
+        _rememberSaved([written]);
+        if (result.verdict == 'reject') {
+          rejected++;
+        } else {
+          kept++;
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _bulkBusy = false;
+          _reviewingId = null;
+          _note = '$kept soru kontrol edildi. $rejected reddedildi. $failed başarısız.';
+        });
+      }
     }
   }
 
@@ -1841,6 +1901,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
               if (_bulkMenu == 'root') ...[
                 _ghost('Kategori değiştir', () => _onBulkMenu('category')),
                 _ghost('Çevir', () => _onBulkMenu('translate')),
+                _ghost('Kontrol', () => _onBulkMenu('review')),
                 _ghost('Durum güncelle', () => _onBulkMenu('status')),
                 _ghost('Zorluk değiştir', () => _onBulkMenu('difficulty')),
                 _solid('Seçimi sil', BilgiColors.error, Colors.white, () => _onBulkMenu('delete')),
@@ -1911,7 +1972,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                   activeColor: BilgiColors.secondary,
                   side: const BorderSide(color: Colors.white54),
                 ),
-                for (final label in const ['ID', 'SORU', 'KATEGORİ', 'ALT KATEGORİ', 'DOĞRU ŞIK', 'ZORLUK', 'DURUM', 'İŞLEM'])
+                for (final label in const ['ID', 'SORU', 'KATEGORİ', 'ALT KATEGORİ', 'DOĞRU\nŞIK', 'ZORLUK', 'DURUM', 'İŞLEM'])
                   Text(label, style: const TextStyle(color: BilgiColors.muted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.6)),
               ], header: true),
               if (slice.isEmpty)
@@ -1939,7 +2000,9 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     );
   }
 
-  static const _bankFlex = [1, 1, 2, 3, 2, 2, 3, 2, 2, 5];
+  /// KONTROL, seçim, ID, SORU, KATEGORİ, ALT KATEGORİ, DOĞRU ŞIK, ZORLUK, DURUM, İŞLEM.
+  /// SORU, daraltılan DOĞRU ŞIK genişliğini alır.
+  static const _bankFlex = [1, 1, 2, 5, 2, 2, 1, 2, 2, 5];
 
   Widget _bankCells(List<Widget> cells, {bool header = false}) {
     return Container(
@@ -1948,6 +2011,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
           ? const BoxDecoration(color: Color(0xFF121022), borderRadius: BorderRadius.vertical(top: Radius.circular(16)))
           : const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0x08FFFFFF)))),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (var i = 0; i < cells.length; i++)
             Expanded(
@@ -1964,7 +2028,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     return category != null && bilgiSpecialEventCategory(category);
   }
 
-  Widget _questionLine(BilgiQuestion question) {
+  Widget _questionLine(BilgiQuestion question, {bool wrap = false}) {
     final reason = question.rejectReason.trim();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1973,7 +2037,15 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
           _specialEventTag(compact: true),
           const SizedBox(height: 4),
         ],
-        Text(question.text, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 13)),
+        Text(
+          question.text,
+          softWrap: true,
+          maxLines: wrap ? null : 1,
+          overflow: wrap ? TextOverflow.visible : TextOverflow.ellipsis,
+          style: wrap
+              ? const TextStyle(color: Colors.white, fontSize: 13, height: 1.35)
+              : const TextStyle(color: Colors.white, fontSize: 13),
+        ),
         if (reason.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 2),
@@ -2014,12 +2086,13 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       ),
       Text(question.id, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: BilgiColors.muted, fontSize: 12)),
       Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (_questionReady(question)) ...[
             _langOk(),
             const SizedBox(width: 6),
           ],
-          Expanded(child: _questionLine(question)),
+          Expanded(child: _questionLine(question, wrap: true)),
         ],
       ),
       Text(_catLabel(question.categoryId), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13)),

@@ -21,39 +21,43 @@ String bilgiContestClock(Duration left) {
   return '$hours:$minutes:$seconds';
 }
 
-/// Real scores stay on top. Seeds only fill empty places up to 100.
+/// Finished runs take their rank and replace the seed in that slot.
+/// The board stays at [bilgiLeagueRealLimit]. Empty slots keep that rank's seed at score 0.
 List<BilgiBoardEntry> bilgiDailyBoard(List<BilgiBoardEntry> real) {
-  final ranked = [...real]..sort((a, b) => b.score.compareTo(a.score));
-  final placed = <BilgiBoardEntry>[
-    for (var i = 0; i < ranked.length; i++)
-      BilgiBoardEntry(
-        id: ranked[i].id,
-        name: ranked[i].name,
-        avatar: ranked[i].avatar,
-        score: ranked[i].score,
-        seed: false,
-        city: ranked[i].city,
-        rank: i + 1,
-      ),
-  ];
-  if (placed.length >= bilgiLeagueRealLimit) {
-    return placed.take(bilgiLeagueRealLimit).toList();
-  }
-  final filler = <BilgiBoardEntry>[];
-  for (final seed in bilgiSeedBoard()) {
-    if (placed.length + filler.length >= bilgiLeagueRealLimit) break;
-    filler.add(
+  final ranked = [for (final row in real) if (!row.seed && !row.id.startsWith('seed-')) row]
+    ..sort((a, b) => b.score.compareTo(a.score));
+  final seeds = bilgiSeedBoard();
+  final board = <BilgiBoardEntry>[];
+  for (var i = 0; i < bilgiLeagueRealLimit; i++) {
+    if (i < ranked.length) {
+      final row = ranked[i];
+      board.add(
+        BilgiBoardEntry(
+          id: row.id,
+          name: row.name,
+          avatar: row.avatar,
+          score: row.score,
+          seed: false,
+          city: row.city,
+          rank: i + 1,
+        ),
+      );
+      continue;
+    }
+    if (i >= seeds.length) break;
+    final seed = seeds[i];
+    board.add(
       BilgiBoardEntry(
         id: seed.id,
         name: seed.name,
         avatar: seed.avatar,
         score: 0,
         seed: true,
-        rank: placed.length + filler.length + 1,
+        rank: i + 1,
       ),
     );
   }
-  return [...placed, ...filler];
+  return board;
 }
 
 class BilgiContestProgress {
@@ -336,7 +340,9 @@ class BilgiContestApi {
             name: '${item['name'] ?? ''}',
             avatar: '${item['avatar'] ?? '😎'}',
             score: bilgiInt(item['score'], 0),
-            seed: false,
+            seed: item['seed'] == true,
+            city: '${item['city'] ?? ''}',
+            rank: bilgiInt(item['rank'], 0),
           ),
     ];
     final meRaw = map['me'];

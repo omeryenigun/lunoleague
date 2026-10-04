@@ -1087,20 +1087,32 @@ class BilgiRoom {
       };
 
   factory BilgiRoom.fromMap(Map<String, dynamic> map) {
+    final players = <Map<String, String>>[
+      for (final row in (map['players'] as List? ?? const []))
+        {
+          for (final entry in (row as Map).entries) entry.key.toString(): '${entry.value}',
+        },
+    ];
+    final rawHost = map['hostId'];
+    var hostId = rawHost == null ? '' : '$rawHost'.trim();
+    if (hostId.isEmpty) {
+      for (final player in players) {
+        final id = (player['id'] ?? '').trim();
+        if (player['role'] == 'host' && id.isNotEmpty) {
+          hostId = id;
+          break;
+        }
+      }
+    }
     return BilgiRoom(
       code: map['code'] as String? ?? '',
-      hostId: map['hostId'] as String? ?? '',
+      hostId: hostId,
       hostName: map['hostName'] as String? ?? '',
       categoryId: map['categoryId'] as String? ?? tumuFallback,
-      questionCount: map['questionCount'] as int? ?? 20,
-      seconds: map['seconds'] as int? ?? 15,
+      questionCount: bilgiInt(map['questionCount'], 20),
+      seconds: bilgiInt(map['seconds'], 15),
       difficulty: map['difficulty'] as String? ?? 'orta',
-      players: [
-        for (final row in (map['players'] as List? ?? const []))
-          {
-            for (final entry in (row as Map).entries) entry.key.toString(): '${entry.value}',
-          },
-      ],
+      players: players,
       kind: map['kind'] as String? ?? 'oda',
       status: map['status'] as String? ?? 'lobby',
       subcategory: map['subcategory'] as String? ?? '',
@@ -1142,7 +1154,7 @@ class BilgiConfig {
     this.lifeCostDefault = 1,
     this.lifeCostMarathon = 3,
     this.inviteLifeEvery = 5,
-    this.dailyFreeGames = 1,
+    this.dailyFreeGames = 3,
     this.preGameAdSeconds = 15,
     this.newUserAdFree = 3,
     this.rewardedGold = 50,
@@ -1293,7 +1305,7 @@ class BilgiConfig {
       lifeCostDefault: bilgiInt(map['lifeCostDefault'], 1),
       lifeCostMarathon: bilgiInt(map['lifeCostMarathon'], 3),
       inviteLifeEvery: bilgiInt(map['inviteLifeEvery'], 5),
-      dailyFreeGames: bilgiInt(map['dailyFreeGames'], 1),
+      dailyFreeGames: bilgiInt(map['dailyFreeGames'], 3),
       preGameAdSeconds: bilgiInt(map['preGameAdSeconds'], 15),
       newUserAdFree: bilgiInt(map['newUserAdFree'], 3),
       rewardedGold: bilgiInt(map['rewardedGold'], 50),

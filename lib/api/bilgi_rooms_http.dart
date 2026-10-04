@@ -50,6 +50,7 @@ void mountBilgiRooms(Router router, Connection db) {
     ..get('/v1/bilgi/rooms/<code>', (Request request, String code) => _poll(db, code))
     ..post('/v1/bilgi/rooms/<code>/join', (Request request, String code) => _join(request, db, code))
     ..post('/v1/bilgi/rooms/<code>/start', (Request request, String code) => _start(request, db, code))
+    ..post('/v1/bilgi/rooms/<code>/leave', (Request request, String code) => _leave(request, db, code))
     ..post('/v1/bilgi/rooms/<code>/score', (Request request, String code) => _score(request, db, code));
 }
 
@@ -137,19 +138,26 @@ Future<Response> _start(Request request, Connection db, String code) async {
   if (room['status'] == 'playing') {
     return jsonResponse(await _payload(db, room['code'] as String, includeQuestions: true));
   }
+  if (room['kind'] == 'duello') {
+    final seated = await _players(db, room['code'] as String);
+    if (seated.length < 2) {
+      return jsonResponse({'error': 'Rakip henüz katılmadı.'}, status: 409);
+    }
+  }
   final count = room['questionCount'] as int;
+  final spareCount = room['kind'] == 'duello' ? 2 : 3;
   final picked = await drawApprovedBilgiQuestions(
     db,
     categoryId: '${room['categoryId']}',
     subcategory: '${room['subcategory']}',
     difficulty: '${room['difficulty']}',
-    count: count + 1,
+    count: count + spareCount,
   );
   if (picked.length < count) {
     return jsonResponse({'error': '❓ Bu kategoride yeterli soru yok.'}, status: 409);
   }
   final questions = picked.sublist(0, count);
-  final spare = picked.length > count ? picked[count] : null;
+  final spares = picked.length > count ? picked.sublist(count) : const <Map<String, dynamic>>[];
   await db.execute(
     Sql.named('''
       update bilgi_rooms
@@ -161,10 +169,34 @@ Future<Response> _start(Request request, Connection db, String code) async {
     parameters: {
       'code': room['code'],
       'questions': jsonEncode(questions),
-      'spare': spare == null ? '' : jsonEncode(spare),
+      'spare': jsonEncode(spares),
     },
   );
   return jsonResponse(await _payload(db, room['code'] as String, includeQuestions: true));
+}
+
+Future<Response> _leave(Request request, Connection db, String code) async {
+  final room = await _room(db, code);
+  if (room == null) return jsonResponse({'ok': true});
+  if (room['status'] != 'lobby') {
+    return jsonResponse({'error': 'Oda başladı.'}, status: 409);
+  }
+  final body = await readJson(request);
+  final playerId = _id(body['playerId']);
+  if (playerId == null) return jsonResponse({'error': 'Oda isteği geçersiz.'}, status: 400);
+  final roomCode = room['code'] as String;
+  if (playerId == room['hostId']) {
+    await db.execute(
+      Sql.named("delete from bilgi_rooms where code = @code and status = 'lobby'"),
+      parameters: {'code': roomCode},
+    );
+    return jsonResponse({'ok': true});
+  }
+  await db.execute(
+    Sql.named('delete from bilgi_room_players where room_code = @code and player_id = @playerId'),
+    parameters: {'code': roomCode, 'playerId': playerId},
+  );
+  return jsonResponse({'ok': true});
 }
 
 Future<Response> _score(Request request, Connection db, String code) async {
@@ -265,7 +297,7 @@ Future<Map<String, dynamic>?> _room(Connection db, String code) async {
     'seconds': row[8] is int ? row[8] as int : int.parse('${row[8]}'),
     'status': '${row[9]}',
     'questions': _maps(row[10]),
-    'spare': _one(row[11]),
+    'spares': _spareList(row[11]),
   };
 }
 
@@ -314,7 +346,8 @@ Future<Map<String, dynamic>> _payload(
       'players': players,
     },
     'questions': includeQuestions ? room['questions'] : const [],
-    'spare': includeQuestions ? room['spare'] : null,
+    'spare': includeQuestions && (room['spares'] as List).isNotEmpty ? (room['spares'] as List).first : null,
+    'spares': includeQuestions ? room['spares'] : const [],
   };
 }
 
@@ -332,13 +365,19 @@ List<Map<String, dynamic>> _maps(Object? raw) {
   }
 }
 
-Map<String, dynamic>? _one(Object? raw) {
-  if (raw is! String || raw.isEmpty) return null;
+List<Map<String, dynamic>> _spareList(Object? raw) {
+  if (raw is! String || raw.isEmpty) return const [];
   try {
     final decoded = jsonDecode(raw);
-    if (decoded is Map) return Map<String, dynamic>.from(decoded);
-  } catch (_) {}
-  return null;
+    if (decoded is Map) return [Map<String, dynamic>.from(decoded)];
+    if (decoded is! List) return const [];
+    return [
+      for (final item in decoded)
+        if (item is Map) Map<String, dynamic>.from(item),
+    ];
+  } catch (_) {
+    return const [];
+  }
 }
 
 String? _id(Object? raw) {

@@ -13,6 +13,7 @@ class BilgiRoomApi {
       poll: poll,
       start: start,
       score: score,
+      leave: leave,
     );
   }
 
@@ -62,6 +63,22 @@ class BilgiRoomApi {
       return _read(response.statusCode, response.body);
     } catch (_) {
       return const BilgiRoomSync(message: 'Oda açılamadı. Bağlantını kontrol et.');
+    }
+  }
+
+  static Future<bool> leave({
+    required String code,
+    required String playerId,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/v1/bilgi/rooms/${Uri.encodeComponent(code)}/leave'),
+        headers: {'content-type': 'application/json; charset=utf-8'},
+        body: jsonEncode({'playerId': playerId}),
+      );
+      return response.statusCode == 404 || (response.statusCode >= 200 && response.statusCode < 300);
+    } catch (_) {
+      return false;
     }
   }
 
@@ -117,11 +134,14 @@ class BilgiRoomApi {
       return const BilgiRoomSync(message: 'Oda açılamadı. Bağlantını kontrol et.');
     }
     final questions = _questions(decoded['questions']);
+    final listed = _questions(decoded['spares']);
     final spareRaw = decoded['spare'];
+    final spare = spareRaw is Map ? BilgiQuestion.fromMap(Map<String, dynamic>.from(spareRaw)) : null;
     return BilgiRoomSync(
       room: BilgiRoom.fromMap(Map<String, dynamic>.from(roomRaw)),
       questions: questions,
-      spare: spareRaw is Map ? BilgiQuestion.fromMap(Map<String, dynamic>.from(spareRaw)) : null,
+      spare: spare,
+      spares: listed.isNotEmpty ? listed : (spare == null ? const [] : [spare]),
     );
   }
 

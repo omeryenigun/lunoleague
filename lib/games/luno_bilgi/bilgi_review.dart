@@ -8,6 +8,7 @@ Türkçe bir bilgi yarışması sorusunu denetle. Soru metnini, şıkları ve do
 
 Zorluk, doğru şıkkı dört seçenek arasından kimin ayırabildiğidir.
 Doğruyu bilen kişi şıkları ayıramıyorsa soru bozuktur. Zorluk yükseltme. Reddet.
+Adaylık, aynı meslek ya da başka yıl alınan ödül doğru şıkkı belirsiz yapmaz. Doğruyu bilen kişi tek şıkkı seçebiliyorsa soruyu tut.
 Kolay: herkes, gündelik veya ilkokul bilgisi. Yanlış şıklar başka kavramlar.
 Orta: meraklı bir acemi, genel kültür. Şıklar aynı aileden olabilir.
 Zor: konuda yetkin biri. Sayı, terim veya başlık. Şıklar yakın. Tek ayrıntı ayırır.

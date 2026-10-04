@@ -123,7 +123,10 @@ void main() {
     final today = DateKeys.dayKey(now);
     final active = month.profile!.copyWith(adFreeLeft: 0, freePlaysUsed: 1, lastPlayDay: today);
     expect(server.needsAd(active, await server.config()), isFalse);
-    final lapsed = active.copyWith(premiumUntil: now.subtract(const Duration(days: 1)));
+    final lapsed = active.copyWith(
+      premiumUntil: now.subtract(const Duration(days: 1)),
+      freePlaysUsed: 5,
+    );
     expect(server.needsAd(lapsed, await server.config()), isTrue);
     expect(bilgiPlusActive(active.copyWith(clearPremiumUntil: true), now), isTrue);
 
@@ -197,6 +200,35 @@ void main() {
     expect(after.gold, before.gold);
     expect(after.premium, isFalse);
     game.dispose();
+  });
+
+  test('three daily games stay free, then every third game asks for an ad', () async {
+    final now = DateTime.utc(2026, 10, 1);
+    final store = MemoryKeyValueStore();
+    await store.put('config', 'main', {'dailyFreeGames': 1});
+    final server = LunoBilgiServer(store, clock: () => now);
+    expect((await server.config()).dailyFreeGames, 3);
+    final registered = await server.register(
+      username: 'Ada',
+      email: 'ada@example.com',
+      password: 'secret1',
+    );
+    final today = DateKeys.dayKey(now);
+    final cfg = await server.config();
+    bool ad(int played, {int adFreeLeft = 0}) {
+      final user = registered.profile!.copyWith(
+        adFreeLeft: adFreeLeft,
+        freePlaysUsed: played,
+        lastPlayDay: today,
+      );
+      return server.needsAd(user, cfg);
+    }
+
+    expect(
+      [for (var played = 0; played < 9; played++) ad(played)],
+      [false, false, false, false, false, true, false, false, true],
+    );
+    expect(ad(5, adFreeLeft: 2), isFalse);
   });
 }
 

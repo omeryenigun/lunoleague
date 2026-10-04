@@ -213,7 +213,7 @@ void main() {
       required String locale,
     }) async {
       draws += 1;
-      expect(count, 2);
+      expect(count, 4);
       return const [
         BilgiQuestion(
           id: 'open',
@@ -361,7 +361,8 @@ void main() {
     final other = await server.startRound(modeId: 'hizli', categoryId: 'genel', subcategory: 'Günlük Bilgi', difficulty: 'kolay');
     expect(other.message, '❓ Bu kategoride yeterli soru yok.');
     final easy = await server.startRound(modeId: 'hizli', categoryId: 'genel', subcategory: 'Atasözleri', difficulty: 'kolay');
-    expect(easy.round!.questions, hasLength(1));
+    expect(easy.message, '❓ Bu kategoride yeterli soru yok.');
+    expect(easy.round, isNull);
     final legend = await server.startRound(modeId: 'sakin', categoryId: 'genel', difficulty: 'efsane');
     expect(legend.message, '❓ Bu kategoride yeterli soru yok.');
     final daily = await server.startRound(modeId: 'gunluk', categoryId: tumuKarmaId, questionCount: 1);

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:kelimelig/core/theme/shimmer_title.dart';
+import 'package:kelimelig/core/theme/colors.dart';
 
 class BilgiColors {
   static const primary = Color(0xFF6C3CE9);
@@ -170,7 +170,7 @@ class BilgiTopBar extends StatelessWidget {
   }
 }
 
-/// Compact colorful title for Bilgi headers. Opening page keeps [ShimmerTitle] at 32.
+/// Fixed green title for Bilgi page headers.
 class BilgiHeaderTitle extends StatelessWidget {
   const BilgiHeaderTitle(this.text, {super.key, this.align = TextAlign.center});
 
@@ -179,11 +179,18 @@ class BilgiHeaderTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ShimmerTitle(
-      text: text,
-      fontSize: 24,
+    return Text(
+      text,
       textAlign: align,
-      compact: true,
+      maxLines: 1,
+      softWrap: false,
+      style: const TextStyle(
+        fontSize: 24,
+        fontWeight: FontWeight.w800,
+        letterSpacing: -0.3,
+        height: 1,
+        color: AppColors.cosmicGreen,
+      ),
     );
   }
 }
@@ -214,6 +221,7 @@ class BilgiPrimaryButton extends StatelessWidget {
     required this.onTap,
     this.verticalPadding = 18,
     this.horizontalPadding = 20,
+    this.fill,
   });
 
   final String label;
@@ -221,22 +229,26 @@ class BilgiPrimaryButton extends StatelessWidget {
   final double verticalPadding;
   final double horizontalPadding;
 
+  /// Solid color when [onTap] is null. Defaults to [BilgiColors.card].
+  final Color? fill;
+
   @override
   Widget build(BuildContext context) {
+    final enabled = onTap != null;
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SizedBox(
         width: double.infinity,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            gradient: onTap == null
-                ? null
-                : const LinearGradient(colors: [BilgiColors.primary, BilgiColors.primaryLight]),
-            color: onTap == null ? BilgiColors.card : null,
+            gradient: enabled
+                ? const LinearGradient(colors: [BilgiColors.primary, BilgiColors.primaryLight])
+                : null,
+            color: enabled ? null : (fill ?? BilgiColors.card),
             borderRadius: BorderRadius.circular(bilgiRadius),
-            boxShadow: onTap == null
-                ? null
-                : const [BoxShadow(color: Color(0x666C3CE9), blurRadius: 24, offset: Offset(0, 8))],
+            boxShadow: enabled
+                ? const [BoxShadow(color: Color(0x666C3CE9), blurRadius: 24, offset: Offset(0, 8))]
+                : null,
           ),
           child: Material(
             color: Colors.transparent,

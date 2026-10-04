@@ -177,7 +177,14 @@ class LunoBilgiServer {
   }
 
   Future<BilgiConfig> config() async {
-    return BilgiConfig.fromMap(await _store.get(_config, 'main'));
+    final stored = await _store.get(_config, 'main');
+    if (stored != null && stored['dailyFreeGames'] == 1) {
+      final map = Map<String, dynamic>.from(stored);
+      map['dailyFreeGames'] = 3;
+      await _store.put(_config, 'main', map);
+      return BilgiConfig.fromMap(map);
+    }
+    return BilgiConfig.fromMap(stored);
   }
 
   Future<void> saveConfig(BilgiConfig value) async {
@@ -627,8 +634,10 @@ class LunoBilgiServer {
     if (bilgiPlusActive(user, _clock())) return false;
     if (user.adFreeLeft > 0) return false;
     final today = DateKeys.dayKey(_clock());
-    final used = user.lastPlayDay == today ? user.freePlaysUsed : 0;
-    return used >= cfg.dailyFreeGames;
+    final played = user.lastPlayDay == today ? user.freePlaysUsed : 0;
+    final next = played + 1;
+    if (next <= cfg.dailyFreeGames) return false;
+    return (next - cfg.dailyFreeGames) % 3 == 0;
   }
 
   Future<BilgiResult> startRound({
@@ -693,7 +702,7 @@ class LunoBilgiServer {
     if (drawn == null) {
       return const BilgiResult(message: 'Sorular alınamadı. Bağlantını kontrol et.');
     }
-    if (drawn.questions.isEmpty || (mode.id == 'lig' && drawn.questions.length < wanted)) {
+    if (drawn.questions.isEmpty || drawn.questions.length < wanted) {
       return const BilgiResult(message: '❓ Bu kategoride yeterli soru yok.');
     }
     final pool = drawn.questions;
@@ -711,7 +720,7 @@ class LunoBilgiServer {
         lastPlayDay: today,
         freePlaysUsed: user.adFreeLeft > 0
             ? user.freePlaysUsed
-            : (user.lastPlayDay == today ? user.freePlaysUsed : 0) + (needsAd(user, cfg) ? 0 : 1),
+            : (user.lastPlayDay == today ? user.freePlaysUsed : 0) + 1,
       );
       if (mode.lifeCost > 0 && user.lives == cfg.maxLives) {
         next = next.copyWith(livesAt: _clock());
@@ -787,7 +796,7 @@ class LunoBilgiServer {
         return (questions: one, spare: null, spares: const <BilgiQuestion>[]);
       }
     }
-    final ask = mode.jokerMax > 0 && wanted > 0 ? wanted + 1 : wanted;
+    final ask = mode.jokerMax > 0 && wanted > 0 ? wanted + mode.jokerMax : wanted;
     final pool = await _draw(
       categoryId: categoryId,
       subcategory: subcategory,
@@ -796,8 +805,9 @@ class LunoBilgiServer {
       locale: locale,
     );
     if (pool == null) return null;
-    if (pool.length <= wanted) return (questions: pool, spare: null, spares: const <BilgiQuestion>[]);
-    return (questions: pool.sublist(0, wanted), spare: pool[wanted], spares: const <BilgiQuestion>[]);
+    if (pool.length < wanted) return (questions: pool, spare: null, spares: const <BilgiQuestion>[]);
+    final extra = pool.length > wanted ? pool.sublist(wanted) : const <BilgiQuestion>[];
+    return (questions: pool.sublist(0, wanted), spare: null, spares: extra);
   }
 
   Future<List<BilgiQuestion>?> _draw({
@@ -1035,11 +1045,14 @@ class LunoBilgiServer {
     return BilgiResult(profile: saved, round: round);
   }
 
-  /// Aynı zorluktaki yedeği alır. Günlük kâğıtta liste, diğer oyunlarda tek yedek durur.
+  /// Aynı zorluktaki yedeği alır. Yarışmada başka zorluk kullanılmaz.
   BilgiQuestion? _takeSpare(BilgiRound round, String difficulty, {required bool remove}) {
     final index = round.spares.indexWhere((question) => question.difficulty == difficulty);
     if (index >= 0) {
       return remove ? round.spares.removeAt(index) : round.spares[index];
+    }
+    if (round.modeId != 'yarisma' && round.spares.isNotEmpty) {
+      return remove ? round.spares.removeAt(0) : round.spares.first;
     }
     if (round.spares.isEmpty && round.spare != null) {
       final next = round.spare;
@@ -1579,6 +1592,41 @@ class LunoBilgiServer {
     );
     await _store.put(_rooms, room.code, next.toMap());
     return BilgiResult(room: next, profile: user);
+  }
+
+  Future<bool> leaveRoom(String code) async {
+    final user = await profile();
+    final raw = await _store.get(_rooms, code.trim());
+    if (raw == null) return true;
+    final room = BilgiRoom.fromMap(raw);
+    if (room.status != 'lobby') return false;
+    if (user.id == room.hostId) {
+      await _store.delete(_rooms, room.code);
+      return true;
+    }
+    final mine = user.id;
+    final players = [
+      for (final player in room.players)
+        if (player['id'] != mine && player['id']?.startsWith('${mine}_') != true) player,
+    ];
+    await _store.put(
+      _rooms,
+      room.code,
+      BilgiRoom(
+        code: room.code,
+        hostId: room.hostId,
+        hostName: room.hostName,
+        categoryId: room.categoryId,
+        questionCount: room.questionCount,
+        seconds: room.seconds,
+        difficulty: room.difficulty,
+        players: players,
+        kind: room.kind,
+        status: room.status,
+        subcategory: room.subcategory,
+      ).toMap(),
+    );
+    return true;
   }
 
   Future<BilgiRoom?> room(String code) async {

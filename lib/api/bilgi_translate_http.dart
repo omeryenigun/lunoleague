@@ -31,16 +31,19 @@ Future<Response> _translate(Request request, Connection db) async {
   if (await adminIdOf(db, request) == null) {
     return jsonResponse({'error': 'Oturum geçersiz.'}, status: 401);
   }
-  final key = Platform.environment['OPENROUTER_API_KEY'] ?? '';
-  if (key.isEmpty) return jsonResponse({'error': 'OpenRouter anahtarı yok.'}, status: 503);
+  final openRouter = Platform.environment['OPENROUTER_API_KEY'] ?? '';
+  final openAi = Platform.environment['OPENAI_API_KEY'] ?? '';
+  if (openRouter.isEmpty && openAi.isEmpty) {
+    return jsonResponse({'error': 'Tercüme anahtarı yok.'}, status: 503);
+  }
   final body = await readJson(request);
   final kind = '${body['kind'] ?? ''}'.trim();
-  if (kind == 'question') return _question(key, body);
-  if (kind == 'name') return _name(key, body);
+  if (kind == 'question') return _question(body);
+  if (kind == 'name') return _name(body);
   return jsonResponse({'error': 'Tercüme isteği geçersiz.'}, status: 400);
 }
 
-Future<Response> _question(String key, Map<String, dynamic> body) async {
+Future<Response> _question(Map<String, dynamic> body) async {
   final text = '${body['text'] ?? ''}'.trim();
   final explanation = '${body['explanation'] ?? ''}'.trim();
   final options = body['options'];
@@ -55,7 +58,6 @@ Future<Response> _question(String key, Map<String, dynamic> body) async {
   if (targets.isEmpty) return jsonResponse({'translations': <String, Object>{}});
   final sample = targets.map((id) => '"$id":{"text":"","options":["","","",""],"explanation":""}').join(',');
   final decoded = await _ask(
-    key,
     'Translate this Turkish trivia item into ${targets.join(', ')}. '
     'Keep the four options in the same order. Do not change which option is correct. '
     'Every text, option, and explanation must be non-empty. '
@@ -83,7 +85,7 @@ Future<Response> _question(String key, Map<String, dynamic> body) async {
   return jsonResponse({'translations': out});
 }
 
-Future<Response> _name(String key, Map<String, dynamic> body) async {
+Future<Response> _name(Map<String, dynamic> body) async {
   final text = '${body['text'] ?? ''}'.trim();
   if (text.isEmpty || text.length > 80) {
     return jsonResponse({'error': 'Türkçe ad dolu olmalı.'}, status: 400);
@@ -92,7 +94,6 @@ Future<Response> _name(String key, Map<String, dynamic> body) async {
   if (targets.isEmpty) return jsonResponse({'names': <String, String>{}});
   final sample = targets.map((id) => '"$id":""').join(',');
   final decoded = await _ask(
-    key,
     'Translate this Turkish category name into short display names for ${targets.join(', ')}. '
     'Each name must be non-empty and at most 80 characters. '
     'Return only JSON: {$sample}.',
@@ -111,28 +112,68 @@ Future<Response> _name(String key, Map<String, dynamic> body) async {
   return jsonResponse({'names': out});
 }
 
-Future<Object?> _ask(String key, String instruction, String source) async {
-  final model = Platform.environment['OPENROUTER_MODEL'] ?? 'google/gemini-2.5-flash';
+/// OpenRouter önce denenir. Kota veya bağlantı hatasında OpenAI yedeği kullanılır.
+Future<Object?> _ask(String instruction, String source) async {
+  final openRouterKey = Platform.environment['OPENROUTER_API_KEY'] ?? '';
+  Object? primary;
+  if (openRouterKey.isNotEmpty) {
+    primary = await _complete(
+      endpoint: Uri.parse('https://openrouter.ai/api/v1/chat/completions'),
+      key: openRouterKey,
+      model: Platform.environment['OPENROUTER_MODEL'] ?? 'google/gemini-2.5-flash',
+      instruction: instruction,
+      source: source,
+      extraHeaders: const {
+        'http-referer': 'https://onyapp.app',
+        'x-title': 'Luno Bilgi',
+      },
+    );
+    if (primary is Map) return primary;
+  }
+  final openAiKey = Platform.environment['OPENAI_API_KEY'] ?? '';
+  if (openAiKey.isEmpty) {
+    if (primary is String) return primary;
+    return 'Tercüme servisi yanıt vermedi.';
+  }
+  return _complete(
+    endpoint: Uri.parse('https://api.openai.com/v1/chat/completions'),
+    key: openAiKey,
+    model: Platform.environment['OPENAI_MODEL'] ?? 'gpt-4o-mini',
+    instruction: instruction,
+    source: source,
+    jsonMode: true,
+  );
+}
+
+Future<Object?> _complete({
+  required Uri endpoint,
+  required String key,
+  required String model,
+  required String instruction,
+  required String source,
+  Map<String, String> extraHeaders = const {},
+  bool jsonMode = false,
+}) async {
   try {
+    final payload = <String, Object>{
+      'model': model,
+      'temperature': 0.2,
+      'max_tokens': 2000,
+      'messages': [
+        {'role': 'system', 'content': instruction},
+        {'role': 'user', 'content': source},
+      ],
+    };
+    if (jsonMode) payload['response_format'] = {'type': 'json_object'};
     final response = await http
         .post(
-          Uri.parse('https://openrouter.ai/api/v1/chat/completions'),
+          endpoint,
           headers: {
             'authorization': 'Bearer $key',
             'content-type': 'application/json',
-            'http-referer': 'https://onyapp.app',
-            'x-title': 'Luno Bilgi',
+            ...extraHeaders,
           },
-          body: jsonEncode({
-            'model': model,
-            'temperature': 0.2,
-            // Cap completion size so low remaining credit balances (402) still work.
-            'max_tokens': 2000,
-            'messages': [
-              {'role': 'system', 'content': instruction},
-              {'role': 'user', 'content': source},
-            ],
-          }),
+          body: jsonEncode(payload),
         )
         .timeout(const Duration(seconds: 60));
     final decoded = jsonDecode(response.body);

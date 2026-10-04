@@ -621,18 +621,41 @@ BilgiLeagueSnapshot bilgiLeagueSnapshot({
   }
 
   BilgiBoardEntry? pinnedOutsideTop() {
-    if (!seedIfShort || me == null) return null;
+    if (!seedIfShort || me == null || showSeed) return null;
     final index = ranked.indexWhere((user) => user.id == me.id);
-    if (index < 0) return null;
-    if (!showSeed && index < bilgiLeagueRealLimit) return null;
+    if (index < bilgiLeagueRealLimit) return null;
     return entryFor(ranked[index], index + 1);
+  }
+
+  List<BilgiBoardEntry> seededBoard() {
+    final seeds = bilgiSeedBoard();
+    final board = <BilgiBoardEntry>[];
+    for (var i = 0; i < bilgiLeagueRealLimit; i++) {
+      if (i < ranked.length) {
+        board.add(entryFor(ranked[i], i + 1));
+        continue;
+      }
+      if (i >= seeds.length) break;
+      final seed = seeds[i];
+      board.add(
+        BilgiBoardEntry(
+          id: seed.id,
+          name: seed.name,
+          avatar: seed.avatar,
+          score: 0,
+          seed: true,
+          rank: i + 1,
+        ),
+      );
+    }
+    return board;
   }
 
   final pinned = pinnedOutsideTop();
   final rows = !seedIfShort
       ? [for (var i = 0; i < ranked.length; i++) entryFor(ranked[i], i + 1)]
       : showSeed
-          ? [...bilgiSeedBoard().take(bilgiLeagueRealLimit), if (pinned != null) pinned]
+          ? seededBoard()
           : [
               for (var i = 0; i < ranked.length && i < bilgiLeagueRealLimit; i++) entryFor(ranked[i], i + 1),
               if (pinned != null) pinned,

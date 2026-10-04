@@ -38,6 +38,38 @@ void main() {
     expect(board.first.score, 100);
   });
 
+  test('a real finisher replaces a seed instead of becoming rank limit+1', () {
+    final seeds = bilgiSeedBoard();
+    final board = bilgiDailyBoard([
+      ...seeds,
+      _player('me', 40),
+    ]);
+    expect(board, hasLength(bilgiLeagueRealLimit));
+    expect(board.first.id, 'me');
+    expect(board.first.rank, 1);
+    expect(board.first.seed, isFalse);
+    expect(board.where((row) => row.id == 'me'), hasLength(1));
+    expect(board.any((row) => row.rank == bilgiLeagueRealLimit + 1), isFalse);
+    expect(board.any((row) => row.score == 15000), isFalse);
+    expect(board[10].id, seeds[10].id);
+    expect(board[10].seed, isTrue);
+    expect(board[10].score, 0);
+    expect(board.last.id, seeds[bilgiLeagueRealLimit - 1].id);
+    expect(board.last.score, 0);
+    expect(board.last.rank, bilgiLeagueRealLimit);
+
+    final eleven = bilgiDailyBoard([
+      for (var i = 0; i < 11; i++) _player('p$i', 110 - i),
+    ]);
+    expect(eleven, hasLength(bilgiLeagueRealLimit));
+    expect(eleven[10].id, 'p10');
+    expect(eleven[10].rank, 11);
+    expect(eleven[10].seed, isFalse);
+    expect(eleven[11].id, seeds[11].id);
+    expect(eleven[11].score, 0);
+    expect(eleven[11].seed, isTrue);
+  });
+
   test('contest gold and xp stay capped', () {
     expect(bilgiContestGold(0), 0);
     expect(bilgiContestGold(10), 100);

@@ -1,11 +1,18 @@
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 
 class BilgiRoomSync {
-  const BilgiRoomSync({this.room, this.questions = const [], this.spare, this.message});
+  const BilgiRoomSync({
+    this.room,
+    this.questions = const [],
+    this.spare,
+    this.spares = const [],
+    this.message,
+  });
 
   final BilgiRoom? room;
   final List<BilgiQuestion> questions;
   final BilgiQuestion? spare;
+  final List<BilgiQuestion> spares;
   final String? message;
 
   bool get ok => message == null && room != null;
@@ -18,6 +25,7 @@ class BilgiRoomHooks {
     required this.poll,
     required this.start,
     required this.score,
+    required this.leave,
   });
 
   final Future<BilgiRoomSync> Function({
@@ -48,4 +56,33 @@ class BilgiRoomHooks {
     required int score,
     required int index,
   }) score;
+
+  final Future<bool> Function({
+    required String code,
+    required String playerId,
+  }) leave;
+}
+
+/// True when [viewerId] is the person who created [room].
+/// Matches [BilgiRoom.hostId], or the seated player whose role is host.
+bool bilgiViewerHostsRoom(BilgiRoom room, String? viewerId) {
+  final me = viewerId?.trim() ?? '';
+  if (me.isEmpty) return false;
+  if (room.hostId.trim() == me) return true;
+  for (final player in room.players) {
+    final id = (player['id'] ?? '').trim();
+    final role = (player['role'] ?? '').trim();
+    if (id == me && role == 'host') return true;
+  }
+  return false;
+}
+
+/// Host start control for a lobby.
+/// A remote duel stays hidden until the snapshot lists the second player.
+/// A private room still shows the control to the host with one seat.
+bool bilgiRoomStartVisible(BilgiRoom room, String? viewerId, {bool remote = true}) {
+  if (room.status == 'playing') return false;
+  if (!bilgiViewerHostsRoom(room, viewerId)) return false;
+  if (remote && room.kind == 'duello' && room.players.length < 2) return false;
+  return true;
 }

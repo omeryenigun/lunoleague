@@ -52,12 +52,16 @@ class BilgiController extends ChangeNotifier {
   final List<String> stack = ['home'];
   Timer? _timer;
   int _syncBeat = 0;
+  int _roomEpoch = 0;
+  int _roomSyncGen = 0;
   BilgiRoomSync? _pendingShared;
 
   BilgiProfile? profile;
   BilgiConfig config = const BilgiConfig();
   BilgiRound? round;
   BilgiRoom? room;
+  /// Seat id used to create or join [room]. Start checks use this, not a later wallet id.
+  String? roomPlayerId;
   String? notice;
   /// Bumps when a gold spend is refused so the screen opens the options dialog.
   int goldHelpSerial = 0;
@@ -458,6 +462,24 @@ class BilgiController extends ChangeNotifier {
     await start(forcedMode: 'lig');
   }
 
+  void selectBoard(String scope) {
+    boardScope = scope;
+    if (scope == 'category') boardCategoryId = null;
+    notifyListeners();
+    if (scope == 'daily') {
+      unawaited(refreshContest());
+      return;
+    }
+    unawaited(loadBoard());
+  }
+
+  void openDailyBoard() {
+    boardScope = 'daily';
+    if (page != 'league') open('league');
+    notifyListeners();
+    unawaited(refreshContest());
+  }
+
   Future<void> refreshContest() async {
     final user = profile;
     if (user == null) return;
@@ -498,8 +520,7 @@ class BilgiController extends ChangeNotifier {
     final user = profile;
     if (user == null) return;
     if (contestPhase == 'done') {
-      open('contest_board');
-      unawaited(refreshContest());
+      openDailyBoard();
       return;
     }
     if (busy) return;
@@ -524,7 +545,13 @@ class BilgiController extends ChangeNotifier {
     _applyContest(paper);
     if (paper.phase == 'done') {
       _clearRoundLoading();
-      open('contest_board');
+      openDailyBoard();
+      return;
+    }
+    if (paper.questions.length < bilgiModeById('yarisma').questions) {
+      _clearRoundLoading();
+      notice = '❓ Bu kategoride yeterli soru yok.';
+      notifyListeners();
       return;
     }
     final mine = paper.me;
@@ -843,13 +870,32 @@ class BilgiController extends ChangeNotifier {
   }
 
   void _openPreGameAd() {
+    if (stack.isNotEmpty && stack.last == 'ad') return;
+    open('ad');
+  }
+
+  /// Leaves the gate without starting the round or showing an ad.
+  void declinePreGameAd() {
+    if (_adLaunching) return;
+    _pendingShared = null;
+    if (stack.isNotEmpty && stack.last == 'ad') stack.removeLast();
+    notice = null;
+    notifyListeners();
+  }
+
+  /// Plays the pre-game ad only after the player chooses to continue.
+  Future<void> watchPreGameAd() async {
+    if (_adLaunching || adWatching) return;
     if (kIsWeb) {
-      unawaited(_startAfterUnplayableWebAd());
+      await _startAfterUnplayableWebAd();
       return;
     }
-    if (_adLaunching) return;
     _adLaunching = true;
-    unawaited(_playPreGameAd());
+    adWatching = true;
+    notifyListeners();
+    await _playPreGameAd();
+    adWatching = false;
+    if (_alive) notifyListeners();
   }
 
   /// Web cannot play the pre-game ad, so the round starts without it.
@@ -1023,6 +1069,7 @@ class BilgiController extends ChangeNotifier {
     revealQuestion = null;
     if (round?.finished == true) {
       _timer?.cancel();
+      _clearRoomAfterRound(round!);
       newBadgeIds = (profile?.badges ?? const []).where((id) => !_badgesBeforePick.contains(id)).toList();
       stack
         ..clear()
@@ -1038,7 +1085,7 @@ class BilgiController extends ChangeNotifier {
   }
 
   Future<String?> reportReveal(String note) {
-    final question = revealQuestion;
+    final question = revealQuestion ?? round?.current;
     if (question == null) return Future.value('Soru bulunamadı.');
     return BilgiReportApi.send(question: question, note: note);
   }
@@ -1073,6 +1120,7 @@ class BilgiController extends ChangeNotifier {
     round = result.round ?? live;
     if (live.modeId == 'gunluk') dailyQuestionUsed = true;
     if (bilgiLeagueResumable(live.modeId)) unawaited(_syncLeague(result.round ?? live));
+    _clearRoomAfterRound(result.round ?? live);
     newBadgeIds = (profile?.badges ?? const []).where((id) => !beforeBadges.contains(id)).toList();
     revealing = false;
     stack
@@ -1132,6 +1180,10 @@ class BilgiController extends ChangeNotifier {
   }
 
   Future<void> loadBoard() async {
+    if (boardScope == 'daily') {
+      await refreshContest();
+      return;
+    }
     if (boardScope != 'general' && boardScope != 'category') {
       boardScope = 'general';
       boardCategoryId = null;
@@ -1249,7 +1301,7 @@ class BilgiController extends ChangeNotifier {
   /// Starts a Play purchase. Web and desktop only show [bilgiPlayAndroidNotice].
   Future<void> buyPlay(BilgiPlaySku sku) async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
-      notice = bilgiPlayAndroidNotice;
+      notice = t('shop_android');
       notifyListeners();
       return;
     }
@@ -1451,6 +1503,12 @@ class BilgiController extends ChangeNotifier {
   }
 
   Future<void> makeRoom(String kind) async {
+    final waiting = room;
+    if (waiting != null && (waiting.status == 'lobby' || waiting.status == 'playing')) {
+      notice = waiting.status == 'playing' ? 'Tur bitmeden yeni oda açılmaz.' : 'Önce açık odayı kapat.';
+      notifyListeners();
+      return;
+    }
     room = await server.createRoom(
       kind: kind,
       categoryId: categoryId,
@@ -1462,16 +1520,19 @@ class BilgiController extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    roomPlayerId = room!.hostId.isNotEmpty ? room!.hostId : (await server.profile()).id;
     modeId = kind == 'duello' ? 'duello' : 'oda';
     open(kind == 'duello' ? 'duel' : 'room');
     _armRoom();
   }
 
   Future<void> enterRoom(String code, {String? guestName}) async {
+    final seated = await server.profile();
     final result = await server.joinRoom(code, guestName: guestName);
     notice = result.message;
     room = result.room ?? room;
     if (result.room != null) {
+      roomPlayerId = seated.id;
       final destination = result.room!.kind == 'duello' ? 'duel' : 'room';
       if (page != destination) open(destination);
       _armRoom();
@@ -1479,20 +1540,38 @@ class BilgiController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Id of the seat this device holds in the open lobby.
+  String? get seatedId => roomPlayerId ?? profile?.id;
+
+  bool hostsRoom(BilgiRoom current) => bilgiViewerHostsRoom(current, seatedId);
+
+  bool canStartRoom([BilgiRoom? current]) {
+    final live = current ?? room;
+    if (live == null) return false;
+    return bilgiRoomStartVisible(live, seatedId, remote: server.remoteRooms != null);
+  }
+
   Future<void> startRoom() async {
     final current = room;
     if (current == null) return;
     final hooks = server.remoteRooms;
+    final me = seatedId;
     if (hooks != null) {
-      if (profile?.id != current.hostId) {
+      if (!bilgiViewerHostsRoom(current, me)) {
         notice = 'Odayı kuran başlatır.';
         notifyListeners();
         return;
       }
+      if (current.kind == 'duello' && current.players.length < 2) {
+        notice = 'Rakip katılınca başlatabilirsin.';
+        notifyListeners();
+        return;
+      }
+      if (me == null || me.isEmpty) return;
       busy = true;
       notice = null;
       notifyListeners();
-      final sync = await hooks.start(code: current.code, playerId: profile!.id);
+      final sync = await hooks.start(code: current.code, playerId: me);
       busy = false;
       if (!sync.ok || sync.questions.isEmpty) {
         notice = sync.message ?? '❓ Bu kategoride yeterli soru yok.';
@@ -1509,18 +1588,71 @@ class BilgiController extends ChangeNotifier {
     await start(count: current.questionCount, forcedMode: modeId);
   }
 
+  Future<void> leaveRoom() async {
+    final current = room;
+    final me = seatedId;
+    if (current == null || me == null || me.isEmpty || current.status == 'playing') return;
+    final live = round;
+    if (live != null && !live.finished && live.roomCode == current.code) return;
+    _roomEpoch++;
+    _timer?.cancel();
+    final hooks = server.remoteRooms;
+    final ok = hooks != null
+        ? await hooks.leave(code: current.code, playerId: me)
+        : await server.leaveRoom(current.code);
+    if (!ok) {
+      notice = 'Oda kapatılamadı. Bağlantını kontrol et.';
+      _armRoom();
+      notifyListeners();
+      return;
+    }
+    room = null;
+    roomPlayerId = null;
+    notice = null;
+    notifyListeners();
+  }
+
+  void _dropClosedRoom() {
+    _roomEpoch++;
+    _roomSyncGen++;
+    _timer?.cancel();
+    room = null;
+    roomPlayerId = null;
+    notice = 'Oda kapandı.';
+    notifyListeners();
+  }
+
+  void _clearRoomAfterRound(BilgiRound live) {
+    if (!live.finished) return;
+    if (live.modeId != 'duello' && live.modeId != 'oda') return;
+    _roomEpoch++;
+    _roomSyncGen++;
+    _timer?.cancel();
+    room = null;
+    roomPlayerId = null;
+  }
+
   void _armRoom() {
     _timer?.cancel();
     _syncBeat = 0;
     _timer = Timer.periodic(const Duration(seconds: 2), (_) => unawaited(syncRoom()));
+    unawaited(syncRoom());
   }
 
   Future<void> syncRoom() async {
+    final epoch = _roomEpoch;
     final hooks = server.remoteRooms;
-    final code = round?.roomCode.isNotEmpty == true ? round!.roomCode : (room?.code ?? '');
+    final open = room;
+    final onLobbyPage = page == 'duel' || page == 'room';
+    final lobbyCode = open != null && open.status != 'playing' && open.code.isNotEmpty && onLobbyPage
+        ? open.code
+        : '';
+    final liveCode = round?.roomCode ?? '';
+    final code = lobbyCode.isNotEmpty ? lobbyCode : (liveCode.isNotEmpty ? liveCode : (open?.code ?? ''));
     if (hooks == null || code.isEmpty) return;
+    final gen = ++_roomSyncGen;
     final liveNow = round;
-    if (liveNow != null && liveNow.roomCode == code) {
+    if (lobbyCode.isEmpty && liveNow != null && !liveNow.finished && liveNow.roomCode == code) {
       await hooks.score(
         code: code,
         playerId: liveNow.userId,
@@ -1529,16 +1661,24 @@ class BilgiController extends ChangeNotifier {
       );
     }
     final sync = await hooks.poll(code);
-    if (sync.room == null) return;
+    if (epoch != _roomEpoch || gen != _roomSyncGen) return;
+    if (sync.room == null) {
+      final live = round;
+      final inRound = live != null && !live.finished && live.roomCode == code;
+      if (!inRound && sync.message == 'Oda bulunamadı.') _dropClosedRoom();
+      return;
+    }
+    if (lobbyCode.isNotEmpty && sync.room!.code != lobbyCode) return;
     room = sync.room;
     final live = round;
-    if (live != null && live.roomCode == sync.room!.code) {
+    final sameLive = live != null && !live.finished && live.roomCode == sync.room!.code;
+    if (sameLive) {
       _applyStandings(live, sync.room!);
       notifyListeners();
       return;
     }
-    final lobby = page == 'room' || page == 'duel';
-    if (live == null && lobby && sync.room!.status == 'playing' && sync.questions.isNotEmpty) {
+    final watching = page == 'room' || page == 'duel';
+    if (watching && sync.room!.status == 'playing' && sync.questions.isNotEmpty) {
       await _startShared(sync);
     } else {
       notifyListeners();
@@ -1562,7 +1702,9 @@ class BilgiController extends ChangeNotifier {
       difficulty: difficulty,
       questionCount: sync.questions.length,
       fixedQuestions: sync.questions,
-      fixedSpare: sync.spare,
+      fixedSpares: sync.spares.isNotEmpty
+          ? sync.spares
+          : (sync.spare == null ? const <BilgiQuestion>[] : [sync.spare!]),
       roomCode: current.code,
       adCleared: adCleared,
     );
@@ -1694,6 +1836,28 @@ class BilgiController extends ChangeNotifier {
     profile = result.profile ?? profile;
     notice = result.message;
     notifyListeners();
+  }
+
+  void clearNicknameNotice() {
+    const nickname = {
+      UserMessages.nicknameTaken,
+      UserMessages.nicknameShort,
+      UserMessages.nicknameLong,
+      UserMessages.nicknameBad,
+    };
+    if (notice == null || !nickname.contains(notice)) return;
+    notice = null;
+    notifyListeners();
+  }
+
+  /// Null when the name was saved. The reason stays in the dialog, not on the page.
+  Future<String?> saveUsername(String username) async {
+    final result = await server.updateProfile(username: username);
+    if (!result.ok) return result.message ?? UserMessages.serverError;
+    profile = result.profile ?? profile;
+    notice = null;
+    notifyListeners();
+    return null;
   }
 
   Future<void> claimInvite(String code) async {

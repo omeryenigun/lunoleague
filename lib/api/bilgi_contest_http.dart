@@ -2,6 +2,7 @@ import 'package:kelimelig/api/admin_http.dart';
 import 'package:kelimelig/api/bilgi_questions_http.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_contest.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_league.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_rules.dart';
@@ -26,7 +27,7 @@ Future<Response> _load(Request request, Connection db, KeyValueStore store) asyn
   final userId = (request.url.queryParameters['userId'] ?? '').trim();
   final runs = await _runs(store, day);
   final me = userId.isEmpty ? null : runs[userId];
-  return jsonResponse(_payload(day, paper, runs, me));
+  return jsonResponse(await _payload(store, day, paper, runs, me));
 }
 
 Future<Response> _save(Request request, Connection db, KeyValueStore store) async {
@@ -40,7 +41,7 @@ Future<Response> _save(Request request, Connection db, KeyValueStore store) asyn
   final runs = await _runs(store, day);
   final previous = runs[userId];
   if (previous != null && previous['finished'] == true) {
-    return jsonResponse(_payload(day, paper, runs, previous));
+    return jsonResponse(await _payload(store, day, paper, runs, previous));
   }
   final next = {
     'day': day,
@@ -56,7 +57,7 @@ Future<Response> _save(Request request, Connection db, KeyValueStore store) asyn
   };
   runs[userId] = next;
   await store.put(bilgiContestRunBox, '$day|$userId', next);
-  return jsonResponse(_payload(day, paper, runs, next));
+  return jsonResponse(await _payload(store, day, paper, runs, next));
 }
 
 class _ContestPaper {
@@ -70,6 +71,25 @@ class _ContestPaper {
 Future<_ContestPaper> _openDay(Connection db, KeyValueStore store, String day) async {
   final stored = await store.get(bilgiContestPaperBox, day);
   final ready = _questionsOf(stored);
+  final wanted = bilgiDailyQuotas.fold<int>(0, (sum, count) => sum + count);
+  if (ready.isNotEmpty && ready.length < wanted && !(await _lockedDays(store)).contains(day)) {
+    final exclude = await _monthIds(store, day.substring(0, 7), skip: day);
+    _takeIds(ready, exclude);
+    final extra = await _drawCounted(db, exclude, [wanted - ready.length]);
+    if (extra.isNotEmpty) {
+      final questions = [...ready, ...extra];
+      _takeIds(extra, exclude);
+      final spares = await _drawCounted(db, exclude, bilgiContestSpareCounts);
+      final title = _titleOf(stored);
+      await store.put(bilgiContestPaperBox, day, {
+        'day': day,
+        'title': title,
+        'questions': questions,
+        'spares': spares,
+      });
+      return _ContestPaper(title: title, questions: questions, spares: spares);
+    }
+  }
   if (ready.isNotEmpty) {
     return _withSpares(db, store, day, stored, ready);
   }
@@ -138,6 +158,24 @@ Future<List<Map<String, dynamic>>> _drawCounted(Connection db, Set<String> exclu
       picked.add(item);
     }
   }
+  final wanted = counts.fold<int>(0, (sum, count) => sum + (count > 0 ? count : 0));
+  final missing = wanted - picked.length;
+  if (missing > 0) {
+    final batch = await drawApprovedBilgiQuestions(
+      db,
+      categoryId: tumuKarmaId,
+      subcategory: '',
+      difficulty: '',
+      count: missing,
+      exclude: seen,
+      fullLocales: true,
+    );
+    for (final item in batch) {
+      final id = '${item['id']}';
+      if (!seen.add(id)) continue;
+      picked.add(item);
+    }
+  }
   return picked;
 }
 
@@ -153,29 +191,56 @@ Future<Map<String, Map<String, dynamic>>> _runs(KeyValueStore store, String day)
   return out;
 }
 
-Map<String, dynamic> _payload(
+Future<Map<String, dynamic>> _payload(
+  KeyValueStore store,
   String day,
   _ContestPaper paper,
   Map<String, Map<String, dynamic>> runs,
   Map<String, dynamic>? me,
-) {
-  final ranking = [
-    for (final row in runs.values)
-      if (row['finished'] == true)
-        {
-          'id': '${row['userId'] ?? ''}',
-          'name': '${row['username'] ?? ''}',
-          'avatar': '${row['avatar'] ?? '😎'}',
-          'score': bilgiInt(row['score'], 0),
-        },
-  ];
+) async {
+  final ranking = <Map<String, dynamic>>[];
+  for (final row in runs.values) {
+    if (row['finished'] != true) continue;
+    final userId = '${row['userId'] ?? ''}';
+    final profile = userId.isEmpty ? null : await store.get('users', userId);
+    final liveName = profile == null ? '' : '${profile['username'] ?? ''}'.trim();
+    final liveAvatar = profile == null ? '' : '${profile['avatar'] ?? ''}'.trim();
+    ranking.add({
+      'id': userId,
+      'name': liveName.isEmpty ? '${row['username'] ?? ''}' : liveName,
+      'avatar': liveAvatar.isEmpty ? '${row['avatar'] ?? '😎'}' : liveAvatar,
+      'score': bilgiInt(row['score'], 0),
+      'seed': false,
+    });
+  }
+  final board = bilgiDailyBoard([
+    for (final row in ranking)
+      BilgiBoardEntry(
+        id: '${row['id'] ?? ''}',
+        name: '${row['name'] ?? ''}',
+        avatar: '${row['avatar'] ?? '😎'}',
+        score: bilgiInt(row['score'], 0),
+        seed: false,
+      ),
+  ]);
   return {
     'day': day,
     'title': paper.title,
     'questions': paper.questions,
     'spares': paper.spares,
     'joined': runs.length,
-    'ranking': ranking,
+    'ranking': [
+      for (final row in board)
+        {
+          'id': row.id,
+          'name': row.name,
+          'avatar': row.avatar,
+          'score': row.score,
+          'seed': row.seed,
+          'rank': row.rank,
+          if (row.city.isNotEmpty) 'city': row.city,
+        },
+    ],
     if (me != null)
       'me': {
         'index': bilgiInt(me['index'], 0),

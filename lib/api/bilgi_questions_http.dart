@@ -250,6 +250,55 @@ Future<List<Map<String, dynamic>>> drawApprovedBilgiQuestions(
     }
     if (fresh == 0) break;
   }
+  if (fullLocales && picked.length < count) {
+    var offset = 0;
+    while (picked.length < count) {
+      final rows = await db.execute(
+        Sql.named('''
+          select id, category_id, text, options_json, correct, difficulty,
+                 explanation, status, tags_json, reject_reason, translations_json, reviewed
+          from bilgi_questions
+          where status = 'approved'
+            and (@category = 'tumu' or category_id = @category)
+            and (@difficulty = '' or difficulty = @difficulty)
+            and (@sub = '' or tags_json::jsonb ? @sub)
+          order by id
+          limit 200 offset @offset
+        '''),
+        parameters: {
+          'category': categoryId == tumuKarmaId ? 'tumu' : categoryId,
+          'difficulty': narrowed ? difficulty : '',
+          'sub': subcategory,
+          'offset': offset,
+        },
+      );
+      if (rows.isEmpty) break;
+      for (final row in rows) {
+        final item = _json(row);
+        final id = '${item['id']}';
+        if (!seen.add(id)) continue;
+        final question = BilgiQuestion.fromMap(item);
+        if (!bilgiPlayableQuestion(
+          question,
+          categories,
+          categoryId: categoryId,
+          subcategory: subcategory,
+          difficulty: narrowed ? difficulty : '',
+          locale: locale,
+        )) {
+          continue;
+        }
+        final owner = categories.where((category) => category.id == question.categoryId).firstOrNull;
+        if (owner == null || !bilgiQuestionLanguagesReady(question, locales: owner.publishLocales)) {
+          continue;
+        }
+        picked.add(item);
+        if (picked.length >= count) break;
+      }
+      offset += rows.length;
+      if (rows.length < 200) break;
+    }
+  }
   return picked;
 }
 

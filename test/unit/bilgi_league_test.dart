@@ -180,7 +180,8 @@ void main() {
     expect(snap.closed, isFalse);
     expect(snap.realCount, 1);
     expect(snap.seed, isTrue);
-    expect(snap.rows.first.seed, isTrue);
+    expect(snap.rows.first.id, 'ada');
+    expect(snap.rows.first.seed, isFalse);
     expect(snap.rows.any((row) => row.id == 'berk'), isFalse);
     final missing = bilgiLeagueSnapshot(
       users: [played],
@@ -201,7 +202,11 @@ void main() {
     expect(shown.realCount, 99);
     expect(shown.seed, isTrue);
     expect(shown.rows, hasLength(100));
-    expect(shown.rows.every((row) => row.seed), isTrue);
+    expect(shown.rows.first.id, 'p0');
+    expect(shown.rows[98].id, 'p98');
+    expect(shown.rows[98].rank, 99);
+    expect(shown.rows.where((row) => row.seed), hasLength(1));
+    expect(shown.rows.last.score, 0);
     final admin = bilgiLeagueSnapshot(users: users, scope: 'global', now: now, seedIfShort: false);
     expect(admin.seed, isFalse);
     expect(admin.rows, hasLength(99));
@@ -227,8 +232,11 @@ void main() {
     final shown = bilgiLeagueSnapshot(users: users, me: users[9], scope: 'category', categoryId: 'genel', now: now);
     expect(shown.title, 'Genel Kültür Ustası');
     expect(shown.rows.where((row) => row.seed).every((row) => row.leagueTitle.isEmpty), isTrue);
-    expect(shown.rows.last.id, 'c9');
-    expect(shown.rows.last.rank, 10);
+    expect(shown.rows[9].id, 'c9');
+    expect(shown.rows[9].rank, 10);
+    expect(shown.rows[9].leagueTitle, 'Genel Kültür Ustası');
+    expect(shown.rows[10].id, 'c10');
+    expect(shown.rows[10].leagueTitle, isEmpty);
     final real = bilgiLeagueSnapshot(
       users: users,
       scope: 'category',
@@ -449,9 +457,11 @@ void main() {
       now: now,
     );
     expect(opened.seed, isTrue);
-    expect(opened.rows.where((row) => row.seed), hasLength(100));
-    expect(opened.rows.last.id, 'me');
-    expect(opened.rows.last.rank, 2);
+    expect(opened.rows.first.id, 'hi');
+    expect(opened.rows[1].id, 'me');
+    expect(opened.rows[1].rank, 2);
+    expect(opened.rows[2].id, 'lo');
+    expect(opened.rows.where((row) => row.seed), hasLength(97));
     expect(opened.categoryRanks['felsefe'], 2);
   });
 
@@ -538,9 +548,9 @@ void main() {
     );
     expect(opened.seed, isTrue);
     expect(opened.closed, isFalse);
-    expect(opened.rows.where((row) => row.seed), hasLength(100));
-    expect(opened.rows.last.id, 'ada');
-    expect(opened.rows.last.rank, 1);
+    expect(opened.rows.first.id, 'ada');
+    expect(opened.rows.first.rank, 1);
+    expect(opened.rows.where((row) => row.seed), hasLength(99));
     final weekOnly = _player(
       'cem',
       category: 'felsefe',
@@ -559,8 +569,9 @@ void main() {
     );
     expect(weekly.realCount, 1);
     expect(weekly.seed, isTrue);
-    expect(weekly.rows.where((row) => row.seed), hasLength(100));
-    expect(weekly.rows.last.rank, 1);
+    expect(weekly.rows.first.id, 'cem');
+    expect(weekly.rows.first.rank, 1);
+    expect(weekly.rows.where((row) => row.seed), hasLength(99));
   });
 
   test('league catalog sorts by Turkish name, question count, and player count', () {
@@ -644,7 +655,8 @@ void main() {
       ),
       'Lig Puanınız: 10\n2. Sıradasınız',
     );
-    expect(allTime.rows.last.rank, 2);
+    expect(allTime.rows[1].id, 'ada');
+    expect(allTime.rows[1].rank, 2);
     final generalWeek = bilgiLeagueSnapshot(
       users: [me],
       me: me,
