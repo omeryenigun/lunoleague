@@ -9,6 +9,9 @@ import 'package:postgres/postgres.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 
+/// Şimdilik kapalı. Açılınca istek önce OpenRouter'a gider.
+const bilgiOpenRouterEnabled = false;
+
 void mountBilgiReview(Router router, Connection db) {
   router.post('/v1/admin/bilgi-review', (request) => _review(request, db));
 }
@@ -17,8 +20,11 @@ Future<Response> _review(Request request, Connection db) async {
   if (await adminIdOf(db, request) == null) {
     return jsonResponse({'error': 'Oturum geçersiz.'}, status: 401);
   }
-  final key = Platform.environment['OPENROUTER_API_KEY'] ?? '';
-  if (key.isEmpty) return jsonResponse({'error': 'OpenRouter anahtarı yok.'}, status: 503);
+  final openRouter = Platform.environment['OPENROUTER_API_KEY'] ?? '';
+  final openAi = Platform.environment['OPENAI_API_KEY'] ?? '';
+  if (openAi.isEmpty && (!bilgiOpenRouterEnabled || openRouter.isEmpty)) {
+    return jsonResponse({'error': 'Kontrol anahtarı yok.'}, status: 503);
+  }
   final body = await readJson(request);
   final id = '${body['id'] ?? ''}'.trim();
   if (id.isEmpty || id.length > 80) {
@@ -48,7 +54,6 @@ Future<Response> _review(Request request, Connection db) async {
     return jsonResponse({'error': 'Soru kontrol edilemedi.'}, status: 400);
   }
   final asked = await _ask(
-    key,
     jsonEncode({
       'text': text,
       'options': options,
@@ -105,27 +110,64 @@ Future<Response> _review(Request request, Connection db) async {
   });
 }
 
-Future<({String? text, String? error})> _ask(String key, String source) async {
-  final model = Platform.environment['OPENROUTER_MODEL'] ?? 'google/gemini-2.5-flash';
+/// OpenRouter kapalıyken istek doğrudan OpenAI'ye gider.
+Future<({String? text, String? error})> _ask(String source) async {
+  final openRouterKey = Platform.environment['OPENROUTER_API_KEY'] ?? '';
+  ({String? text, String? error})? primary;
+  if (bilgiOpenRouterEnabled && openRouterKey.isNotEmpty) {
+    primary = await _complete(
+      endpoint: Uri.parse('https://openrouter.ai/api/v1/chat/completions'),
+      key: openRouterKey,
+      model: Platform.environment['OPENROUTER_MODEL'] ?? 'google/gemini-2.5-flash',
+      source: source,
+      extraHeaders: const {
+        'http-referer': 'https://onyapp.app',
+        'x-title': 'Luno Bilgi',
+      },
+    );
+    if (primary.text != null) return primary;
+  }
+  final openAiKey = Platform.environment['OPENAI_API_KEY'] ?? '';
+  if (openAiKey.isEmpty) {
+    return primary ?? (text: null, error: 'Kontrol servisi yanıt vermedi.');
+  }
+  return _complete(
+    endpoint: Uri.parse('https://api.openai.com/v1/chat/completions'),
+    key: openAiKey,
+    model: Platform.environment['OPENAI_MODEL'] ?? 'gpt-4o-mini',
+    source: source,
+    jsonMode: true,
+  );
+}
+
+Future<({String? text, String? error})> _complete({
+  required Uri endpoint,
+  required String key,
+  required String model,
+  required String source,
+  Map<String, String> extraHeaders = const {},
+  bool jsonMode = false,
+}) async {
   try {
+    final payload = <String, Object>{
+      'model': model,
+      'temperature': 0,
+      'max_tokens': 500,
+      'messages': [
+        {'role': 'system', 'content': bilgiReviewInstruction},
+        {'role': 'user', 'content': source},
+      ],
+    };
+    if (jsonMode) payload['response_format'] = {'type': 'json_object'};
     final response = await http
         .post(
-          Uri.parse('https://openrouter.ai/api/v1/chat/completions'),
+          endpoint,
           headers: {
             'authorization': 'Bearer $key',
             'content-type': 'application/json',
-            'http-referer': 'https://onyapp.app',
-            'x-title': 'Luno Bilgi',
+            ...extraHeaders,
           },
-          body: jsonEncode({
-            'model': model,
-            'temperature': 0,
-            'max_tokens': 500,
-            'messages': [
-              {'role': 'system', 'content': bilgiReviewInstruction},
-              {'role': 'user', 'content': source},
-            ],
-          }),
+          body: jsonEncode(payload),
         )
         .timeout(const Duration(seconds: 60));
     final decoded = jsonDecode(response.body);

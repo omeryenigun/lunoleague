@@ -3,11 +3,13 @@ import 'dart:math' as math;
 
 import 'dart:ui' show ImageFilter;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:kelimelig/core/l10n/game_locale.dart';
 import 'package:kelimelig/core/constants/game_version.dart';
+import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/core/services/ad_service.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_avatars.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
@@ -119,7 +121,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
     super.dispose();
   }
 
-  /// Active categories whose approved count is loaded and at least [bilgiMinPublishedQuestions].
+  /// Active categories whose subcategory pools add up to at least [bilgiMinPublishedQuestions].
   List<BilgiCategory> get _listedCategories => [
         for (final category in _game.categories)
           if (!bilgiSpecialEventCategory(category) && bilgiCategoryListed(category.id, _game.categoryCounts[category.id])) category,
@@ -1233,13 +1235,10 @@ class _BilgiScreenState extends State<BilgiScreen> {
     final emoji = tumu ? '🃏' : category.emoji;
     final live = _game.categories.where((item) => item.id == _game.categoryId).firstOrNull;
     final allSubs = tumu ? const <String>[] : (live?.subs ?? category.subs);
-    final countsReady = _game.subCounts.isNotEmpty;
-    final subs = !countsReady
-        ? allSubs
-        : [
-            for (final sub in allSubs)
-              if ((_game.subCounts['${_game.categoryId}|$sub'] ?? 0) >= bilgiMinPublishedQuestions) sub,
-          ];
+    final subs = [
+      for (final sub in allSubs)
+        if (bilgiSubListed(_game.categoryId, sub, _game.difficultySlices)) sub,
+    ];
     final known = _game.categoryCounts[_game.categoryId];
     final heroCount = known != null
         ? _fill('q_count', {'n': '$known'})
@@ -1400,7 +1399,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        _startButton(_game.busy ? null : _game.start, label: _game.t('start_game')),
+        _startButton(_game.busy ? null : _game.start, label: _game.t('start_game'), fill: AppColors.cosmicGreen),
         const SizedBox(height: 10),
         _adBanner(showNoticeAbove: false),
       ],
@@ -2006,7 +2005,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        _startButton(_game.replaySetup, label: _game.t('play_again_btn'), horizontalPadding: 0),
+        _startButton(_game.replaySetup, label: _game.t('play_again_btn'), horizontalPadding: 0, fill: AppColors.cosmicGreen),
         const SizedBox(height: 12),
         _adBanner(showNoticeAbove: false, margin: const EdgeInsets.fromLTRB(0, 0, 0, 16)),
       ],
@@ -3853,20 +3852,22 @@ class _BilgiScreenState extends State<BilgiScreen> {
             child: Text(_game.t('login_google')),
           ),
         ),
-        const SizedBox(height: 12),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: OutlinedButton(
-            onPressed: _game.loginApple,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.white,
-              side: const BorderSide(color: BilgiColors.primaryLight),
-              minimumSize: const Size.fromHeight(48),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) ...[
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: OutlinedButton(
+              onPressed: _game.loginApple,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: BilgiColors.primaryLight),
+                minimumSize: const Size.fromHeight(48),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+              child: Text(_game.t('login_apple')),
             ),
-            child: Text(_game.t('login_apple')),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -4543,17 +4544,22 @@ class _BilgiScreenState extends State<BilgiScreen> {
     );
   }
 
-  Widget _startButton(VoidCallback? onTap, {String? label, double horizontalPadding = 20}) {
+  Widget _startButton(VoidCallback? onTap, {String? label, double horizontalPadding = 20, Color? fill}) {
     final text = label ?? _game.t('start_game');
+    final accent = fill ?? BilgiColors.primary;
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SizedBox(
         width: double.infinity,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: [BilgiColors.primary, BilgiColors.primaryLight]),
+            gradient: LinearGradient(
+              colors: fill == null ? const [BilgiColors.primary, BilgiColors.primaryLight] : [accent, Color.lerp(accent, Colors.white, 0.16)!],
+            ),
             borderRadius: BorderRadius.circular(16),
-            boxShadow: const [BoxShadow(color: Color(0x666C3CE9), blurRadius: 24, offset: Offset(0, 8))],
+            boxShadow: [
+              BoxShadow(color: accent.withValues(alpha: 0.4), blurRadius: 24, offset: const Offset(0, 8)),
+            ],
           ),
           child: Material(
             color: Colors.transparent,
@@ -6087,7 +6093,7 @@ class _ContestClockState extends State<_ContestClock> {
   Widget build(BuildContext context) {
     return Text(
       bilgiContestClock(bilgiContestRemaining(DateTime.now())),
-      style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: 0.2, height: 1),
+      style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800, height: 1),
     );
   }
 }

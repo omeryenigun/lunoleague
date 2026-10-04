@@ -661,6 +661,7 @@ class LunoBilgiServer {
     int startDoubleLeft = 0,
     List<int> startHidden = const [],
     String startHint = '',
+    Map<String, dynamic>? openedCatalog,
   }) async {
     final user = await profile();
     final cfg = await config();
@@ -683,7 +684,7 @@ class LunoBilgiServer {
     if (needsAd(user, cfg) && !adCleared) {
       return BilgiResult(message: 'ad', profile: user);
     }
-    final visible = resolveBilgiCategories(await catalog(), playableOnly: true).where((category) => category.publishesIn(user.locale));
+    final visible = resolveBilgiCategories(openedCatalog ?? await catalog(), playableOnly: true).where((category) => category.publishesIn(user.locale));
     if (categoryId != tumuKarmaId && visible.every((category) => category.id != categoryId)) {
       return const BilgiResult(message: 'Bu kategori şu an oyunda değil.');
     }

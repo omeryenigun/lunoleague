@@ -4,6 +4,7 @@ import 'package:kelimelig/data/local/key_value_store.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_league.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_rules.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
 
 BilgiProfile _player(
@@ -100,6 +101,21 @@ void main() {
     expect(bilgiCategoryListed('karma', 12), isFalse);
     expect(bilgiCategoryListed('karma', bilgiMinPublishedQuestions), isTrue);
     expect(bilgiMinPublishedQuestions, 60);
+    expect(bilgiMixQuotas(bilgiMinPublishedQuestions), [15, 15, 15, 15]);
+    final thin = {
+      'mitoloji|Mezopotamya Mitolojisi|kolay': 7,
+      'mitoloji|Mezopotamya Mitolojisi|orta': 187,
+      'mitoloji|Mezopotamya Mitolojisi|zor': 80,
+      'mitoloji|Mezopotamya Mitolojisi|efsane': 8,
+    };
+    expect(bilgiSubListed('mitoloji', 'Mezopotamya Mitolojisi', thin), isFalse);
+    expect(bilgiCategoryListed('mitoloji', 7 + 187 + 80 + 8), isTrue);
+    final ready = {
+      for (final level in bilgiDifficultyLevels) 'mitoloji|Yunan Mitolojisi|$level': 15,
+    };
+    expect(bilgiSubListed('mitoloji', 'Yunan Mitolojisi', ready), isTrue);
+    ready['mitoloji|Yunan Mitolojisi|efsane'] = 14;
+    expect(bilgiSubListed('mitoloji', 'Yunan Mitolojisi', ready), isFalse);
     final counts = _enoughPublished()
       ..['felsefe'] = 59
       ..['karma'] = 12;

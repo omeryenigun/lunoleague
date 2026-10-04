@@ -507,3 +507,113 @@ bool _hintTokenChar(String ch) {
 }
 
 bool _hintApostrophe(String ch) => ch == "'" || ch == '’' || ch == '‘' || ch == '`';
+
+/// Doğru şıkkı ayıramayan benzer şık uyarısı.
+const bilgiSimilarOptionWarning = 'doğru şıkkı ayıramayan birden fazla benzer şık var';
+
+const _optionStopwords = {
+  've',
+  'ile',
+  'veya',
+  'ya',
+  'da',
+  'de',
+  'ki',
+  'hem',
+  'ama',
+  'fakat',
+  'ancak',
+  'ise',
+  'icin',
+  'gibi',
+  'kadar',
+  'mi',
+  'mu',
+};
+
+/// İki şık aynı iddiaysa true. Ortak isim öbeği tek başına yetmez.
+/// En uzun ortak belirteç dizisi çıkarılır; kalanlar boş ya da aynıysa ayrılamaz.
+bool bilgiOptionsInseparable(String left, String right) {
+  final a = _optionTokens(left);
+  final b = _optionTokens(right);
+  if (a.isEmpty || b.isEmpty) return false;
+  if (_sameTokens(a, b)) return true;
+  final shared = _longestSharedTokenSequence(a, b);
+  final remainA = _contentTokens(_dropTokenSequence(a, shared));
+  final remainB = _contentTokens(_dropTokenSequence(b, shared));
+  if (remainA.isEmpty || remainB.isEmpty) return true;
+  return _sameTokens(remainA, remainB);
+}
+
+/// Dolu şıklar arasında ayrılamayan bir çift varsa uyarı metni.
+String? bilgiSimilarOptionsIssue(List<String> options) {
+  final filled = [for (final option in options) if (option.trim().isNotEmpty) option];
+  for (var i = 0; i < filled.length; i++) {
+    for (var j = i + 1; j < filled.length; j++) {
+      if (bilgiOptionsInseparable(filled[i], filled[j])) return bilgiSimilarOptionWarning;
+    }
+  }
+  return null;
+}
+
+List<String> _optionTokens(String raw) {
+  final folded = raw
+      .replaceAll('İ', 'i')
+      .replaceAll('I', 'ı')
+      .toLowerCase()
+      .replaceAll('ı', 'i')
+      .replaceAll('ö', 'o')
+      .replaceAll('ü', 'u')
+      .replaceAll('ş', 's')
+      .replaceAll('ğ', 'g')
+      .replaceAll('ç', 'c');
+  final cleaned = folded.replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+  if (cleaned.isEmpty) return const [];
+  return cleaned.split(RegExp(r'\s+'));
+}
+
+List<String> _longestSharedTokenSequence(List<String> a, List<String> b) {
+  var bestStart = 0;
+  var bestLength = 0;
+  for (var i = 0; i < a.length; i++) {
+    for (var j = 0; j < b.length; j++) {
+      var length = 0;
+      while (i + length < a.length && j + length < b.length && a[i + length] == b[j + length]) {
+        length += 1;
+      }
+      if (length > bestLength) {
+        bestStart = i;
+        bestLength = length;
+      }
+    }
+  }
+  if (bestLength == 0) return const [];
+  return a.sublist(bestStart, bestStart + bestLength);
+}
+
+List<String> _dropTokenSequence(List<String> tokens, List<String> sequence) {
+  if (sequence.isEmpty || sequence.length > tokens.length) return tokens;
+  for (var i = 0; i + sequence.length <= tokens.length; i++) {
+    var match = true;
+    for (var k = 0; k < sequence.length; k++) {
+      if (tokens[i + k] != sequence[k]) {
+        match = false;
+        break;
+      }
+    }
+    if (match) {
+      return [...tokens.sublist(0, i), ...tokens.sublist(i + sequence.length)];
+    }
+  }
+  return tokens;
+}
+
+List<String> _contentTokens(List<String> tokens) => [for (final token in tokens) if (!_optionStopwords.contains(token)) token];
+
+bool _sameTokens(List<String> a, List<String> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}

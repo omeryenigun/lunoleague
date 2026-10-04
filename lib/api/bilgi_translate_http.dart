@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:kelimelig/api/admin_http.dart';
+import 'package:kelimelig/api/bilgi_review_http.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:postgres/postgres.dart';
 import 'package:shelf/shelf.dart';
@@ -33,7 +34,7 @@ Future<Response> _translate(Request request, Connection db) async {
   }
   final openRouter = Platform.environment['OPENROUTER_API_KEY'] ?? '';
   final openAi = Platform.environment['OPENAI_API_KEY'] ?? '';
-  if (openRouter.isEmpty && openAi.isEmpty) {
+  if (openAi.isEmpty && (!bilgiOpenRouterEnabled || openRouter.isEmpty)) {
     return jsonResponse({'error': 'Tercüme anahtarı yok.'}, status: 503);
   }
   final body = await readJson(request);
@@ -112,11 +113,11 @@ Future<Response> _name(Map<String, dynamic> body) async {
   return jsonResponse({'names': out});
 }
 
-/// OpenRouter önce denenir. Kota veya bağlantı hatasında OpenAI yedeği kullanılır.
+/// OpenRouter kapalıyken istek doğrudan OpenAI'ye gider.
 Future<Object?> _ask(String instruction, String source) async {
   final openRouterKey = Platform.environment['OPENROUTER_API_KEY'] ?? '';
   Object? primary;
-  if (openRouterKey.isNotEmpty) {
+  if (bilgiOpenRouterEnabled && openRouterKey.isNotEmpty) {
     primary = await _complete(
       endpoint: Uri.parse('https://openrouter.ai/api/v1/chat/completions'),
       key: openRouterKey,

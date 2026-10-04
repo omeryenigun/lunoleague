@@ -96,6 +96,7 @@ class BilgiController extends ChangeNotifier {
   int poolCount = 0;
   Map<String, int> categoryCounts = const {};
   Map<String, int> subCounts = const {};
+  Map<String, int> difficultySlices = const {};
   List<BilgiCategory> categories = bilgiCategories;
   String boardScope = 'general';
   String? boardCategoryId;
@@ -302,6 +303,7 @@ class BilgiController extends ChangeNotifier {
     if (id == 'history' || id == 'profile') unawaited(loadHistory());
     if (id == 'event') unawaited(loadEvents());
     if (id == 'setup' || id == 'detail') unawaited(refreshPool());
+    if (id == 'detail') unawaited(loadCategoryCounts());
     if (id == 'categories') unawaited(loadCategoryCounts());
     if (id == 'daily') unawaited(refreshDailyQuestionStatus());
     if (id == 'language') localePreview ??= profile?.locale ?? 'tr';
@@ -387,6 +389,14 @@ class BilgiController extends ChangeNotifier {
     return bilgiCatalogClosedUnless(catalog, active.categories, active.subs);
   }
 
+  /// Sunucunun açık listesi. Cihazdaki eski katalog turu kapatmasın.
+  Future<Map<String, dynamic>?> _openedCatalog() async {
+    final remote = await BilgiQuestionApi.loadCatalog();
+    final active = await BilgiQuestionApi.loadActive();
+    if (remote == null || active == null) return null;
+    return bilgiCatalogClosedUnless(remote, active.categories, active.subs);
+  }
+
   Future<void> loadCategoryCounts() async {
     final playable = resolveBilgiCategories(await _visibleCatalog(), playableOnly: true);
     final remote = await BilgiQuestionApi.loadCounts();
@@ -402,6 +412,7 @@ class BilgiController extends ChangeNotifier {
       tumuKarmaId: remote.categories[tumuKarmaId] ?? 0,
     };
     subCounts = remote.subs;
+    difficultySlices = remote.slices;
     categories = _publishedForLocale(playable);
     notifyListeners();
   }
@@ -710,9 +721,18 @@ class BilgiController extends ChangeNotifier {
     }
     final saved = resume is BilgiLeagueOpen ? resume : null;
     final freshLeague = mode == 'lig' && saved == null;
+    if (saved == null && subName.isNotEmpty && !bilgiSubListed(categoryId, subName, difficultySlices)) {
+      _clearRoundLoading();
+      notice = '❓ Bu kategoride yeterli soru yok.';
+      notifyListeners();
+      return;
+    }
+    final opened = await _openedCatalog();
+    if (epoch != _startEpoch) return;
     final result = await server.startRound(
       modeId: mode,
       categoryId: categoryId,
+      openedCatalog: opened,
       subcategory: saved?.subcategory ?? subName,
       difficulty: saved?.difficulty ?? (freshLeague ? 'hepsi' : difficulty),
       questionCount: freshLeague ? bilgiModeById('lig').questions : (count ?? questionChoice),
@@ -1695,8 +1715,14 @@ class BilgiController extends ChangeNotifier {
     modeId = current.kind == 'duello' ? 'duello' : 'oda';
     notice = null;
     notifyListeners();
+    final opened = await _openedCatalog();
+    if (!_alive) {
+      busy = false;
+      return;
+    }
     final result = await server.startRound(
       modeId: modeId,
+      openedCatalog: opened,
       categoryId: categoryId,
       subcategory: subName,
       difficulty: difficulty,
@@ -1779,6 +1805,9 @@ class BilgiController extends ChangeNotifier {
       profile = result.profile ?? profile;
       notice = result.message;
       if (result.ok) tab('home');
+      notifyListeners();
+    } on AppFailure catch (error) {
+      notice = error.message;
       notifyListeners();
     } catch (_) {
       notice = '⚠️ Bir şeyler ters gitti. Tekrar dene.';

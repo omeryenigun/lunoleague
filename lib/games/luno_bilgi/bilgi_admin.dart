@@ -15,6 +15,7 @@ import 'package:kelimelig/games/luno_bilgi/bilgi_csv.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_mail.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_report.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_rules.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_question_api.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_report_api.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
@@ -5204,6 +5205,7 @@ class _QuestionFormState extends State<_QuestionForm> {
         _category.isNotEmpty &&
         (_cat?.subs.contains(_sub) ?? false);
     final subs = _cat?.subs ?? const <String>[];
+    final optionIssue = bilgiSimilarOptionsIssue([for (final field in _options) field.text]);
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       children: [
@@ -5264,6 +5266,10 @@ class _QuestionFormState extends State<_QuestionForm> {
                 ]),
                 _card('2. Şıklar (Doğru cevabı işaretleyin)', [
                   for (var i = 0; i < 4; i++) _optionRow(i),
+                  if (optionIssue != null) ...[
+                    const SizedBox(height: 4),
+                    Text(optionIssue, style: const TextStyle(color: BilgiColors.error, fontSize: 13, fontWeight: FontWeight.w700)),
+                  ],
                 ]),
                 _card('3. Kategori ve Zorluk', [
                   Row(

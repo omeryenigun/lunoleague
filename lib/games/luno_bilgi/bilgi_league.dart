@@ -139,10 +139,24 @@ Map<String, int> bilgiCategoryPlayerCounts(Iterable<BilgiProfile> users) {
 const bilgiMinPublishedQuestions = 60;
 
 /// Player lists and category leagues share this rule.
-/// [publishedCount] is the approved pool (`categoryCounts`). Null is not loaded yet and stays hidden.
+/// [publishedCount] is the sum of that category's subcategory pools. Null is not loaded yet and stays hidden.
 bool bilgiCategoryListed(String categoryId, int? publishedCount) {
   if (categoryId.trim().isEmpty) return false;
   return publishedCount != null && publishedCount >= bilgiMinPublishedQuestions;
+}
+
+/// A subcategory stays out of the game until each difficulty holds its even share of [bilgiMinPublishedQuestions].
+/// Sixty splits as 15 kolay, 15 orta, 15 zor and 15 efsane. The category total is a separate check.
+bool bilgiSubListed(String categoryId, String subName, Map<String, int> slices) {
+  final category = categoryId.trim();
+  final sub = subName.trim();
+  if (category.isEmpty || sub.isEmpty) return false;
+  final quotas = bilgiMixQuotas(bilgiMinPublishedQuestions);
+  for (var i = 0; i < bilgiDifficultyLevels.length; i++) {
+    final count = slices['$category|$sub|${bilgiDifficultyLevels[i]}'] ?? 0;
+    if (count < quotas[i]) return false;
+  }
+  return true;
 }
 
 /// Categories with at least [bilgiMinPublishedQuestions] approved questions.

@@ -41,7 +41,9 @@ void main() {
   });
 
   test('trial questions are gone and categories stay', () {
-    expect(bilgiCategories, hasLength(71));
+    expect(bilgiCategories, hasLength(68));
+    expect(bilgiCategoryById('spor')?.subs, contains('Futbol'));
+    expect(bilgiCategoryById('futbol'), isNull);
     expect(bilgiCategoryById('mucit'), isNull);
     expect(bilgiQuestionLines, isEmpty);
     expect(seedBilgiQuestions(), isEmpty);
@@ -370,6 +372,61 @@ void main() {
     await server.finish(daily.round!.id);
     final again = await server.startRound(modeId: 'gunluk');
     expect(again.message, 'Günlük oyun hakkınız doldu. Reklamla yeni oyun başlatın');
+  });
+
+  test('a stale local catalog does not close a category the server still opens', () async {
+    final server = LunoBilgiServer(MemoryKeyValueStore());
+    await server.saveCatalog({
+      'inactive': ['spor'],
+    });
+    const question = BilgiQuestion(
+      id: 'spor-open',
+      categoryId: 'spor',
+      text: 'Soru',
+      options: ['A', 'B', 'C', 'D'],
+      correct: 0,
+      difficulty: 'orta',
+      explanation: 'aciklama',
+      status: 'approved',
+      tags: ['Futbol'],
+    );
+    final closed = await server.startRound(
+      modeId: 'sakin',
+      categoryId: 'spor',
+      fixedQuestions: [question],
+      questionCount: 1,
+    );
+    expect(closed.message, 'Bu kategori şu an oyunda değil.');
+    final opened = await server.startRound(
+      modeId: 'sakin',
+      categoryId: 'spor',
+      openedCatalog: {
+        'authoritative': true,
+        'custom': [
+          {
+            'id': 'spor',
+            'group': 'F. Spor ve Oyun',
+            'name': 'Spor',
+            'emoji': '🏆',
+            'subs': ['Futbol'],
+            'active': true,
+          },
+          {
+            'id': 'genel',
+            'group': 'A. Temel Bilgi',
+            'name': 'Genel Kültür',
+            'emoji': '🧠',
+            'subs': ['Spor'],
+            'active': true,
+          },
+        ],
+        'inactiveSubs': ['genel|Spor'],
+      },
+      fixedQuestions: [question],
+      questionCount: 1,
+    );
+    expect(opened.message, isNull);
+    expect(opened.round?.categoryId, 'spor');
   });
 
   test('hidden categories stay hidden and inactive ones leave the game list', () async {
@@ -887,6 +944,27 @@ void main() {
     expect(bilgiNoticeIsGoldShort('🪙 Yeterli altının yok. Mağazadan altın al.'), isTrue);
     expect(bilgiNoticeIsGoldShort('Yeterli altının yok.'), isTrue);
     expect(bilgiNoticeIsGoldShort('Canın bitti'), isFalse);
+  });
+
+  test('shared noun phrase does not make options inseparable', () {
+    const marx = [
+      'Üretim araçlarını reddeden sınıf',
+      'Üretim araçlarını yok sayan sınıf',
+      'Üretim araçlarına sahip olmayan sınıf',
+      'Üretim araçlarına sahip sınıf',
+    ];
+    expect(bilgiSimilarOptionsIssue(marx), isNull);
+    expect(bilgiOptionsInseparable(marx[0], marx[2]), isFalse);
+    expect(bilgiOptionsInseparable(marx[2], marx[3]), isFalse);
+    expect(bilgiOptionsInseparable('göze göz', 'kısasa kısas'), isFalse);
+    expect(bilgiOptionsInseparable('Paris.', 'Paris'), isTrue);
+    expect(bilgiOptionsInseparable('Paris', 'Paris ve'), isTrue);
+    expect(bilgiOptionsInseparable('Roma', 'Roma ile'), isTrue);
+    expect(bilgiOptionsInseparable('kedi ve köpek', 'kedi ile köpek'), isTrue);
+    expect(
+      bilgiSimilarOptionsIssue(['Paris.', 'Lyon', 'Paris', 'Nice']),
+      bilgiSimilarOptionWarning,
+    );
   });
 }
 

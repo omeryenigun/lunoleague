@@ -43,6 +43,7 @@ Future<void> migrateBilgiCatalog(Connection db) async {
     await _seedBuiltIn(db);
     await db.execute("insert into bilgi_catalog_meta (key, value) values ('seeded', '1')");
   }
+  await _foldSportsIntoSpor(db);
   await _linkQuestionCategories(db);
   await _retireSeedCategories(db);
   await _seedGroupLabels(db);
@@ -352,6 +353,102 @@ Future<Response> _deleteSub(Request request, Connection db, String id, String na
   final error = await _deleteBilgiSubcategory(db, Uri.decodeComponent(id), Uri.decodeComponent(name));
   if (error == null) return jsonResponse({'ok': true});
   return jsonResponse({'error': error}, status: error == 'Bu alt kategoride soru var.' ? 409 : 400);
+}
+
+const _foldedSportTags = <String, String>{
+  'futbol': 'Futbol',
+  'basketbol': 'Basketbol',
+  'tenis': 'Tenis',
+  'olimpiyat': 'Olimpiyatlar',
+};
+
+const _sporSubEmoji = <String, String>{
+  'Futbol': '⚽',
+  'Basketbol': '🏀',
+  'Voleybol': '🏐',
+  'Tenis': '🎾',
+  'Atletizm': '🏃',
+  'Motor Sporları': '🏁',
+  'Su Sporları': '🏊',
+  'Kış Sporları': '🎿',
+  'Dövüş Sporları': '🥊',
+  'Olimpiyatlar': '🏅',
+  'Diğer Sporlar': '🎯',
+};
+
+/// Futbol, basketbol, tenis ve olimpiyat kategorilerini Spor altına indirir.
+Future<void> _foldSportsIntoSpor(Connection db) async {
+  final sortRows = await db.execute('''
+    select coalesce(
+      (select sort_order from bilgi_categories where id = 'futbol'),
+      (select min(sort_order) from bilgi_categories where id in ('futbol', 'basketbol', 'tenis', 'olimpiyat')),
+      (select coalesce(max(sort_order), -1) + 1 from bilgi_categories)
+    )
+  ''');
+  final rawSort = sortRows.first[0];
+  final sort = rawSort is int ? rawSort : (rawSort is num ? rawSort.toInt() : 0);
+  await db.execute(
+    Sql.named('''
+      insert into bilgi_categories (id, group_name, name, emoji, sort_order)
+      values ('spor', 'F. Spor ve Oyun', 'Spor', '🏆', @sort)
+      on conflict (id) do update set
+        group_name = excluded.group_name,
+        name = excluded.name,
+        emoji = excluded.emoji
+    '''),
+    parameters: {'sort': sort},
+  );
+  var index = 0;
+  for (final entry in _sporSubEmoji.entries) {
+    await db.execute(
+      Sql.named('''
+        insert into bilgi_subcategories (category_id, name, emoji, sort_order)
+        values ('spor', @name, @emoji, @sort)
+        on conflict (category_id, name) do nothing
+      '''),
+      parameters: {'name': entry.key, 'emoji': entry.value, 'sort': index},
+    );
+    index++;
+  }
+  var moved = false;
+  for (final entry in _foldedSportTags.entries) {
+    final updated = await db.execute(
+      Sql.named('''
+        update bilgi_questions
+        set category_id = 'spor', tags_json = @tags
+        where category_id = @from
+        returning id
+      '''),
+      parameters: {'from': entry.key, 'tags': jsonEncode([entry.value])},
+    );
+    if (updated.isNotEmpty) moved = true;
+    final active = await db.execute(
+      Sql.named("select 1 from bilgi_active where kind = 'category' and key = @id"),
+      parameters: {'id': entry.key},
+    );
+    if (active.isNotEmpty) {
+      await db.execute(
+        Sql.named('''
+          insert into bilgi_active (kind, key) values ('category', 'spor')
+          on conflict (kind, key) do nothing
+        '''),
+      );
+      await db.execute(
+        Sql.named('''
+          insert into bilgi_active (kind, key) values ('sub', @key)
+          on conflict (kind, key) do nothing
+        '''),
+        parameters: {'key': 'spor|${entry.value}'},
+      );
+    }
+    await _deleteBilgiCategory(db, entry.key);
+  }
+  if (!moved) return;
+  final snapshot = await db.execute("select to_regclass('public.bilgi_count_snapshot')");
+  if (snapshot.first[0] != null) {
+    await db.execute('delete from bilgi_count_snapshot where id = 1');
+    await ensureBilgiCountSnapshot(db);
+  }
 }
 
 /// Yönetici silme yolu. Soru varsa satır kalır; sorular silinmez.
