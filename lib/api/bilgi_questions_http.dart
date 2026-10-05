@@ -462,14 +462,13 @@ int _asInt(Object? value) {
     'difficulty': (query['difficulty'] ?? '').trim(),
     'status': (query['status'] ?? '').trim(),
     'reviewed': (query['reviewed'] ?? '').trim(),
-    'translation': ignoreTranslation ? '' : (query['translation'] ?? '').trim(),
   };
   final folded = bilgiBankFold((query['q'] ?? '').trim());
   final searching = folded.length >= 3;
   if (searching) params['like'] = bilgiBankLike(folded);
   final textFold = bilgiBankFoldSql('q.text');
   final optionFold = bilgiBankFoldSql('q.options_json');
-  final translation = params['translation'];
+  final translation = ignoreTranslation ? '' : (query['translation'] ?? '').trim();
   final translationClause = translation == 'ready'
       ? 'and $readySql'
       : translation == 'missing'
