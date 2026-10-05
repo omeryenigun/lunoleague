@@ -596,10 +596,25 @@ Future<Response> _distribution(Request request, Connection db) async {
       'sub': (query['sub'] ?? '').trim(),
     },
   );
+  final matrixRows = await db.execute('''
+    select q.category_id, tag, q.difficulty, count(*)
+    from bilgi_questions q, jsonb_array_elements_text(q.tags_json::jsonb) tag
+    where q.status = 'approved'
+    group by q.category_id, tag, q.difficulty
+  ''');
   return jsonResponse({
     'rows': [
       for (final row in rows)
         {'correct': _asInt(row[0]), 'difficulty': '${row[1]}', 'count': _asInt(row[2])},
+    ],
+    'matrix': [
+      for (final row in matrixRows)
+        {
+          'categoryId': '${row[0]}',
+          'sub': '${row[1]}',
+          'difficulty': '${row[2]}',
+          'count': _asInt(row[3]),
+        },
     ],
   });
 }
@@ -680,11 +695,14 @@ Future<Response> _save(Request request, Connection db) async {
     if (item is! Map) return jsonResponse({'error': 'Soru bulunamadı.'}, status: 400);
     final question = _read(Map<String, dynamic>.from(item));
     if (question == null) return jsonResponse({'error': 'Soru bulunamadı.'}, status: 400);
+    questions.add(question);
+  }
+  await _useStoredTranslations(db, questions);
+  for (final question in questions) {
     if (question['status'] == 'approved' &&
         !_approvedLanguagesReady(question, localesByCategory['${question['categoryId']}'])) {
       return jsonResponse({'error': bilgiApproveBlocked}, status: 400);
     }
-    questions.add(question);
   }
   final known = await db.execute('select id from bilgi_categories');
   final categoryIds = {for (final row in known) '${row[0]}'};
@@ -863,6 +881,33 @@ Future<Response> _setActive(Request request, Connection db) async {
     parameters: {'kind': kind, 'key': key},
   );
   return jsonResponse({'ok': true});
+}
+
+Future<void> _useStoredTranslations(Connection db, List<Map<String, Object>> questions) async {
+  final pending = [
+    for (final question in questions)
+      if (question['status'] == 'approved' && question['keepTranslations'] == true) question,
+  ];
+  if (pending.isEmpty) return;
+  final parameters = <String, Object>{};
+  final slots = <String>[];
+  for (var i = 0; i < pending.length; i++) {
+    slots.add('@id$i');
+    parameters['id$i'] = '${pending[i]['id']}';
+  }
+  final rows = await db.execute(
+    Sql.named('select id, translations_json from bilgi_questions where id in (${slots.join(', ')})'),
+    parameters: parameters,
+  );
+  final stored = {for (final row in rows) '${row[0]}': row[1]};
+  for (final question in pending) {
+    final value = stored['${question['id']}'];
+    question['translations'] = bilgiApproveTranslationsJson(
+      keepStored: true,
+      submitted: '${question['translations']}',
+      stored: value is String ? value : (value == null ? null : jsonEncode(value)),
+    );
+  }
 }
 
 bool _approvedLanguagesReady(Map<String, Object> question, List<String>? locales) {

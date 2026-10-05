@@ -3,6 +3,18 @@ import 'package:kelimelig/domain/account/luno_account.dart';
 import 'package:kelimelig/domain/game/game_ids.dart';
 
 const bilgiApproveBlocked = 'Onay için seçili dillerde soru, dört şık ve açıklama dolu olmalı.';
+
+/// Liste kaydı çeviriyi taşımaz. Onay, gönderilen boş çevirinin yerine kayıtlı metni kullanır.
+String bilgiApproveTranslationsJson({
+  required bool keepStored,
+  required String submitted,
+  String? stored,
+}) {
+  if (!keepStored) return submitted;
+  final kept = stored?.trim() ?? '';
+  if (kept.isEmpty) return submitted;
+  return kept;
+}
 const bilgiCategoryBlocked = 'Kategori seçili dillerde adlandırılmadan açılamaz.';
 const bilgiSubBlocked = 'Alt kategori seçili dillerde adlandırılmadan açılamaz.';
 

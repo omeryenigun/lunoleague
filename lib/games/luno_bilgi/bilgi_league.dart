@@ -159,6 +159,15 @@ bool bilgiSubListed(String categoryId, String subName, Map<String, int> slices) 
   return true;
 }
 
+/// Yayın tablosundaki kolay, orta, zor, efsane sayıları 15 eşiğini geçiyor mu.
+bool bilgiPublishedSubReady(String categoryId, String subName, List<int> counts) {
+  final slices = <String, int>{
+    for (var i = 0; i < bilgiDifficultyLevels.length; i++)
+      '$categoryId|$subName|${bilgiDifficultyLevels[i]}': i < counts.length ? counts[i] : 0,
+  };
+  return bilgiSubListed(categoryId, subName, slices);
+}
+
 /// Categories with at least [bilgiMinPublishedQuestions] approved questions.
 /// Karma and the mix id stay out. A missing count is not loaded yet and stays hidden.
 List<String> bilgiLeagueCatalog(Map<String, int> publishedCounts) {

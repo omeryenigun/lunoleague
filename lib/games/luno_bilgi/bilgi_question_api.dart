@@ -64,6 +64,25 @@ class BilgiBankCounts {
   }
 }
 
+typedef BilgiPublishedKey = ({String categoryId, String sub, String difficulty});
+
+/// Onaylı soru sayıları. Anahtar kategori, alt kategori ve zorluk.
+Map<BilgiPublishedKey, int> bilgiPublishedMatrix(Object? raw) {
+  final out = <BilgiPublishedKey, int>{};
+  if (raw is! List) return out;
+  for (final item in raw) {
+    if (item is! Map) continue;
+    final categoryId = '${item['categoryId'] ?? ''}'.trim();
+    final sub = '${item['sub'] ?? ''}'.trim();
+    final difficulty = '${item['difficulty'] ?? ''}'.trim();
+    if (categoryId.isEmpty || sub.isEmpty || difficulty.isEmpty) continue;
+    final count = item['count'];
+    final n = count is int ? count : (count is num ? count.toInt() : int.tryParse('$count') ?? 0);
+    out[(categoryId: categoryId, sub: sub, difficulty: difficulty)] = n;
+  }
+  return out;
+}
+
 class BilgiQuestionApi {
   static Future<Map<String, String>> loadLabels() async {
     try {
@@ -394,7 +413,12 @@ class BilgiQuestionApi {
     }
   }
 
-  static Future<({List<int> letters, List<int> difficulties, int other})?> loadDistribution(
+  static Future<({
+    List<int> letters,
+    List<int> difficulties,
+    int other,
+    Map<({String categoryId, String sub, String difficulty}), int> matrix,
+  })?> loadDistribution(
     String token, {
     String category = '',
     String sub = '',
@@ -429,7 +453,12 @@ class BilgiQuestionApi {
           difficulties[slot] += n;
         }
       }
-      return (letters: letters, difficulties: difficulties, other: other);
+      return (
+        letters: letters,
+        difficulties: difficulties,
+        other: other,
+        matrix: bilgiPublishedMatrix(decoded['matrix']),
+      );
     } catch (_) {
       return null;
     }

@@ -716,6 +716,15 @@ void main() {
       status: 'pending',
       tags: ['Atasözleri'],
     );
+    expect(
+      bilgiApproveTranslationsJson(keepStored: true, submitted: '{}', stored: '{"en":{}}'),
+      '{"en":{}}',
+    );
+    expect(
+      bilgiApproveTranslationsJson(keepStored: false, submitted: '{}', stored: '{"en":{}}'),
+      '{}',
+    );
+    expect(bilgiApproveTranslationsJson(keepStored: true, submitted: '{}', stored: '  '), '{}');
     expect(bilgiQuestionLanguagesReady(bare), isFalse);
     final full = bare.copyWith(translations: {
       for (final id in ['en', 'de', 'es', 'fr', 'it', 'ru', 'nl', 'pt', 'pl'])

@@ -116,6 +116,8 @@ void main() {
     expect(bilgiSubListed('mitoloji', 'Yunan Mitolojisi', ready), isTrue);
     ready['mitoloji|Yunan Mitolojisi|efsane'] = 14;
     expect(bilgiSubListed('mitoloji', 'Yunan Mitolojisi', ready), isFalse);
+    expect(bilgiPublishedSubReady('mitoloji', 'Yunan Mitolojisi', [15, 15, 15, 15]), isTrue);
+    expect(bilgiPublishedSubReady('mitoloji', 'Yunan Mitolojisi', [172, 103, 14, 69]), isFalse);
     final counts = _enoughPublished()
       ..['felsefe'] = 59
       ..['karma'] = 12;

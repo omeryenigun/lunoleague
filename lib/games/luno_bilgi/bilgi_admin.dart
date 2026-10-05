@@ -100,7 +100,6 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   List<BilgiQuestion> _bankRows = const [];
   int _bankTotal = 0;
   var _bankLoading = false;
-  var _bankFailed = false;
   var _bankSerial = 0;
   var _bankSearchQuiet = false;
   Timer? _bankTimer;
@@ -111,6 +110,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   List<int> _distLetters = const [0, 0, 0, 0];
   List<int> _distDiffs = const [0, 0, 0, 0];
   var _distOther = 0;
+  Map<BilgiPublishedKey, int> _distMatrix = const {};
   var _labels = const <String, String>{};
   var _moveCat = '';
   var _moveSub = '';
@@ -338,7 +338,6 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
         _bankTotal = window.total;
         _bankPage = window.page;
         _bankLoading = false;
-        _bankFailed = false;
       });
       return;
     }
@@ -357,11 +356,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     );
     if (!mounted || serial != _bankSerial) return;
     if (page == null) {
-      setState(() {
-        _bankLoading = false;
-        _bankFailed = true;
-        _note = 'Soru listesi alınamadı.';
-      });
+      setState(() => _bankLoading = false);
       return;
     }
     setState(() {
@@ -370,8 +365,6 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       _bankTotal = page.total;
       _bankPage = page.page;
       _bankLoading = false;
-      _bankFailed = false;
-      if (_note == 'Soru listesi alınamadı.') _note = '';
     });
   }
 
@@ -457,6 +450,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       _distLetters = result.letters;
       _distDiffs = result.difficulties;
       _distOther = result.other;
+      _distMatrix = result.matrix;
     });
   }
 
@@ -585,7 +579,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   String get _subtitle {
     return switch (_index) {
       0 => 'Luno Bilgi genel bakış',
-      1 => '${_bankSummary.total} soru • $_pendingCount onay bekliyor',
+      1 => '$_bankTotal soru • $_pendingCount onay bekliyor',
       2 => 'Doğru şıkkın A B C D dağılımı',
       3 => 'Oyuncuların hatalı soru bildirimleri',
       4 => _editing == null ? 'Soru bankasına yeni soru ekle' : 'Kayıtlı soruyu güncelle',
@@ -1368,7 +1362,156 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
               child: Text('Diğer zorluk: ${_trInt(otherDifficulty)}', style: const TextStyle(color: BilgiColors.muted)),
             ),
         ],
+        const SizedBox(height: 28),
+        _publishedMatrix(),
       ],
+    );
+  }
+
+  Widget _publishedMatrix() {
+    final rows = _publishedMatrixRows();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Yayınlı sorular', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 6),
+        const Text(
+          'Onaylı soru sayısı. Her zorlukta en az 15 soru varsa yeşil, biri eksikse kırmızı.',
+          style: TextStyle(color: BilgiColors.muted, fontSize: 12, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 12),
+        DecoratedBox(
+          decoration: _cardDeco(),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 860),
+                child: Column(
+                  children: [
+                    _matrixLine(category: 'Kategori', sub: 'Alt kategori', counts: const [], header: true),
+                    if (rows.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(20),
+                        child: Text('Kayıt yok', style: TextStyle(color: BilgiColors.muted)),
+                      )
+                    else
+                      for (final row in rows)
+                        _matrixLine(
+                          category: row.category,
+                          sub: row.sub,
+                          counts: [...row.counts, row.counts.fold<int>(0, (sum, item) => sum + item)],
+                          ready: bilgiPublishedSubReady(row.categoryId, row.sub, row.counts),
+                          selected: row.categoryId == _distCat && row.sub == _distSub && _distSub.isNotEmpty,
+                        ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<({String categoryId, String category, String sub, List<int> counts})> _publishedMatrixRows() {
+    const diffs = ['kolay', 'orta', 'zor', 'efsane'];
+    final categories = _distCat.isEmpty ? _categories : _categories.where((item) => item.id == _distCat).toList();
+    final seen = <String>{};
+    final rows = <({String categoryId, String category, String sub, List<int> counts})>[];
+    List<int> countsOf(String categoryId, String sub) => [
+          for (final difficulty in diffs)
+            _distMatrix[(categoryId: categoryId, sub: sub, difficulty: difficulty)] ?? 0,
+        ];
+    for (final category in categories) {
+      final label = '${category.emoji} ${category.name}';
+      for (final sub in category.subs) {
+        seen.add('${category.id}|$sub');
+        rows.add((categoryId: category.id, category: label, sub: sub, counts: countsOf(category.id, sub)));
+      }
+    }
+    final extras = <({String categoryId, String sub})>[];
+    for (final key in _distMatrix.keys) {
+      if (_distCat.isNotEmpty && key.categoryId != _distCat) continue;
+      final id = '${key.categoryId}|${key.sub}';
+      if (seen.contains(id)) continue;
+      seen.add(id);
+      extras.add((categoryId: key.categoryId, sub: key.sub));
+    }
+    extras.sort((a, b) {
+      final byCategory = a.categoryId.compareTo(b.categoryId);
+      if (byCategory != 0) return byCategory;
+      return a.sub.compareTo(b.sub);
+    });
+    for (final extra in extras) {
+      final category = _categories.where((item) => item.id == extra.categoryId).firstOrNull;
+      final label = category == null ? extra.categoryId : '${category.emoji} ${category.name}';
+      rows.add((
+        categoryId: extra.categoryId,
+        category: label,
+        sub: extra.sub,
+        counts: countsOf(extra.categoryId, extra.sub),
+      ));
+    }
+    return rows;
+  }
+
+  Widget _matrixLine({
+    required String category,
+    required String sub,
+    required List<int> counts,
+    bool header = false,
+    bool selected = false,
+    bool ready = false,
+  }) {
+    const headers = ['Kolay', 'Orta', 'Zor', 'Efsane', 'Toplam'];
+    const readyColor = Color(0xFF3DDC97);
+    final tone = header ? BilgiColors.muted : (ready ? readyColor : BilgiColors.error);
+    final labelStyle = TextStyle(
+      color: tone,
+      fontSize: header ? 11 : 13,
+      fontWeight: FontWeight.w800,
+      letterSpacing: header ? 0.4 : 0,
+    );
+    Widget cell(Widget child, double width, {bool end = false}) => SizedBox(
+          width: width,
+          child: Align(alignment: end ? Alignment.centerRight : Alignment.centerLeft, child: child),
+        );
+    return Container(
+      decoration: BoxDecoration(
+        color: header
+            ? const Color(0xFF121022)
+            : (ready ? const Color(0x143DDC97) : const Color(0x14FF4D6D)),
+        border: Border(
+          left: selected ? const BorderSide(color: BilgiColors.primary, width: 3) : BorderSide.none,
+          bottom: header ? BorderSide.none : const BorderSide(color: Color(0x08FFFFFF)),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          cell(Text(category, style: labelStyle, overflow: TextOverflow.ellipsis), 220),
+          cell(Text(sub, style: labelStyle, overflow: TextOverflow.ellipsis), 220),
+          for (var i = 0; i < headers.length; i++)
+            cell(
+              Text(
+                header ? headers[i] : _trInt(i < counts.length ? counts[i] : 0),
+                style: header
+                    ? labelStyle
+                    : TextStyle(
+                        color: i < 4 && (i < counts.length ? counts[i] : 0) < 15
+                            ? BilgiColors.error
+                            : tone,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+              ),
+              88,
+              end: true,
+            ),
+        ],
+      ),
     );
   }
 
@@ -2195,13 +2338,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                   Text(label, style: const TextStyle(color: BilgiColors.muted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.6)),
               ], header: true),
               if (slice.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Text(
-                    _bankFailed ? 'Soru listesi alınamadı.' : 'Kayıt yok',
-                    style: const TextStyle(color: BilgiColors.muted),
-                  ),
-                )
+                const Padding(padding: EdgeInsets.all(20), child: Text('Kayıt yok', style: TextStyle(color: BilgiColors.muted)))
               else
                 for (final question in slice) _bankRow(question),
               Padding(

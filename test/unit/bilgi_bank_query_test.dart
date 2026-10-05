@@ -68,4 +68,15 @@ void main() {
     expect(summary.subTotal('Günlük Bilgi'), 1);
     expect(summary.bankBadge, 2);
   });
+
+  test('published matrix keeps category, subcategory and difficulty', () {
+    final matrix = bilgiPublishedMatrix([
+      {'categoryId': 'felsefe', 'sub': 'Ahlak Felsefesi', 'difficulty': 'kolay', 'count': 58},
+      {'categoryId': 'felsefe', 'sub': 'Ahlak Felsefesi', 'difficulty': 'efsane', 'count': 0},
+      {'categoryId': '', 'sub': 'Etik', 'difficulty': 'zor', 'count': 4},
+    ]);
+    expect(matrix[(categoryId: 'felsefe', sub: 'Ahlak Felsefesi', difficulty: 'kolay')], 58);
+    expect(matrix[(categoryId: 'felsefe', sub: 'Ahlak Felsefesi', difficulty: 'efsane')], 0);
+    expect(matrix.containsKey((categoryId: '', sub: 'Etik', difficulty: 'zor')), isFalse);
+  });
 }
