@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:kelimelig/api/admob_ssv.dart';
@@ -202,8 +203,17 @@ Middleware get _cors => (Handler inner) {
         if (request.method == 'OPTIONS') {
           return Response.ok('', headers: _corsHeaders);
         }
-        final response = await inner(request);
-        return response.change(headers: _corsHeaders);
+        try {
+          final response = await inner(request);
+          return response.change(headers: _corsHeaders);
+        } catch (error, stack) {
+          stderr.writeln('api error: $error');
+          stderr.writeln(stack);
+          return Response.internalServerError(
+            body: jsonEncode({'error': 'Sunucu hatası.'}),
+            headers: {'content-type': 'application/json', ..._corsHeaders},
+          );
+        }
       };
     };
 

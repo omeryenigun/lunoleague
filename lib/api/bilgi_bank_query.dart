@@ -125,8 +125,9 @@ case
       when jsonb_typeof($jsonbSql) = 'array' then
         jsonb_array_length($jsonbSql) = 4
         and not exists (
-          select 1 from jsonb_array_elements_text($jsonbSql) opt
-          where length(btrim(opt)) = 0
+          select 1 from jsonb_array_elements($jsonbSql) elem
+          where jsonb_typeof(elem) is distinct from 'string'
+             or length(btrim(coalesce(elem #>> '{}', ''))) = 0
         )
       else false
     end
@@ -148,8 +149,9 @@ case
        and jsonb_typeof($value -> 'options') = 'array' then
         jsonb_array_length($value -> 'options') = 4
         and not exists (
-          select 1 from jsonb_array_elements_text($value -> 'options') opt
-          where length(btrim(opt)) = 0
+          select 1 from jsonb_array_elements($value -> 'options') elem
+          where jsonb_typeof(elem) is distinct from 'string'
+             or length(btrim(coalesce(elem #>> '{}', ''))) = 0
         )
       else false
     end

@@ -25,7 +25,8 @@ void main() {
     expect(sql.contains('q.explanation'), isTrue);
     expect(sql.toLowerCase().contains('case'), isTrue);
     expect(sql.contains('pg_input_is_valid'), isTrue);
-    for (final call in ['jsonb_array_length', 'jsonb_array_elements_text']) {
+    expect(sql.contains('jsonb_array_elements_text'), isFalse);
+    for (final call in ['jsonb_array_length', 'jsonb_array_elements']) {
       var from = 0;
       var seen = 0;
       while (true) {
