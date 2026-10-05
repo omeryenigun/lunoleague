@@ -108,30 +108,52 @@ String _readyBundle(List<String> locales) {
 String _turkishReady() {
   return '''
 (
-  length(btrim(q.text)) > 0
-  and length(btrim(q.explanation)) > 0
-  and jsonb_typeof(q.options_json::jsonb) = 'array'
-  and jsonb_array_length(q.options_json::jsonb) = 4
-  and not exists (
-    select 1 from jsonb_array_elements_text(q.options_json::jsonb) opt
-    where length(btrim(opt)) = 0
-  )
+  length(btrim(coalesce(q.text, ''))) > 0
+  and length(btrim(coalesce(q.explanation, ''))) > 0
+  and ${_textArrayReady('q.options_json', 'q.options_json::jsonb')}
 )
+''';
+}
+
+/// Bozuk JSON, eksik anahtar ve dizi olmayan değer yanlış döner.
+/// Dizi işlevleri yalnız `jsonb_typeof(...) = 'array'` dalında çalışır.
+String _textArrayReady(String rawSql, String jsonbSql) {
+  return '''
+case
+  when pg_input_is_valid(coalesce($rawSql, ''), 'jsonb') then
+    case
+      when jsonb_typeof($jsonbSql) = 'array' then
+        jsonb_array_length($jsonbSql) = 4
+        and not exists (
+          select 1 from jsonb_array_elements_text($jsonbSql) opt
+          where length(btrim(opt)) = 0
+        )
+      else false
+    end
+  else false
+end
 ''';
 }
 
 String _localeReady(String locale) {
   final key = locale.replaceAll("'", '');
+  final raw = 'q.translations_json';
+  final value = "$raw::jsonb -> '$key'";
   return '''
-(
-  coalesce(length(btrim(q.translations_json::jsonb -> '$key' ->> 'text')), 0) > 0
-  and coalesce(length(btrim(q.translations_json::jsonb -> '$key' ->> 'explanation')), 0) > 0
-  and jsonb_typeof(q.translations_json::jsonb -> '$key' -> 'options') = 'array'
-  and jsonb_array_length(q.translations_json::jsonb -> '$key' -> 'options') = 4
-  and not exists (
-    select 1 from jsonb_array_elements_text(q.translations_json::jsonb -> '$key' -> 'options') opt
-    where length(btrim(opt)) = 0
-  )
-)
+case
+  when pg_input_is_valid(coalesce($raw, ''), 'jsonb') then
+    case
+      when coalesce(length(btrim($value ->> 'text')), 0) > 0
+       and coalesce(length(btrim($value ->> 'explanation')), 0) > 0
+       and jsonb_typeof($value -> 'options') = 'array' then
+        jsonb_array_length($value -> 'options') = 4
+        and not exists (
+          select 1 from jsonb_array_elements_text($value -> 'options') opt
+          where length(btrim(opt)) = 0
+        )
+      else false
+    end
+  else false
+end
 ''';
 }

@@ -100,6 +100,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   List<BilgiQuestion> _bankRows = const [];
   int _bankTotal = 0;
   var _bankLoading = false;
+  var _bankFailed = false;
   var _bankSerial = 0;
   var _bankSearchQuiet = false;
   Timer? _bankTimer;
@@ -337,6 +338,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
         _bankTotal = window.total;
         _bankPage = window.page;
         _bankLoading = false;
+        _bankFailed = false;
       });
       return;
     }
@@ -355,7 +357,11 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     );
     if (!mounted || serial != _bankSerial) return;
     if (page == null) {
-      setState(() => _bankLoading = false);
+      setState(() {
+        _bankLoading = false;
+        _bankFailed = true;
+        _note = 'Soru listesi alınamadı.';
+      });
       return;
     }
     setState(() {
@@ -364,6 +370,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       _bankTotal = page.total;
       _bankPage = page.page;
       _bankLoading = false;
+      _bankFailed = false;
+      if (_note == 'Soru listesi alınamadı.') _note = '';
     });
   }
 
@@ -577,7 +585,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   String get _subtitle {
     return switch (_index) {
       0 => 'Luno Bilgi genel bakış',
-      1 => '$_bankTotal soru • $_pendingCount onay bekliyor',
+      1 => '${_bankSummary.total} soru • $_pendingCount onay bekliyor',
       2 => 'Doğru şıkkın A B C D dağılımı',
       3 => 'Oyuncuların hatalı soru bildirimleri',
       4 => _editing == null ? 'Soru bankasına yeni soru ekle' : 'Kayıtlı soruyu güncelle',
@@ -2187,7 +2195,13 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                   Text(label, style: const TextStyle(color: BilgiColors.muted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.6)),
               ], header: true),
               if (slice.isEmpty)
-                const Padding(padding: EdgeInsets.all(20), child: Text('Kayıt yok', style: TextStyle(color: BilgiColors.muted)))
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Text(
+                    _bankFailed ? 'Soru listesi alınamadı.' : 'Kayıt yok',
+                    style: const TextStyle(color: BilgiColors.muted),
+                  ),
+                )
               else
                 for (final question in slice) _bankRow(question),
               Padding(

@@ -23,6 +23,25 @@ void main() {
     expect(sql.contains("-> 'en'"), isTrue);
     expect(sql.contains("-> 'de'"), isTrue);
     expect(sql.contains('q.explanation'), isTrue);
+    expect(sql.toLowerCase().contains('case'), isTrue);
+    expect(sql.contains('pg_input_is_valid'), isTrue);
+    for (final call in ['jsonb_array_length', 'jsonb_array_elements_text']) {
+      var from = 0;
+      var seen = 0;
+      while (true) {
+        final at = sql.indexOf(call, from);
+        if (at < 0) break;
+        seen++;
+        final before = sql.substring(0, at);
+        final typeofAt = before.lastIndexOf('jsonb_typeof');
+        expect(typeofAt, greaterThanOrEqualTo(0), reason: call);
+        final thenAt = before.indexOf('then', typeofAt);
+        expect(thenAt, greaterThanOrEqualTo(0), reason: call);
+        expect(before.substring(typeofAt, thenAt), contains("= 'array'"));
+        from = at + call.length;
+      }
+      expect(seen, greaterThan(0), reason: call);
+    }
   });
 
   test('summary counts group category and subcategory', () {
