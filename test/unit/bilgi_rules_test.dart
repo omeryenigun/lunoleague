@@ -2,7 +2,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_controller.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_csv.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_league.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_questions.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_report.dart';
@@ -101,6 +103,19 @@ void main() {
     expect(doubled.profile!.totalScore, total + score);
     expect(doubled.profile!.gold, finished.profile!.gold);
     expect(doubled.profile!.adDoubleToday, 1);
+  });
+
+  test('post-game 2x lock counts only today', () async {
+    final server = LunoBilgiServer(MemoryKeyValueStore());
+    final game = BilgiController(server);
+    addTearDown(game.dispose);
+    final today = bilgiDayKey(DateTime.now());
+    game.profile = (await server.profile()).copyWith(adDay: today, adDoubleToday: 2);
+    expect(game.resultDoubleUsed, isFalse);
+    game.profile = game.profile!.copyWith(adDoubleToday: 3);
+    expect(game.resultDoubleUsed, isTrue);
+    game.profile = game.profile!.copyWith(adDay: '2020-01-01', adDoubleToday: 3);
+    expect(game.resultDoubleUsed, isFalse);
   });
 
   test('ensureSeed removes leftover trial questions and does not put them back', () async {

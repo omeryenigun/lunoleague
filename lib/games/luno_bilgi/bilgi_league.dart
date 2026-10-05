@@ -690,6 +690,28 @@ BilgiLeagueSnapshot bilgiLeagueSnapshot({
   );
 }
 
+/// One settled week, as stored in `leagueRewardText`: rank lines, then `N altın`.
+class BilgiLeagueRewardNote {
+  const BilgiLeagueRewardNote({required this.gold, required this.lines});
+
+  final int gold;
+  final List<String> lines;
+}
+
+final _leagueRewardRank = RegExp(r'^.+ \d+\. sıra$');
+final _leagueRewardGold = RegExp(r'^(\d+) altın$');
+
+/// Reads a settlement notice. Ordinary warnings stay null so the home can keep them as notes.
+BilgiLeagueRewardNote? bilgiLeagueRewardNote(String text) {
+  final parts = text.split(' • ');
+  if (parts.length < 2) return null;
+  final gold = _leagueRewardGold.firstMatch(parts.last);
+  if (gold == null) return null;
+  final lines = parts.sublist(0, parts.length - 1);
+  if (lines.isEmpty || lines.any((line) => !_leagueRewardRank.hasMatch(line))) return null;
+  return BilgiLeagueRewardNote(gold: int.parse(gold.group(1)!), lines: lines);
+}
+
 List<BilgiProfile> applyBilgiSettlement(List<BilgiProfile> users, {required String week, required DateTime now}) {
   final current = bilgiWeekId(now);
   final grants = <String, ({int gold, int xp, List<String> lines})>{};

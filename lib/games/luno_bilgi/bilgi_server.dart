@@ -1259,6 +1259,9 @@ class LunoBilgiServer {
       if (remote != null) return remote;
     }
     final cfg = await config();
+    if (user.lives >= cfg.maxLives) {
+      return const BilgiResult(message: 'Canın zaten dolu.');
+    }
     if (user.gold < cfg.lifePrice) {
       return const BilgiResult(message: '🪙 Yeterli altının yok. Mağazadan altın al.');
     }

@@ -1149,12 +1149,20 @@ class BilgiController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Today's post-game 2x watches. A counter from another day does not count.
+  bool get resultDoubleUsed {
+    final user = profile;
+    if (user == null) return false;
+    final used = user.adDay == bilgiDayKey(DateTime.now()) ? user.adDoubleToday : 0;
+    return used >= config.rewardedDoubleLimit;
+  }
+
   Future<void> doubleResultScore() async {
     if (scoreDoubled || adWatching) return;
     final user = profile;
     final live = round;
     if (user == null || live == null) return;
-    if (user.adDoubleToday >= config.rewardedDoubleLimit) {
+    if (resultDoubleUsed) {
       notice = '📅 Bugünkü hakkını kullandın.';
       notifyListeners();
       return;
@@ -1310,6 +1318,10 @@ class BilgiController extends ChangeNotifier {
   Future<void> buyJoker(String type) async {
     final result = await server.buyJoker(type);
     _applyGoldSpend(result);
+    if (!result.ok || (page != 'shop' && page != 'joker')) return;
+    final stock = profile?.jokers[type] ?? 0;
+    notice = '${t('joker_$type')} eklendi. Stok $stock.';
+    notifyListeners();
   }
 
   bool get plusActive {
@@ -1393,12 +1405,20 @@ class BilgiController extends ChangeNotifier {
 
   Future<void> refill() async {
     final user = profile;
+    if (user != null && user.lives >= config.maxLives) {
+      notice = 'Canın zaten dolu.';
+      notifyListeners();
+      return;
+    }
     if (user != null && user.gold < config.lifePrice) {
       requestGoldHelp();
       return;
     }
     final result = await server.refillLives();
     _applyGoldSpend(result, closeNoLives: true);
+    if (!result.ok || page != 'shop') return;
+    notice = 'Canın doldu.';
+    notifyListeners();
   }
 
   Future<void> watchFor(String kind) async {

@@ -243,4 +243,20 @@ void main() {
     expect(synced.profile?.lives, 5);
     expect(ledger.lines.where((line) => line.reason == 'life_regen'), hasLength(1));
   });
+
+  test('buying a joker spends gold and a full life bar does not', () async {
+    final store = MemoryKeyValueStore();
+    final book = BilgiWalletBook(store, MemoryBilgiLedger(), clock: () => DateTime.utc(2026, 10, 5, 9));
+    await book.apply({'op': 'sync', 'userId': 'ada'});
+    final bought = await book.apply({'op': 'joker_buy', 'userId': 'ada', 'type': 'half'});
+    expect(bought.error, isNull);
+    expect(bought.profile?.gold, 450);
+    expect(bought.profile?.jokers['half'], 3);
+    final full = await book.apply({'op': 'life_refill', 'userId': 'ada'});
+    expect(full.error, 'Canın zaten dolu.');
+    expect(full.profile, isNull);
+    final still = await book.apply({'op': 'sync', 'userId': 'ada'});
+    expect(still.profile?.gold, 450);
+    expect(still.profile?.lives, 5);
+  });
 }

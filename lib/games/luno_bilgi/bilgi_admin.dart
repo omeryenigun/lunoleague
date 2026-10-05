@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:kelimelig/admin/word_csv_pick.dart';
 import 'package:kelimelig/core/constants/game_version.dart';
@@ -63,7 +65,6 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   List<BilgiContestDay> _contestDays = const [];
   var _contestBusy = false;
   final _contestTitles = <String, TextEditingController>{};
-  List<BilgiQuestion> _questions = const [];
   List<BilgiProfile> _users = const [];
   List<BilgiProfile> _leagueUsers = const [];
   BilgiConfig _config = const BilgiConfig();
@@ -95,6 +96,20 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   var _bankReviewed = '';
   var _bankPage = 0;
   var _bankPageSize = bilgiBankPageSize;
+  BilgiBankSummary _bankSummary = BilgiBankSummary.empty;
+  List<BilgiQuestion> _bankRows = const [];
+  int _bankTotal = 0;
+  var _bankLoading = false;
+  var _bankSerial = 0;
+  var _bankSearchQuiet = false;
+  Timer? _bankTimer;
+  final _readyById = <String, bool>{};
+  final _selectedQuestions = <String, BilgiQuestion>{};
+  List<BilgiQuestion> _pendingRows = const [];
+  List<BilgiQuestion> _rejectedRows = const [];
+  List<int> _distLetters = const [0, 0, 0, 0];
+  List<int> _distDiffs = const [0, 0, 0, 0];
+  var _distOther = 0;
   var _labels = const <String, String>{};
   var _moveCat = '';
   var _moveSub = '';
@@ -138,9 +153,9 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
 
   LunoBilgiServer get _server => sl<LunoBilgiServer>();
 
-  int get _pendingCount => _questions.where(_pendingReady).length;
+  int get _pendingCount => _bankSummary.pendingReady;
   int get _bannedCount => _users.where((u) => u.banned).length;
-  int get _bankBadge => _questions.where((q) => q.status == 'approved' || q.status == 'pending').length;
+  int get _bankBadge => _bankSummary.bankBadge;
 
   static const _nav = <({String group, String emoji, String label})>[
     (group: 'GENEL', emoji: '📊', label: 'Dashboard'),
@@ -199,6 +214,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     _csvText.dispose();
     _newSub.dispose();
     _subSearch.dispose();
+    _bankTimer?.cancel();
     _bankSearch.dispose();
     _mailSubject.dispose();
     _mailHtml.dispose();
@@ -223,13 +239,46 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   void _rememberSaved(List<BilgiQuestion> questions) {
     if (!mounted || questions.isEmpty) return;
     setState(() {
-      final pending = {for (final question in questions) question.id: question};
-      final next = <BilgiQuestion>[
-        for (final question in _questions) pending.remove(question.id) ?? question,
-      ];
-      next.addAll(pending.values);
-      _questions = next;
+      for (final question in questions) {
+        _selectedQuestions[question.id] = question;
+        _bankRows = [for (final row in _bankRows) row.id == question.id ? question : row];
+        _pendingRows = [for (final row in _pendingRows) row.id == question.id ? question : row];
+        _rejectedRows = [for (final row in _rejectedRows) row.id == question.id ? question : row];
+      }
     });
+  }
+
+  List<BilgiQuestion> _chosenSelected() => [
+        for (final id in _selectedIds)
+          if (_selectedQuestions[id] != null) _selectedQuestions[id]!,
+      ];
+
+  BilgiQuestion? _questionById(String id) {
+    final selected = _selectedQuestions[id];
+    if (selected != null) return selected;
+    for (final row in _bankRows) {
+      if (row.id == id) return row;
+    }
+    for (final row in _pendingRows) {
+      if (row.id == id) return row;
+    }
+    for (final row in _rejectedRows) {
+      if (row.id == id) return row;
+    }
+    return null;
+  }
+
+  bool _rowReady(BilgiQuestion question) {
+    if (question.translations.isNotEmpty) return _questionReady(question);
+    return _readyById[question.id] ?? false;
+  }
+
+  void _storePage(BilgiBankPage page) {
+    for (var i = 0; i < page.questions.length; i++) {
+      final question = page.questions[i];
+      _readyById[question.id] = i < page.ready.length && page.ready[i];
+      if (_selectedIds.contains(question.id)) _selectedQuestions[question.id] = question;
+    }
   }
 
   Future<void> _deleteRemote(String id) async {
@@ -251,16 +300,172 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     await _server.writeMeta('questionsPushedToApi', '1');
   }
 
-  Future<List<BilgiQuestion>> _bank() async {
-    await _pushLocalBankOnce();
+  Future<void> _refreshQuestionViews() async {
     final token = sl<ApiSession>().adminToken ?? '';
-    if (token.isEmpty) return _server.questions();
-    final remote = await BilgiQuestionApi.loadAll(token);
-    if (remote == null) return _server.questions();
-    await _server.replaceQuestionBank(remote);
-    // loadAll already replaced Hive; never re-PUT that stale bank over newer API writes.
-    await _server.writeMeta('questionsPushedToApi', '1');
-    return remote;
+    if (token.isNotEmpty) {
+      final summary = await BilgiQuestionApi.loadSummary(token);
+      if (mounted && summary != null) setState(() => _bankSummary = summary);
+    }
+    await _loadBankPage();
+    if (_index == 2) await _loadDistribution();
+    if (_index == 5) await _loadPending();
+    if (_index == 6) await _loadRejected();
+  }
+
+  Future<void> _loadBankPage() async {
+    final serial = ++_bankSerial;
+    final token = sl<ApiSession>().adminToken ?? '';
+    if (token.isEmpty) {
+      if (!mounted || serial != _bankSerial) return;
+      final local = await _server.questions();
+      final category = _categories.where((item) => item.id == _bankCat).firstOrNull;
+      final rows = bilgiFilterBankQuestions(
+        local,
+        categoryId: _bankCat,
+        subcategory: _bankSub,
+        difficulty: _bankDiff,
+        status: _bankStatus,
+        translation: _bankLang,
+        reviewed: _bankReviewed,
+        search: _bankSearch.text,
+        categorySubs: category?.subs ?? const <String>[],
+        isTranslated: _questionReady,
+      );
+      final window = bilgiBankWindow(rows, _bankPage, pageSize: _bankPageSize);
+      setState(() {
+        _bankRows = window.slice;
+        _bankTotal = window.total;
+        _bankPage = window.page;
+        _bankLoading = false;
+      });
+      return;
+    }
+    if (mounted) setState(() => _bankLoading = true);
+    final page = await BilgiQuestionApi.loadPage(
+      token,
+      category: _bankCat,
+      sub: _bankSub,
+      difficulty: _bankDiff,
+      status: _bankStatus,
+      translation: _bankLang,
+      reviewed: _bankReviewed,
+      search: _bankSearch.text,
+      page: _bankPage,
+      size: _bankPageSize,
+    );
+    if (!mounted || serial != _bankSerial) return;
+    if (page == null) {
+      setState(() => _bankLoading = false);
+      return;
+    }
+    setState(() {
+      _storePage(page);
+      _bankRows = page.questions;
+      _bankTotal = page.total;
+      _bankPage = page.page;
+      _bankLoading = false;
+    });
+  }
+
+  Future<List<BilgiQuestion>> _collectPages({
+    String status = '',
+    String translation = '',
+    int limit = 1000,
+  }) async {
+    final token = sl<ApiSession>().adminToken ?? '';
+    if (token.isEmpty) return const [];
+    final first = await BilgiQuestionApi.loadPage(
+      token,
+      category: status.isEmpty ? _bankCat : '',
+      sub: status.isEmpty ? _bankSub : '',
+      difficulty: status.isEmpty ? _bankDiff : '',
+      status: status.isEmpty ? _bankStatus : status,
+      translation: translation.isEmpty ? (status.isEmpty ? _bankLang : translation) : translation,
+      reviewed: status.isEmpty ? _bankReviewed : '',
+      search: status.isEmpty ? _bankSearch.text : '',
+      page: 0,
+      size: 200,
+      select: true,
+    );
+    if (first == null) return const [];
+    final out = [...first.questions];
+    _storePage(first);
+    var page = 1;
+    while (out.length < first.total && out.length < limit && page < first.pages) {
+      final next = await BilgiQuestionApi.loadPage(
+        token,
+        category: status.isEmpty ? _bankCat : '',
+        sub: status.isEmpty ? _bankSub : '',
+        difficulty: status.isEmpty ? _bankDiff : '',
+        status: status.isEmpty ? _bankStatus : status,
+        translation: translation.isEmpty ? (status.isEmpty ? _bankLang : translation) : translation,
+        reviewed: status.isEmpty ? _bankReviewed : '',
+        search: status.isEmpty ? _bankSearch.text : '',
+        page: page,
+        size: 200,
+        select: true,
+      );
+      if (next == null || next.questions.isEmpty) break;
+      _storePage(next);
+      out.addAll(next.questions);
+      page++;
+    }
+    return out;
+  }
+
+  Future<void> _selectAllFiltered() async {
+    if (_bulkBusy) return;
+    final rows = await _collectPages();
+    if (!mounted) return;
+    setState(() {
+      for (final question in rows) {
+        _selectedIds.add(question.id);
+        _selectedQuestions[question.id] = question;
+      }
+      if (_bankTotal > rows.length) {
+        _note = 'Filtrede $_bankTotal soru var. ${rows.length} tanesi seçildi.';
+      }
+    });
+  }
+
+  Future<void> _loadPending() async {
+    final rows = await _collectPages(status: 'pending', translation: 'ready');
+    if (!mounted) return;
+    setState(() => _pendingRows = rows);
+  }
+
+  Future<void> _loadRejected() async {
+    final rows = await _collectPages(status: 'rejected');
+    if (!mounted) return;
+    setState(() => _rejectedRows = rows);
+  }
+
+  Future<void> _loadDistribution() async {
+    final token = sl<ApiSession>().adminToken ?? '';
+    if (token.isEmpty) return;
+    final result = await BilgiQuestionApi.loadDistribution(token, category: _distCat, sub: _distSub);
+    if (!mounted || result == null) return;
+    setState(() {
+      _distLetters = result.letters;
+      _distDiffs = result.difficulties;
+      _distOther = result.other;
+    });
+  }
+
+  void _scheduleBank() {
+    _bankTimer?.cancel();
+    _bankTimer = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      _loadBankPage();
+    });
+  }
+
+  void _retuneBank() {
+    _bankTimer?.cancel();
+    _bankPage = 0;
+    _selectedIds.clear();
+    _selectedQuestions.clear();
+    _loadBankPage();
   }
 
   Future<void> _applyRemoteActive() async {
@@ -283,7 +488,9 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   }
 
   Future<void> _load() async {
-    final questions = await _bank();
+    await _pushLocalBankOnce();
+    final token = sl<ApiSession>().adminToken ?? '';
+    final summary = token.isEmpty ? null : await BilgiQuestionApi.loadSummary(token);
     final labels = await BilgiQuestionApi.loadLabels();
     final bank = await _usersBank();
     final config = await _server.config();
@@ -302,7 +509,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     }
     if (!mounted) return;
     setState(() {
-      _questions = questions;
+      if (summary != null) _bankSummary = summary;
       _labels = labels;
       _selectedIds.clear();
       _users = bank.listed;
@@ -327,6 +534,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       _appName.text = config.appName;
       _supportMail.text = config.supportEmail;
     });
+    await _loadBankPage();
   }
 
   int _rewardAmount(int i) {
@@ -369,12 +577,12 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   String get _subtitle {
     return switch (_index) {
       0 => 'Luno Bilgi genel bakış',
-      1 => '${_questions.length} soru • $_pendingCount onay bekliyor',
+      1 => '$_bankTotal soru • $_pendingCount onay bekliyor',
       2 => 'Doğru şıkkın A B C D dağılımı',
       3 => 'Oyuncuların hatalı soru bildirimleri',
       4 => _editing == null ? 'Soru bankasına yeni soru ekle' : 'Kayıtlı soruyu güncelle',
       5 => '$_pendingCount soru onay bekliyor',
-      6 => '${_questions.where((q) => q.status == 'rejected').length} soru reddedildi',
+      6 => '${_bankSummary.rejected} soru reddedildi',
       7 => 'Yalnızca CSV ile toplu soru yükle',
       8 => '${_categories.length} ana kategori • ${bilgiGroups.length} grup',
       12 => '${_users.length} kullanıcı • ${_users.where((u) => u.premium).length} premium',
@@ -510,6 +718,10 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
               return;
             }
             setState(() => _index = i);
+            if (i == 1) _loadBankPage();
+            if (i == 2) _loadDistribution();
+            if (i == 5) _loadPending();
+            if (i == 6) _loadRejected();
             if (i == 17) _loadContest();
           },
           hoverColor: const Color(0x146C3CE9),
@@ -693,22 +905,30 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   BilgiQuestion? _questionForReport(BilgiQuestionReport report) {
     final id = report.questionId.trim();
     if (id.isNotEmpty) {
-      final byId = _questions.where((question) => question.id == id).firstOrNull;
+      final byId = _questionById(id);
       if (byId != null) return byId;
     }
     final text = report.questionText.trim();
     if (text.isEmpty) return null;
-    return _questions.where((question) => question.text == text).firstOrNull;
+    for (final row in [..._bankRows, ..._pendingRows, ..._rejectedRows]) {
+      if (row.text == text) return row;
+    }
+    return null;
   }
 
-  void _openReportEditor(BilgiQuestionReport report) {
-    final question = _questionForReport(report);
+  Future<void> _openReportEditor(BilgiQuestionReport report) async {
+    var question = _questionForReport(report);
+    final id = report.questionId.trim();
+    if (question == null && id.isNotEmpty) {
+      question = await BilgiQuestionApi.loadOne(sl<ApiSession>().adminToken ?? '', id);
+    }
+    if (!mounted) return;
     if (question == null) {
       setState(() => _reportEditMisses[report.id] = 'Soru bankasında bulunamadı.');
       return;
     }
     setState(() => _reportEditMisses.remove(report.id));
-    _openEditor(question);
+    await _openEditor(question);
   }
 
   Future<void> _setReportStatus(BilgiQuestionReport report, String status) async {
@@ -1083,26 +1303,10 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   }
 
   Widget _optionDistribution() {
-    final rows = [
-      for (final question in _questions)
-        if ((_distCat.isEmpty || question.categoryId == _distCat) &&
-            (_distSub.isEmpty || question.tags.contains(_distSub)))
-          question,
-    ];
-    final counts = [0, 0, 0, 0];
-    const difficulties = ['kolay', 'orta', 'zor', 'efsane'];
-    final difficultyCounts = [0, 0, 0, 0];
-    var otherDifficulty = 0;
-    for (final question in rows) {
-      counts[question.correct.clamp(0, 3)] += 1;
-      final slot = difficulties.indexOf(question.difficulty);
-      if (slot < 0) {
-        otherDifficulty += 1;
-      } else {
-        difficultyCounts[slot] += 1;
-      }
-    }
-    final total = rows.length;
+    final counts = _distLetters;
+    final difficultyCounts = _distDiffs;
+    final otherDifficulty = _distOther;
+    final total = counts.fold<int>(0, (sum, item) => sum + item);
     const letters = ['A', 'B', 'C', 'D'];
     const colors = [BilgiColors.secondary, BilgiColors.primary, BilgiColors.warning, BilgiColors.accent];
     const difficultyLabels = ['Kolay', 'Orta', 'Zor', 'Efsane'];
@@ -1120,17 +1324,23 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
               hint: 'Ana kategori',
               selected: _distCat,
               options: [for (final category in _categories) (category.id, '${category.emoji} ${category.name}')],
-              onChanged: (value) => setState(() {
-                _distCat = value;
-                _distSub = '';
-              }),
+              onChanged: (value) {
+                setState(() {
+                  _distCat = value;
+                  _distSub = '';
+                });
+                _loadDistribution();
+              },
             ),
             _SearchCombo(
               hint: _distCat.isEmpty ? 'Önce ana kategori' : 'Alt kategori',
               selected: _distSub,
               enabled: _distCat.isNotEmpty,
               options: [for (final name in subs) (name, name)],
-              onChanged: (value) => setState(() => _distSub = value),
+              onChanged: (value) {
+                setState(() => _distSub = value);
+                _loadDistribution();
+              },
             ),
             Text('${_trInt(total)} soru', style: const TextStyle(color: BilgiColors.muted, fontWeight: FontWeight.w700)),
           ],
@@ -1224,7 +1434,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
             _metricGrid(narrow, [
               _dashMetric('👥', _trInt(_users.length), 'Toplam Kullanıcı', userChange),
               _dashMetric('🎮', _trInt(_games.length), 'Oynanan Oyun', gameChange),
-              _dashMetric('❓', _trInt(_questions.length), 'Toplam Soru', _pendingCount == 0 ? null : (text: '$_pendingCount onay bekliyor', up: true)),
+              _dashMetric('❓', _trInt(_bankSummary.total), 'Toplam Soru', _pendingCount == 0 ? null : (text: '$_pendingCount onay bekliyor', up: true)),
               _dashMetric('💰', '—', 'Bu Ay Gelir', null),
             ]),
             const SizedBox(height: 24),
@@ -1275,7 +1485,10 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
               _dashPanel(
                 title: 'Bekleyen Onaylar',
                 action: 'Tümü →',
-                onAction: () => setState(() => _index = 5),
+                onAction: () {
+                  setState(() => _index = 5);
+                  _loadPending();
+                },
                 child: Column(
                   children: [
                     _dashList('❓', '$_pendingCount yeni soru', 'Onay bekliyor', _pendingCount == 0 ? null : 'Bekliyor', BilgiColors.warning),
@@ -1305,7 +1518,10 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                 child: _quickGrid([
                   _dashQuick('➕', 'Soru Ekle', _openEditor),
                   _dashQuick('📥', 'Toplu İçe Aktar', () => setState(() => _index = 7)),
-                  _dashQuick('✅', 'Onay Bekleyenler', () => setState(() => _index = 5)),
+                  _dashQuick('✅', 'Onay Bekleyenler', () {
+                    setState(() => _index = 5);
+                    _loadPending();
+                  }),
                   _dashQuick('📢', 'Duyuru Gönder', () {}),
                   _dashQuick('🏆', 'Etkinlik Oluştur', () => setState(() => _index = 23)),
                   _dashQuick('📊', 'Rapor İndir', () => setState(() => _index = 24)),
@@ -1372,7 +1588,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       for (final id in plays.keys)
         (
           label: id == 'tumu' ? '🎲 Tümü' : _catLabel(id),
-          questions: _questions.where((q) => q.categoryId == id && q.status == 'approved').length,
+          questions: _bankSummary.categoryApproved(id),
           plays: plays[id] ?? 0,
           correct: correct[id] ?? 0,
           asked: asked[id] ?? 0,
@@ -1402,7 +1618,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       setState(() => _note = 'Alt kategori bu üst kategoriye ait değil.');
       return;
     }
-    final chosen = _questions.where((question) => _selectedIds.contains(question.id)).toList();
+    final chosen = _chosenSelected();
     setState(() => _bulkBusy = true);
     final moved = [
       for (final question in chosen)
@@ -1467,9 +1683,6 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   bool _questionReady(BilgiQuestion question) =>
       bilgiQuestionLanguagesReady(question, locales: _publishLocales(question.categoryId));
 
-  bool _pendingReady(BilgiQuestion question) =>
-      bilgiPendingApprovalReady(question, locales: _publishLocales(question.categoryId));
-
   Future<void> _applyBulkStatus(String status) async {
     if (_bulkBusy) return;
     if (_selectedIds.isEmpty) {
@@ -1483,11 +1696,11 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       'rejected': 'Reddedilen',
     };
     if (!labels.containsKey(status)) return;
-    final chosen = _questions.where((question) => _selectedIds.contains(question.id)).toList();
+    final chosen = _chosenSelected();
     final changed = <BilgiQuestion>[];
     var blocked = 0;
     for (final question in chosen) {
-      if (status == 'approved' && !_questionReady(question)) {
+      if (status == 'approved' && !_rowReady(question)) {
         blocked++;
         continue;
       }
@@ -1545,7 +1758,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       'efsane': 'Efsane',
     };
     if (!labels.containsKey(difficulty)) return;
-    final chosen = _questions.where((question) => _selectedIds.contains(question.id)).toList();
+    final chosen = _chosenSelected();
     final changed = <BilgiQuestion>[
       for (final question in chosen)
         if (question.difficulty != difficulty) question.copyWith(difficulty: difficulty),
@@ -1586,7 +1799,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       setState(() => _note = 'Önce soru seç.');
       return;
     }
-    final chosen = _questions.where((question) => _selectedIds.contains(question.id)).toList();
+    final chosen = _chosenSelected();
     if (chosen.isEmpty) {
       setState(() => _note = 'Önce soru seç.');
       return;
@@ -1598,7 +1811,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     try {
       for (var i = 0; i < chosen.length; i++) {
         if (!mounted) return;
-        final question = chosen[i];
+        final loaded = await BilgiQuestionApi.loadOne(sl<ApiSession>().adminToken ?? '', chosen[i].id);
+        final question = loaded ?? chosen[i];
         if (!bilgiLanguageFieldsReady(question.text, question.options, question.explanation)) {
           skipped++;
           setState(() => _note = 'Türkçe soru, dört şık ve açıklama dolu olmalı.');
@@ -1655,6 +1869,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
 
   void _clearBankSelection() {
     if (_bulkBusy) return;
+    _bankTimer?.cancel();
+    _bankSearchQuiet = true;
     setState(() {
       _bankSearch.clear();
       _selectedIds.clear();
@@ -1668,7 +1884,10 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       _bulkMenu = '';
       _moveCat = '';
       _moveSub = '';
+      _selectedQuestions.clear();
     });
+    _bankSearchQuiet = false;
+    _loadBankPage();
   }
 
   void _onBulkMenu(String value) {
@@ -1703,7 +1922,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       setState(() => _note = 'Önce soru seç.');
       return;
     }
-    final chosen = _questions.where((question) => _selectedIds.contains(question.id)).toList();
+    final chosen = _chosenSelected();
     if (chosen.isEmpty) {
       setState(() => _note = 'Önce soru seç.');
       return;
@@ -1758,25 +1977,12 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   Widget _bankTable() {
     final query = _bankSearch.text.trim();
     final filtering = query.length >= 3;
-    final category = _categories.where((item) => item.id == _bankCat).firstOrNull;
-    final rows = bilgiFilterBankQuestions(
-      _questions,
-      categoryId: _bankCat,
-      subcategory: _bankSub,
-      difficulty: _bankDiff,
-      status: _bankStatus,
-      translation: _bankLang,
-      reviewed: _bankReviewed,
-      search: _bankSearch.text,
-      categorySubs: category?.subs ?? const <String>[],
-      isTranslated: _questionReady,
-    );
-    final window = bilgiBankWindow(rows, _bankPage, pageSize: _bankPageSize);
-    final slice = window.slice;
-    final page = window.page;
-    final pages = window.pages;
-    final from = window.from;
-    final to = window.to;
+    final rows = _bankRows;
+    final slice = _bankRows;
+    final pages = _bankTotal == 0 ? 1 : (_bankTotal / _bankPageSize).ceil();
+    final page = _bankPage.clamp(0, pages - 1);
+    final from = _bankTotal == 0 ? 0 : page * _bankPageSize + 1;
+    final to = _bankTotal == 0 ? 0 : from + slice.length - 1;
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       children: [
@@ -1792,10 +1998,15 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
               TextField(
                 controller: _bankSearch,
                 style: const TextStyle(color: Colors.white),
-                onChanged: (_) => setState(() {
-                  _bankPage = 0;
-                  _selectedIds.clear();
-                }),
+                onChanged: (_) {
+                  if (_bankSearchQuiet) return;
+                  setState(() {
+                    _bankPage = 0;
+                    _selectedIds.clear();
+                    _selectedQuestions.clear();
+                  });
+                  _scheduleBank();
+                },
                 decoration: InputDecoration(
                   hintText: 'En az 3 harf yaz',
                   hintStyle: const TextStyle(color: BilgiColors.muted),
@@ -1813,12 +2024,11 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                     hint: 'Ana kategori',
                     selected: _bankCat,
                     options: [for (final c in _categories) (c.id, '${c.emoji} ${c.name}')],
-                    onChanged: (v) => setState(() {
+                    onChanged: (v) {
                       _bankCat = v;
                       _bankSub = '';
-                      _bankPage = 0;
-                      _selectedIds.clear();
-                    }),
+                      _retuneBank();
+                    },
                   ),
                   _SearchCombo(
                     hint: _bankCat.isEmpty ? 'Önce ana kategori' : 'Alt kategori',
@@ -1827,16 +2037,15 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                     options: [
                       for (final name in _categories.where((item) => item.id == _bankCat).firstOrNull?.subs ?? const <String>[]) (name, name),
                     ],
-                    onChanged: (v) => setState(() {
+                    onChanged: (v) {
                       _bankSub = v;
-                      _bankPage = 0;
-                      _selectedIds.clear();
-                    }),
+                      _retuneBank();
+                    },
                   ),
-                  _select(_bankDiff, [('','Tüm Zorluklar'), ('kolay','Kolay'), ('orta','Orta'), ('zor','Zor'), ('efsane','Efsane')], (v) => setState(() { _bankDiff = v; _bankPage = 0; _selectedIds.clear(); })),
-                  _select(_bankStatus, [('','Tüm Durumlar'), ('approved','Onaylı'), ('pending','Bekleyen'), ('draft','Taslak'), ('rejected','Reddedilen')], (v) => setState(() { _bankStatus = v; _bankPage = 0; _selectedIds.clear(); })),
-                  _select(_bankLang, [('','Tüm Tercümeler'), ('ready','Tercüme tamam'), ('missing','Tercüme eksik')], (v) => setState(() { _bankLang = v; _bankPage = 0; _selectedIds.clear(); })),
-                  _select(_bankReviewed, [('','Tüm Kontroller'), ('yes','Kontrol edildi'), ('no','Kontrol edilmedi')], (v) => setState(() { _bankReviewed = v; _bankPage = 0; _selectedIds.clear(); })),
+                  _select(_bankDiff, [('','Tüm Zorluklar'), ('kolay','Kolay'), ('orta','Orta'), ('zor','Zor'), ('efsane','Efsane')], (v) { _bankDiff = v; _retuneBank(); }),
+                  _select(_bankStatus, [('','Tüm Durumlar'), ('approved','Onaylı'), ('pending','Bekleyen'), ('draft','Taslak'), ('rejected','Reddedilen')], (v) { _bankStatus = v; _retuneBank(); }),
+                  _select(_bankLang, [('','Tüm Tercümeler'), ('ready','Tercüme tamam'), ('missing','Tercüme eksik')], (v) { _bankLang = v; _retuneBank(); }),
+                  _select(_bankReviewed, [('','Tüm Kontroller'), ('yes','Kontrol edildi'), ('no','Kontrol edilmedi')], (v) { _bankReviewed = v; _retuneBank(); }),
                 ],
               ),
             ],
@@ -1850,19 +2059,17 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               _ghost('Tümünü seç', () {
-                if (rows.isEmpty || _bulkBusy) return;
-                setState(() {
-                  for (final question in rows) {
-                    _selectedIds.add(question.id);
-                  }
-                });
+                if (_bankTotal == 0 || _bulkBusy) return;
+                _selectAllFiltered();
               }),
               _ghost('Sayfadakileri seç', () {
                 if (slice.isEmpty || _bulkBusy) return;
                 setState(() {
                   _selectedIds.clear();
+                  _selectedQuestions.clear();
                   for (final question in slice) {
                     _selectedIds.add(question.id);
+                    _selectedQuestions[question.id] = question;
                   }
                 });
               }),
@@ -1926,17 +2133,18 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
           padding: const EdgeInsets.only(bottom: 8),
           child: Row(
             children: [
-              Text('${rows.length} soru', style: const TextStyle(color: BilgiColors.muted, fontSize: 13, fontWeight: FontWeight.w700)),
+              Text(_bankLoading ? 'Yükleniyor...' : '$_bankTotal soru', style: const TextStyle(color: BilgiColors.muted, fontSize: 13, fontWeight: FontWeight.w700)),
               const Spacer(),
               const Text('Sayfa başına', style: TextStyle(color: BilgiColors.muted, fontSize: 12, fontWeight: FontWeight.w700)),
               const SizedBox(width: 8),
               _select(
                 '$_bankPageSize',
                 [for (final size in bilgiBankPageSizes) ('$size', '$size')],
-                (value) => setState(() {
+                (value) {
                   _bankPageSize = int.parse(value);
                   _bankPage = 0;
-                }),
+                  _loadBankPage();
+                },
               ),
             ],
           ),
@@ -1962,10 +2170,12 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                             if (all) {
                               for (final question in rows) {
                                 _selectedIds.remove(question.id);
+                                _selectedQuestions.remove(question.id);
                               }
                             } else {
                               for (final question in rows) {
                                 _selectedIds.add(question.id);
+                                _selectedQuestions[question.id] = question;
                               }
                             }
                           });
@@ -1984,13 +2194,13 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    Text('${rows.length} soru', style: const TextStyle(color: BilgiColors.muted, fontSize: 13, fontWeight: FontWeight.w700)),
+                    Text('$_bankTotal soru', style: const TextStyle(color: BilgiColors.muted, fontSize: 13, fontWeight: FontWeight.w700)),
                     const SizedBox(width: 12),
                     Text('$from-$to', style: const TextStyle(color: BilgiColors.muted, fontSize: 12)),
                     const Spacer(),
-                    _pageBtn('‹', page > 0 ? () => setState(() => _bankPage = page - 1) : null, false),
+                    _pageBtn('‹', page > 0 ? () { _bankPage = page - 1; _loadBankPage(); } : null, false),
                     _pageBtn('${page + 1}', null, true),
-                    _pageBtn('›', page + 1 < pages ? () => setState(() => _bankPage = page + 1) : null, false),
+                    _pageBtn('›', page + 1 < pages ? () { _bankPage = page + 1; _loadBankPage(); } : null, false),
                   ],
                 ),
               ),
@@ -2078,8 +2288,10 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
             : (checked) => setState(() {
                   if (checked ?? false) {
                     _selectedIds.add(question.id);
+                    _selectedQuestions[question.id] = question;
                   } else {
                     _selectedIds.remove(question.id);
+                    _selectedQuestions.remove(question.id);
                   }
                 }),
         activeColor: BilgiColors.secondary,
@@ -2089,7 +2301,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (_questionReady(question)) ...[
+          if (_rowReady(question)) ...[
             _langOk(),
             const SizedBox(width: 6),
           ],
@@ -2166,7 +2378,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
 
   Future<({String? error, String difficulty, String status, String rejectReason, String verdict})?> _reviewQuestion(String id) async {
     if (_reviewingId != null) return null;
-    final current = _questions.where((question) => question.id == id).firstOrNull;
+    final current = _questionById(id);
     if (current == null) {
       setState(() => _note = 'Soru bulunamadı.');
       return null;
@@ -2229,6 +2441,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   }
 
   Future<void> _translateRow(BilgiQuestion question) async {
+    final loaded = await BilgiQuestionApi.loadOne(sl<ApiSession>().adminToken ?? '', question.id);
+    if (loaded != null) question = loaded;
     if (_translatingId == question.id) return;
     if (!bilgiLanguageFieldsReady(question.text, question.options, question.explanation)) {
       setState(() => _note = 'Türkçe soru, dört şık ve açıklama dolu olmalı.');
@@ -2287,7 +2501,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   }
 
   Widget _pendingCards() {
-    final rows = _questions.where(_pendingReady).toList();
+    final rows = _pendingRows;
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       children: [
@@ -2306,7 +2520,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                     const SizedBox(width: 8),
                   ],
                   Text(question.id, style: const TextStyle(color: BilgiColors.muted, fontWeight: FontWeight.w700)),
-                  if (_questionReady(question)) ...[
+                  if (_rowReady(question)) ...[
                     const SizedBox(width: 8),
                     _langOk(),
                   ],
@@ -2354,7 +2568,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   }
 
   Widget _rejectedTable() {
-    final rows = _questions.where((q) => q.status == 'rejected').toList();
+    final rows = _rejectedRows;
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       children: [
@@ -2377,7 +2591,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                           flex: 3,
                           child: Row(
                             children: [
-                              if (_questionReady(question)) ...[
+                              if (_rowReady(question)) ...[
                                 _langOk(),
                                 const SizedBox(width: 6),
                               ],
@@ -2410,8 +2624,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   }
 
   Future<void> _setStatus(BilgiQuestion question, String status) async {
-    final latest = _questions.where((row) => row.id == question.id).firstOrNull ?? question;
-    if (status == 'approved' && !_questionReady(latest)) {
+    final latest = _questionById(question.id) ?? question;
+    if (status == 'approved' && !_rowReady(latest)) {
       setState(() => _note = bilgiApproveBlocked);
       return;
     }
@@ -2428,23 +2642,26 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       return;
     }
     if (!mounted) return;
+    _rememberSaved([updated]);
     setState(() {
-      _questions = [
-        for (final row in _questions)
-          if (row.id == updated.id) updated else row,
-      ];
       _note = status == 'approved'
           ? 'Soru onaylandı.'
           : status == 'rejected'
               ? 'Soru reddedildi.'
               : 'Durum güncellendi.';
     });
-    await _load();
+    await _refreshQuestionViews();
   }
 
-  void _openEditor([BilgiQuestion? question]) {
+  Future<void> _openEditor([BilgiQuestion? question]) async {
+    var current = question;
+    if (current != null) {
+      final full = await BilgiQuestionApi.loadOne(sl<ApiSession>().adminToken ?? '', current.id);
+      if (full != null) current = full;
+    }
+    if (!mounted) return;
     setState(() {
-      _editing = question;
+      _editing = current;
       _formSerial += 1;
       _index = 4;
     });
@@ -2452,7 +2669,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
 
   Widget _editor() {
     final known = <String>{
-      for (final question in _questions) ...question.tags.where((tag) => tag.isNotEmpty && bilgiCategoryById(tag) == null),
+      for (final tag in _bankSummary.tagCounts.keys)
+        if (tag.isNotEmpty && bilgiCategoryById(tag) == null) tag,
       ..._config.adminTags.where((tag) => tag.isNotEmpty),
     }.toList()
       ..sort();
@@ -2720,7 +2938,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
 
   List<BilgiCategory> get _categories => resolveBilgiCategories(_catalog);
 
-  int _questionTotal(String id) => _questions.where((question) => question.categoryId == id).length;
+  int _questionTotal(String id) => _bankSummary.categoryTotal(id);
 
   Widget _categoryList() {
     final groups = <String, List<BilgiCategory>>{};
@@ -3168,7 +3386,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       return const Center(child: Text('Kategori yok.', style: TextStyle(color: BilgiColors.muted)));
     }
     final selected = _categories.where((category) => category.id == _subCat).firstOrNull ?? _categories.first;
-    final count = _questions.where((q) => q.categoryId == selected.id && q.status == 'approved').length;
+    final count = _bankSummary.categoryApproved(selected.id);
     final query = _subSearch.text.trim();
     final filtering = query.length >= 3;
     final folded = _fold(query);
@@ -3301,16 +3519,10 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     await _load();
   }
 
-  int _subQuestionCount(String name) => _questions.where((question) => question.tags.contains(name)).length;
+  int _subQuestionCount(String name) => _bankSummary.subTotal(name);
 
-  int _subStatusCount(String categoryId, String name, String status) {
-    var count = 0;
-    for (final question in _questions) {
-      if (question.categoryId != categoryId || question.status != status) continue;
-      if (question.tags.contains(name)) count++;
-    }
-    return count;
-  }
+  int _subStatusCount(String categoryId, String name, String status) =>
+      _bankSummary.subStatusCount(categoryId, name, status);
 
   BilgiSubCountLine _subCountLine(String categoryId, String name) {
     return bilgiSubCountLine(
@@ -3518,13 +3730,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   }
 
   Widget _tags() {
-    final counts = <String, int>{};
-    for (final question in _questions) {
-      for (final tag in question.tags) {
-        if (tag.isEmpty) continue;
-        counts[tag] = (counts[tag] ?? 0) + 1;
-      }
-    }
+    final counts = <String, int>{..._bankSummary.tagCounts};
     for (final tag in _config.adminTags) {
       counts.putIfAbsent(tag, () => 0);
     }
@@ -3556,12 +3762,12 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   }
 
   Widget _karma() {
-    final approved = _questions.where((q) => q.status == 'approved').length;
+    final approved = _bankSummary.approved;
     final counts = {
-      'kolay': _questions.where((q) => q.status == 'approved' && q.difficulty == 'kolay').length,
-      'orta': _questions.where((q) => q.status == 'approved' && q.difficulty == 'orta').length,
-      'zor': _questions.where((q) => q.status == 'approved' && q.difficulty == 'zor').length,
-      'efsane': _questions.where((q) => q.status == 'approved' && q.difficulty == 'efsane').length,
+      'kolay': _bankSummary.approvedByDifficulty['kolay'] ?? 0,
+      'orta': _bankSummary.approvedByDifficulty['orta'] ?? 0,
+      'zor': _bankSummary.approvedByDifficulty['zor'] ?? 0,
+      'efsane': _bankSummary.approvedByDifficulty['efsane'] ?? 0,
     };
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),

@@ -274,6 +274,24 @@ void main() {
     expect(bilgiTier(15000), 'Efsane');
   });
 
+  test('league reward note splits ranks and gold', () {
+    const text =
+        'Genel 2. sıra • Genel Kültür 2. sıra • Uzay ve Astronomi 4. sıra • Doğal Afetler 2. sıra • Felsefe 1. sıra • Mitoloji 1. sıra • 8100 altın';
+    final note = bilgiLeagueRewardNote(text);
+    expect(note, isNotNull);
+    expect(note!.gold, 8100);
+    expect(note.lines, [
+      'Genel 2. sıra',
+      'Genel Kültür 2. sıra',
+      'Uzay ve Astronomi 4. sıra',
+      'Doğal Afetler 2. sıra',
+      'Felsefe 1. sıra',
+      'Mitoloji 1. sıra',
+    ]);
+    expect(bilgiLeagueRewardNote('Bağlantı kurulamadı.'), isNull);
+    expect(bilgiLeagueRewardNote('Yeterli altının yok'), isNull);
+  });
+
   test('Monday settlement pays once, then wipes weekly points', () {
     final now = DateTime.utc(2026, 10, 5, 12);
     final week = bilgiPreviousWeekId(now);

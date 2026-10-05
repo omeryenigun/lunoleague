@@ -279,6 +279,8 @@ class _BilgiScreenState extends State<BilgiScreen> {
       }
       unawaited(_game.playDailyContest());
     }
+    final notice = _game.notice;
+    final payout = notice == null ? null : bilgiLeagueRewardNote(notice);
     return Column(
       children: [
             _pageHeader(_game.t('game_name')),
@@ -288,7 +290,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
                 child: ListView(
                   padding: const EdgeInsets.only(bottom: 20),
                   children: [
-                    if (_game.notice != null) _note(_game.notice!),
+                    if (payout != null) _leaguePayoutCard(payout) else if (notice != null) _note(notice),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
                       child: DecoratedBox(
@@ -1949,40 +1951,15 @@ class _BilgiScreenState extends State<BilgiScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: [BilgiColors.warning, BilgiColors.error]),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(
-            children: [
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('📺 Puanını 2x Yap!', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-                    SizedBox(height: 4),
-                  ],
-                ),
-              ),
-              TextButton(
-                style: TextButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: BilgiColors.error,
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                onPressed: _game.scoreDoubled || _game.adWatching ? null : _game.doubleResultScore,
-                child: const Text('İzle', style: TextStyle(fontWeight: FontWeight.w800)),
-              ),
-            ],
-          ),
-        ),
+        if (!_game.scoreDoubled) _resultDoubleCard(),
         Padding(
           padding: const EdgeInsets.only(top: 6, bottom: 12),
           child: Text(
-            _game.scoreDoubled ? 'Puan ikiye katlandı.' : '+${_grouped(round.score)} ekstra puan için reklam izle',
+            _game.scoreDoubled
+                ? 'Puan ikiye katlandı.'
+                : _game.resultDoubleUsed
+                    ? '📅 Bugünkü hakkını kullandın.'
+                    : '+${_grouped(round.score)} ekstra puan için reklam izle',
             style: const TextStyle(color: BilgiColors.muted, fontSize: 12),
           ),
         ),
@@ -2009,6 +1986,44 @@ class _BilgiScreenState extends State<BilgiScreen> {
         const SizedBox(height: 12),
         _adBanner(showNoticeAbove: false, margin: const EdgeInsets.fromLTRB(0, 0, 0, 16)),
       ],
+    );
+  }
+
+  Widget _resultDoubleCard() {
+    final locked = _game.resultDoubleUsed;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: locked ? null : const LinearGradient(colors: [BilgiColors.warning, BilgiColors.error]),
+        color: locked ? const Color(0xFF3A3848) : null,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '📺 Puanını 2x Yap!',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 15,
+                color: locked ? BilgiColors.muted : Colors.white,
+              ),
+            ),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(
+              backgroundColor: locked ? const Color(0xFF5C5870) : Colors.white,
+              disabledBackgroundColor: locked ? const Color(0xFF5C5870) : Colors.white,
+              foregroundColor: locked ? BilgiColors.muted : BilgiColors.error,
+              disabledForegroundColor: locked ? BilgiColors.muted : BilgiColors.error,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: locked || _game.adWatching ? null : _game.doubleResultScore,
+            child: const Text('İzle', style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -3096,12 +3111,17 @@ class _BilgiScreenState extends State<BilgiScreen> {
         _shopSection(
           title: _game.t('shop_convert'),
           accent: BilgiColors.warning,
+          note: _game.notice,
+          trailing: Text(
+            '${_grouped(user.gold)} altın',
+            style: _homeInter(size: 13, weight: FontWeight.w700, color: BilgiColors.warning),
+          ),
           rows: [
             (
               icon: '❤️',
               asset: '',
               title: _game.t('shop_refill'),
-              subtitle: goldN(_game.config.lifePrice),
+              subtitle: '${goldN(_game.config.lifePrice)} • şu an ${user.lives}',
               onTap: _game.refill,
             ),
             for (final entry in _game.config.jokerPrices.entries)
@@ -3109,7 +3129,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
                 icon: _jokerEmoji(entry.key),
                 asset: '',
                 title: _game.t('joker_${entry.key}'),
-                subtitle: goldN(entry.value),
+                subtitle: '${goldN(entry.value)} • stok ${user.jokers[entry.key] ?? 0}',
                 onTap: () => _game.buyJoker(entry.key),
               ),
           ],
@@ -3153,6 +3173,8 @@ class _BilgiScreenState extends State<BilgiScreen> {
     required String title,
     required Color accent,
     required List<({String icon, String asset, String title, String subtitle, VoidCallback onTap})> rows,
+    String? note,
+    Widget? trailing,
   }) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
@@ -3168,8 +3190,13 @@ class _BilgiScreenState extends State<BilgiScreen> {
               ),
               const SizedBox(width: 10),
               Expanded(child: Text(title, style: _homeInter(size: 15, weight: FontWeight.w700))),
+              if (trailing != null) trailing,
             ],
           ),
+          if (note != null && note.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(note, style: const TextStyle(color: BilgiColors.warning, fontWeight: FontWeight.w700)),
+          ],
           const SizedBox(height: 10),
           DecoratedBox(
             decoration: BoxDecoration(
@@ -3177,11 +3204,16 @@ class _BilgiScreenState extends State<BilgiScreen> {
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: const Color(0xD9F4F1FB), width: 1.5),
             ),
-            child: Column(
-              children: [
-                for (var i = 0; i < rows.length; i++)
-                  _shopRow(rows[i], first: i == 0, last: i == rows.length - 1),
-              ],
+            child: Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(16),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                children: [
+                  for (var i = 0; i < rows.length; i++)
+                    _shopRow(rows[i], first: i == 0, last: i == rows.length - 1),
+                ],
+              ),
             ),
           ),
         ],
@@ -4369,6 +4401,41 @@ class _BilgiScreenState extends State<BilgiScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
       child: Text(text, style: const TextStyle(color: BilgiColors.warning, fontWeight: FontWeight.w700)),
+    );
+  }
+
+  Widget _leaguePayoutCard(BilgiLeagueRewardNote reward) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      child: _card(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Haftalık lig ödülün', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+            const SizedBox(height: 6),
+            Text(
+              '${_grouped(reward.gold)} altın hesabına eklendi',
+              style: const TextStyle(color: BilgiColors.warning, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            for (final line in reward.lines)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Text(line, style: const TextStyle(color: BilgiColors.muted)),
+              ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () {
+                  _game.notice = null;
+                  _game.notifyListeners();
+                },
+                child: const Text('Tamam'),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

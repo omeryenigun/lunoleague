@@ -304,6 +304,137 @@ class BilgiQuestionApi {
     });
   }
 
+  static Future<BilgiBankPage?> loadPage(
+    String token, {
+    String category = '',
+    String sub = '',
+    String difficulty = '',
+    String status = '',
+    String translation = '',
+    String reviewed = '',
+    String search = '',
+    int page = 0,
+    int size = 20,
+    bool select = false,
+  }) async {
+    if (token.isEmpty) return null;
+    final uri = Uri.parse('${ApiConfig.baseUrl}/v1/admin/bilgi-questions/page').replace(
+      queryParameters: {
+        if (category.isNotEmpty) 'category': category,
+        if (sub.isNotEmpty) 'sub': sub,
+        if (difficulty.isNotEmpty) 'difficulty': difficulty,
+        if (status.isNotEmpty) 'status': status,
+        if (translation.isNotEmpty) 'translation': translation,
+        if (reviewed.isNotEmpty) 'reviewed': reviewed,
+        if (search.trim().length >= 3) 'q': search.trim(),
+        'page': '$page',
+        'size': '$size',
+        if (select) 'select': '1',
+      },
+    );
+    try {
+      final response = await http.get(uri, headers: {'authorization': 'Bearer $token'});
+      if (response.statusCode != 200) return null;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return null;
+      final raw = decoded['questions'];
+      if (raw is! List) return null;
+      final questions = <BilgiQuestion>[];
+      final ready = <bool>[];
+      for (final item in raw) {
+        if (item is! Map) continue;
+        final map = Map<String, dynamic>.from(item);
+        questions.add(BilgiQuestion.fromMap(map));
+        ready.add(map['translationReady'] == true);
+      }
+      final total = decoded['total'];
+      final pageIndex = decoded['page'];
+      final pages = decoded['pages'];
+      return BilgiBankPage(
+        questions: questions,
+        ready: ready,
+        total: total is int ? total : (total is num ? total.toInt() : 0),
+        page: pageIndex is int ? pageIndex : (pageIndex is num ? pageIndex.toInt() : 0),
+        pages: pages is int ? pages : (pages is num ? pages.toInt() : 1),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<BilgiBankSummary?> loadSummary(String token) async {
+    if (token.isEmpty) return null;
+    try {
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/v1/admin/bilgi-questions/summary'),
+        headers: {'authorization': 'Bearer $token'},
+      );
+      if (response.statusCode != 200) return null;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return null;
+      return BilgiBankSummary.fromMap(Map<String, dynamic>.from(decoded));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<BilgiQuestion?> loadOne(String token, String id) async {
+    if (token.isEmpty || id.trim().isEmpty) return null;
+    try {
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/v1/admin/bilgi-questions/item/${Uri.encodeComponent(id.trim())}'),
+        headers: {'authorization': 'Bearer $token'},
+      );
+      if (response.statusCode != 200) return null;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map || decoded['question'] is! Map) return null;
+      return BilgiQuestion.fromMap(Map<String, dynamic>.from(decoded['question'] as Map));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<({List<int> letters, List<int> difficulties, int other})?> loadDistribution(
+    String token, {
+    String category = '',
+    String sub = '',
+  }) async {
+    if (token.isEmpty) return null;
+    final uri = Uri.parse('${ApiConfig.baseUrl}/v1/admin/bilgi-questions/distribution').replace(
+      queryParameters: {
+        if (category.isNotEmpty) 'category': category,
+        if (sub.isNotEmpty) 'sub': sub,
+      },
+    );
+    try {
+      final response = await http.get(uri, headers: {'authorization': 'Bearer $token'});
+      if (response.statusCode != 200) return null;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map || decoded['rows'] is! List) return null;
+      final letters = [0, 0, 0, 0];
+      final difficulties = [0, 0, 0, 0];
+      const names = ['kolay', 'orta', 'zor', 'efsane'];
+      var other = 0;
+      for (final item in decoded['rows'] as List) {
+        if (item is! Map) continue;
+        final count = item['count'];
+        final n = count is int ? count : (count is num ? count.toInt() : 0);
+        final correct = item['correct'];
+        final index = correct is int ? correct : (correct is num ? correct.toInt() : -1);
+        if (index >= 0 && index < 4) letters[index] += n;
+        final slot = names.indexOf('${item['difficulty']}');
+        if (slot < 0) {
+          other += n;
+        } else {
+          difficulties[slot] += n;
+        }
+      }
+      return (letters: letters, difficulties: difficulties, other: other);
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<String?> save(String token, List<BilgiQuestion> questions) async {
     if (token.isEmpty) return 'Yönetici oturumu gerekli.';
     if (questions.isEmpty) return null;
@@ -466,4 +597,136 @@ class BilgiQuestionApi {
     } catch (_) {}
     return null;
   }
+}
+
+class BilgiBankPage {
+  const BilgiBankPage({
+    required this.questions,
+    required this.ready,
+    required this.total,
+    required this.page,
+    required this.pages,
+  });
+
+  final List<BilgiQuestion> questions;
+  final List<bool> ready;
+  final int total;
+  final int page;
+  final int pages;
+}
+
+class BilgiBankSummary {
+  const BilgiBankSummary({
+    required this.total,
+    required this.pendingReady,
+    required this.byStatus,
+    required this.byCategoryStatus,
+    required this.approvedByDifficulty,
+    required this.subStatus,
+    required this.tagCounts,
+  });
+
+  final int total;
+  final int pendingReady;
+  final Map<String, int> byStatus;
+  final Map<String, int> byCategoryStatus;
+  final Map<String, int> approvedByDifficulty;
+  final Map<String, int> subStatus;
+  final Map<String, int> tagCounts;
+
+  static const empty = BilgiBankSummary(
+    total: 0,
+    pendingReady: 0,
+    byStatus: {},
+    byCategoryStatus: {},
+    approvedByDifficulty: {},
+    subStatus: {},
+    tagCounts: {},
+  );
+
+  int statusCount(String status) => byStatus[status] ?? 0;
+
+  int get approved => statusCount('approved');
+
+  int get rejected => statusCount('rejected');
+
+  int get bankBadge => approved + statusCount('pending');
+
+  int categoryTotal(String id) {
+    var count = 0;
+    for (final entry in byCategoryStatus.entries) {
+      if (entry.key.startsWith('$id|')) count += entry.value;
+    }
+    return count;
+  }
+
+  int categoryApproved(String id) => byCategoryStatus['$id|approved'] ?? 0;
+
+  int subStatusCount(String categoryId, String name, String status) => subStatus['$categoryId|$name|$status'] ?? 0;
+
+  int subTotal(String name) {
+    var count = 0;
+    for (final entry in subStatus.entries) {
+      final parts = entry.key.split('|');
+      if (parts.length >= 3 && parts[1] == name) count += entry.value;
+    }
+    return count;
+  }
+
+  factory BilgiBankSummary.fromMap(Map<String, dynamic> map) {
+    final status = <String, int>{};
+    final rawStatus = map['status'];
+    if (rawStatus is Map) {
+      for (final entry in rawStatus.entries) {
+        status['${entry.key}'] = _bankCount(entry.value);
+      }
+    }
+    final category = <String, int>{};
+    final rawCategory = map['category'];
+    if (rawCategory is List) {
+      for (final item in rawCategory) {
+        if (item is! Map) continue;
+        category['${item['categoryId']}|${item['status']}'] = _bankCount(item['count']);
+      }
+    }
+    final difficulty = <String, int>{};
+    final rawDifficulty = map['difficultyApproved'];
+    if (rawDifficulty is Map) {
+      for (final entry in rawDifficulty.entries) {
+        difficulty['${entry.key}'] = _bankCount(entry.value);
+      }
+    }
+    final subs = <String, int>{};
+    final rawSubs = map['subs'];
+    if (rawSubs is List) {
+      for (final item in rawSubs) {
+        if (item is! Map) continue;
+        subs['${item['categoryId']}|${item['name']}|${item['status']}'] = _bankCount(item['count']);
+      }
+    }
+    final tags = <String, int>{};
+    final rawTags = map['tags'];
+    if (rawTags is Map) {
+      for (final entry in rawTags.entries) {
+        tags['${entry.key}'] = _bankCount(entry.value);
+      }
+    }
+    final pendingReady = map['pendingReady'];
+    final total = map['total'];
+    return BilgiBankSummary(
+      total: _bankCount(total),
+      pendingReady: _bankCount(pendingReady),
+      byStatus: status,
+      byCategoryStatus: category,
+      approvedByDifficulty: difficulty,
+      subStatus: subs,
+      tagCounts: tags,
+    );
+  }
+}
+
+int _bankCount(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse('$value') ?? 0;
 }

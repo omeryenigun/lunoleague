@@ -832,6 +832,7 @@ class BilgiWalletBook {
     if (loaded.error != null || loaded.profile == null) return loaded;
     final user = loaded.profile!;
     final config = await _config();
+    if (user.lives >= config.maxLives) return const BilgiWalletReply(error: 'Canın zaten dolu.');
     if (user.gold < config.lifePrice) return const BilgiWalletReply(error: '🪙 Yeterli altının yok. Mağazadan altın al.');
     final next = user.copyWith(gold: user.gold - config.lifePrice, lives: config.maxLives, livesAt: _clock());
     await ledger.append(bilgiLedgerDiff(

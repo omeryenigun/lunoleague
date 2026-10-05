@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:kelimelig/api/admin_http.dart';
+import 'package:kelimelig/api/bilgi_bank_query.dart';
 import 'package:kelimelig/api/bilgi_catalog_http.dart';
 import 'package:kelimelig/api/bilgi_count_snapshot.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
@@ -46,6 +47,24 @@ Future<void> migrateBilgiQuestions(Connection db) async {
   await db.execute(
     'alter table bilgi_questions add column if not exists reviewed boolean not null default false',
   );
+  await db.execute(
+    'create index if not exists bilgi_questions_bank on bilgi_questions (category_id, status, difficulty)',
+  );
+  await db.execute(
+    'create index if not exists bilgi_questions_reviewed on bilgi_questions (reviewed)',
+  );
+  try {
+    await db.execute(
+      'create index if not exists bilgi_questions_tags_gin on bilgi_questions using gin ((tags_json::jsonb))',
+    );
+  } catch (_) {}
+  try {
+    await db.execute('create extension if not exists pg_trgm');
+    await db.execute('''
+      create index if not exists bilgi_questions_text_fold
+      on bilgi_questions using gin (${bilgiBankFoldSql('text')} gin_trgm_ops)
+    ''');
+  } catch (_) {}
   await db.execute('''
     create table if not exists bilgi_labels (
       locale text not null,
@@ -75,6 +94,30 @@ void mountBilgiQuestions(Router router, Connection db) {
     ..get('/v1/bilgi/questions/daily', (request) => _daily(request, db))
     ..get('/v1/bilgi/questions/draw', (request) => _draw(request, db))
     ..get('/v1/bilgi/questions', (request) => _list(db, approvedOnly: true))
+    ..get('/v1/admin/bilgi-questions/page', (request) async {
+      if (await adminIdOf(db, request) == null) {
+        return jsonResponse({'error': 'Oturum geçersiz.'}, status: 401);
+      }
+      return _page(request, db);
+    })
+    ..get('/v1/admin/bilgi-questions/summary', (request) async {
+      if (await adminIdOf(db, request) == null) {
+        return jsonResponse({'error': 'Oturum geçersiz.'}, status: 401);
+      }
+      return _summary(db);
+    })
+    ..get('/v1/admin/bilgi-questions/distribution', (request) async {
+      if (await adminIdOf(db, request) == null) {
+        return jsonResponse({'error': 'Oturum geçersiz.'}, status: 401);
+      }
+      return _distribution(request, db);
+    })
+    ..get('/v1/admin/bilgi-questions/item/<id>', (Request request, String id) async {
+      if (await adminIdOf(db, request) == null) {
+        return jsonResponse({'error': 'Oturum geçersiz.'}, status: 401);
+      }
+      return _item(db, id);
+    })
     ..get('/v1/admin/bilgi-questions', (request) async {
       if (await adminIdOf(db, request) == null) {
         return jsonResponse({'error': 'Oturum geçersiz.'}, status: 401);
@@ -392,6 +435,211 @@ Future<Response> _draw(Request request, Connection db) async {
   return jsonResponse({'questions': picked});
 }
 
+Future<Map<String, List<String>>> _extraLocalesByCategory(Connection db) async {
+  final rows = await db.execute('select id, locales from bilgi_categories');
+  final out = <String, List<String>>{};
+  for (final row in rows) {
+    final publish = bilgiPublishLocalesOf(bilgiStoredLocales(row[1]));
+    out['${row[0]}'] = [for (final id in publish) if (id != 'tr') id];
+  }
+  return out;
+}
+
+int _asInt(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse('$value') ?? 0;
+}
+
+({String where, Map<String, Object> params}) _bankWhere(
+  Map<String, String> query,
+  String readySql, {
+  bool ignoreTranslation = false,
+}) {
+  final params = <String, Object>{
+    'category': (query['category'] ?? '').trim(),
+    'sub': (query['sub'] ?? '').trim(),
+    'difficulty': (query['difficulty'] ?? '').trim(),
+    'status': (query['status'] ?? '').trim(),
+    'reviewed': (query['reviewed'] ?? '').trim(),
+    'translation': ignoreTranslation ? '' : (query['translation'] ?? '').trim(),
+  };
+  final folded = bilgiBankFold((query['q'] ?? '').trim());
+  final searching = folded.length >= 3;
+  if (searching) params['like'] = bilgiBankLike(folded);
+  final textFold = bilgiBankFoldSql('q.text');
+  final optionFold = bilgiBankFoldSql('q.options_json');
+  final translation = params['translation'];
+  final translationClause = translation == 'ready'
+      ? 'and $readySql'
+      : translation == 'missing'
+          ? 'and not ($readySql)'
+          : '';
+  final searchClause = searching
+      ? "and ($textFold like @like escape '\\' or $optionFold like @like escape '\\')"
+      : '';
+  final where = '''
+    (@category = '' or q.category_id = @category)
+    and (@sub = '' or q.tags_json::jsonb ? @sub)
+    and (@difficulty = '' or q.difficulty = @difficulty)
+    and (@status = '' or q.status = @status)
+    and (
+      @reviewed = ''
+      or (@reviewed = 'yes' and q.reviewed)
+      or (@reviewed = 'no' and not q.reviewed)
+    )
+    $translationClause
+    $searchClause
+  ''';
+  return (where: where, params: params);
+}
+
+Future<Response> _page(Request request, Connection db) async {
+  final query = request.url.queryParameters;
+  final page = _asInt(query['page']);
+  final selectAll = query['select'] == '1';
+  final size = bilgiBankPageLimit(_asInt(query['size']), select: selectAll);
+  final safePage = page < 0 ? 0 : page;
+  final readySql = bilgiBankReadySql(await _extraLocalesByCategory(db));
+  final filter = _bankWhere(query, readySql);
+  final params = {
+    ...filter.params,
+    'limit': size,
+    'offset': safePage * size,
+  };
+  final totalRows = await db.execute(
+    Sql.named('select count(*) from bilgi_questions q where ${filter.where}'),
+    parameters: filter.params,
+  );
+  final rows = await db.execute(
+    Sql.named('''
+      select q.id, q.category_id, q.text, q.options_json, q.correct, q.difficulty,
+             q.explanation, q.status, q.tags_json, q.reject_reason, q.reviewed,
+             $readySql
+      from bilgi_questions q
+      where ${filter.where}
+      order by q.id
+      limit @limit offset @offset
+    '''),
+    parameters: params,
+  );
+  final total = totalRows.isEmpty ? 0 : _asInt(totalRows.first[0]);
+  final pages = total == 0 ? 1 : (total / size).ceil();
+  return jsonResponse({
+    'total': total,
+    'page': safePage,
+    'pages': pages,
+    'size': size,
+    'questions': [
+      for (final row in rows) _jsonList(row),
+    ],
+  });
+}
+
+Future<Response> _summary(Connection db) async {
+  final readySql = bilgiBankReadySql(await _extraLocalesByCategory(db));
+  final statusRows = await db.execute('select status, count(*) from bilgi_questions group by status');
+  final categoryRows = await db.execute(
+    'select category_id, status, count(*) from bilgi_questions group by category_id, status',
+  );
+  final difficultyRows = await db.execute(
+    "select difficulty, count(*) from bilgi_questions where status = 'approved' group by difficulty",
+  );
+  final subRows = await db.execute('''
+    select q.category_id, tag, q.status, count(*)
+    from bilgi_questions q, jsonb_array_elements_text(q.tags_json::jsonb) tag
+    group by q.category_id, tag, q.status
+  ''');
+  final tagRows = await db.execute('''
+    select tag, count(*)
+    from bilgi_questions q, jsonb_array_elements_text(q.tags_json::jsonb) tag
+    group by tag
+  ''');
+  final pendingReady = await db.execute(
+    Sql.named("select count(*) from bilgi_questions q where q.status = 'pending' and $readySql"),
+  );
+  final status = <String, int>{};
+  var total = 0;
+  for (final row in statusRows) {
+    final count = _asInt(row[1]);
+    status['${row[0]}'] = count;
+    total += count;
+  }
+  return jsonResponse({
+    'total': total,
+    'status': status,
+    'pendingReady': pendingReady.isEmpty ? 0 : _asInt(pendingReady.first[0]),
+    'category': [
+      for (final row in categoryRows)
+        {'categoryId': '${row[0]}', 'status': '${row[1]}', 'count': _asInt(row[2])},
+    ],
+    'difficultyApproved': {for (final row in difficultyRows) '${row[0]}': _asInt(row[1])},
+    'subs': [
+      for (final row in subRows)
+        {'categoryId': '${row[0]}', 'name': '${row[1]}', 'status': '${row[2]}', 'count': _asInt(row[3])},
+    ],
+    'tags': {for (final row in tagRows) '${row[0]}': _asInt(row[1])},
+  });
+}
+
+Future<Response> _distribution(Request request, Connection db) async {
+  final query = request.url.queryParameters;
+  final rows = await db.execute(
+    Sql.named('''
+      select q.correct, q.difficulty, count(*)
+      from bilgi_questions q
+      where (@category = '' or q.category_id = @category)
+        and (@sub = '' or q.tags_json::jsonb ? @sub)
+      group by q.correct, q.difficulty
+    '''),
+    parameters: {
+      'category': (query['category'] ?? '').trim(),
+      'sub': (query['sub'] ?? '').trim(),
+    },
+  );
+  return jsonResponse({
+    'rows': [
+      for (final row in rows)
+        {'correct': _asInt(row[0]), 'difficulty': '${row[1]}', 'count': _asInt(row[2])},
+    ],
+  });
+}
+
+Future<Response> _item(Connection db, String id) async {
+  final key = id.trim();
+  if (key.isEmpty || key.length > 80) {
+    return jsonResponse({'error': 'Soru bulunamadı.'}, status: 404);
+  }
+  final rows = await db.execute(
+    Sql.named('''
+      select id, category_id, text, options_json, correct, difficulty,
+             explanation, status, tags_json, reject_reason, translations_json, reviewed
+      from bilgi_questions
+      where id = @id
+    '''),
+    parameters: {'id': key},
+  );
+  if (rows.isEmpty) return jsonResponse({'error': 'Soru bulunamadı.'}, status: 404);
+  return jsonResponse({'question': _json(rows.first)});
+}
+
+Map<String, dynamic> _jsonList(ResultRow row) {
+  return {
+    'id': row[0],
+    'categoryId': row[1],
+    'text': row[2],
+    'options': _decodeList(row[3]),
+    'correct': row[4],
+    'difficulty': row[5],
+    'explanation': row[6],
+    'status': row[7],
+    'tags': _decodeList(row[8]),
+    'rejectReason': row[9],
+    'reviewed': row[10] == true,
+    'translationReady': row.length > 11 && row[11] == true,
+  };
+}
+
 Future<Response> _list(Connection db, {required bool approvedOnly}) async {
   final rows = await db.execute(
     approvedOnly
@@ -479,7 +727,10 @@ Future<Response> _save(Request request, Connection db) async {
           status = excluded.status,
           tags_json = excluded.tags_json,
           reject_reason = excluded.reject_reason,
-          translations_json = excluded.translations_json,
+          translations_json = case
+            when @keepTranslations then bilgi_questions.translations_json
+            else excluded.translations_json
+          end,
           reviewed = excluded.reviewed
       '''),
       parameters: question,
@@ -523,6 +774,7 @@ Map<String, Object>? _read(Map<String, dynamic> map) {
   if (!_difficulties.contains(difficulty) || !_statuses.contains(status)) return null;
   if (explanation.length > 4000 || rejectReason.length > 400) return null;
   if (tags == null || tags.length > 20 || tags.any((item) => item.length > 80)) return null;
+  final keepTranslations = !map.containsKey('translations');
   final translations = _translations(map['translations']);
   if (translations == null) return null;
   return {
@@ -537,6 +789,7 @@ Map<String, Object>? _read(Map<String, dynamic> map) {
     'tags': jsonEncode(tags),
     'rejectReason': rejectReason,
     'translations': jsonEncode(translations),
+    'keepTranslations': keepTranslations,
     'reviewed': map['reviewed'] == true,
   };
 }
