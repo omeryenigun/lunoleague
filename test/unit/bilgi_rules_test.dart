@@ -582,6 +582,7 @@ void main() {
       correct: 1,
       difficulty: 'kolay',
       explanation: 'Osman Bey kurmuştur.',
+      hint: 'Bir kuruluş adı.',
       status: 'pending',
       tags: ['Kuruluş', 'tarih'],
     );
@@ -595,6 +596,7 @@ void main() {
     expect(edit.subcategory, 'Kuruluş');
     expect(edit.difficulty, 'kolay');
     expect(edit.explanation, 'Osman Bey kurmuştur.');
+    expect(edit.hint, 'Bir kuruluş adı.');
     expect(edit.status, 'pending');
     expect(edit.tags, ['tarih']);
     final saved = edit.toQuestion(asDraft: false);
@@ -605,6 +607,7 @@ void main() {
     expect(saved.categoryId, question.categoryId);
     expect(saved.difficulty, question.difficulty);
     expect(saved.explanation, question.explanation);
+    expect(saved.hint, question.hint);
     expect(saved.status, 'pending');
     expect(saved.tags, containsAll(['Kuruluş', 'tarih']));
 
@@ -922,6 +925,47 @@ void main() {
     expect(used.round!.hint, isNot(contains('Paris')));
     expect(used.round!.hidden, isEmpty);
     expect(used.round!.jokerMax, started.round!.jokerMax);
+  });
+
+  test('a stored hint is used before the explanation', () {
+    const options = ['Paris', 'Lyon', 'Nice', 'Lille'];
+    expect(
+      bilgiPlayHint(
+        hint: 'Sen nehri bu kentten geçer.',
+        explanation: "Doğru cevap Paris'tir. Fransa'nın başkentidir.",
+        options: options,
+        correct: 0,
+      ),
+      'Sen nehri bu kentten geçer.',
+    );
+    final question = BilgiQuestion(
+      id: 'q',
+      categoryId: 'genel',
+      text: 'Başkent?',
+      options: options,
+      correct: 0,
+      difficulty: 'kolay',
+      explanation: 'Paris başkenttir.',
+      hint: 'Bir Avrupa başkenti.',
+      translations: {
+        'en': BilgiTranslation(
+          text: 'Capital?',
+          options: options,
+          explanation: 'Paris is the capital.',
+          hint: 'A European capital.',
+        ),
+        'de': BilgiTranslation(
+          text: 'Hauptstadt?',
+          options: options,
+          explanation: 'Paris ist die Hauptstadt.',
+        ),
+      },
+    );
+    expect(question.shown('en').hint, 'A European capital.');
+    expect(question.shown('de').hint, 'Bir Avrupa başkenti.');
+    expect(bilgiTranslatedHintReady('', ''), isTrue);
+    expect(bilgiTranslatedHintReady('ipucu', ''), isFalse);
+    expect(bilgiTranslatedHintReady('ipucu', 'clue'), isTrue);
   });
 
   test('gold help lists ad, shop, and claimable daily gold only', () {

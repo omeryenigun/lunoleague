@@ -23,6 +23,12 @@ bool bilgiLanguageFieldsReady(String text, List<String> options, String explanat
   return options.length == 4 && options.every((item) => item.trim().isNotEmpty);
 }
 
+/// A filled Turkish hint must come back filled. An empty hint stays optional.
+bool bilgiTranslatedHintReady(String sourceHint, String translatedHint) {
+  if (sourceHint.trim().isEmpty) return true;
+  return translatedHint.trim().isNotEmpty;
+}
+
 /// Yayın listesindeki Türkçe dışındaki diller. null veya boş: dokuz dil.
 List<String> bilgiExtraLocales(List<String>? locales) {
   if (locales == null || locales.isEmpty) {
@@ -98,6 +104,7 @@ BilgiQuestion? bilgiMoveCorrectOption(BilgiQuestion question, int to) {
           text: entry.value.text,
           options: turn(entry.value.options),
           explanation: entry.value.explanation,
+          hint: entry.value.hint,
         ),
     },
   );
@@ -164,6 +171,7 @@ class BilgiQuestion {
     required this.correct,
     required this.difficulty,
     required this.explanation,
+    this.hint = '',
     this.status = 'approved',
     this.tags = const [],
     this.rejectReason = '',
@@ -178,6 +186,9 @@ class BilgiQuestion {
   final int correct;
   final String difficulty;
   final String explanation;
+
+  /// Joker ipucu. Boşsa joker açıklamadan üretir.
+  final String hint;
   final String status;
   final List<String> tags;
   final String rejectReason;
@@ -192,7 +203,13 @@ class BilgiQuestion {
     final row = translations[locale];
     if (row == null || row.text.trim().isEmpty) return this;
     if (row.options.length != 4 || row.options.any((item) => item.trim().isEmpty)) return this;
-    return copyWith(text: row.text, options: row.options, explanation: row.explanation);
+    final localeHint = row.hint.trim();
+    return copyWith(
+      text: row.text,
+      options: row.options,
+      explanation: row.explanation,
+      hint: localeHint.isNotEmpty ? localeHint : hint,
+    );
   }
 
   String get correctLetter => ['A', 'B', 'C', 'D'][correct.clamp(0, 3)];
@@ -205,6 +222,7 @@ class BilgiQuestion {
         'correct': correct,
         'difficulty': difficulty,
         'explanation': explanation,
+        'hint': hint,
         'status': status,
         'tags': tags,
         'rejectReason': rejectReason,
@@ -222,6 +240,7 @@ class BilgiQuestion {
       correct: map['correct'] as int? ?? 0,
       difficulty: map['difficulty'] as String? ?? 'kolay',
       explanation: map['explanation'] as String? ?? '',
+      hint: map['hint'] as String? ?? '',
       status: map['status'] as String? ?? 'approved',
       tags: (map['tags'] as List? ?? const []).map((e) => '$e').toList(),
       rejectReason: map['rejectReason'] as String? ?? '',
@@ -237,6 +256,7 @@ class BilgiQuestion {
     int? correct,
     String? difficulty,
     String? explanation,
+    String? hint,
     String? status,
     String? rejectReason,
     List<String>? tags,
@@ -251,6 +271,7 @@ class BilgiQuestion {
       correct: correct ?? this.correct,
       difficulty: difficulty ?? this.difficulty,
       explanation: explanation ?? this.explanation,
+      hint: hint ?? this.hint,
       status: status ?? this.status,
       tags: tags ?? this.tags,
       rejectReason: rejectReason ?? this.rejectReason,
@@ -261,16 +282,23 @@ class BilgiQuestion {
 }
 
 class BilgiTranslation {
-  const BilgiTranslation({required this.text, required this.options, this.explanation = ''});
+  const BilgiTranslation({
+    required this.text,
+    required this.options,
+    this.explanation = '',
+    this.hint = '',
+  });
 
   final String text;
   final List<String> options;
   final String explanation;
+  final String hint;
 
   Map<String, dynamic> toMap() => {
         'text': text,
         'options': options,
         'explanation': explanation,
+        'hint': hint,
       };
 
   static BilgiTranslation? fromMap(Object? raw) {
@@ -282,6 +310,7 @@ class BilgiTranslation {
       text: text,
       options: options,
       explanation: '${raw['explanation'] ?? ''}',
+      hint: '${raw['hint'] ?? ''}',
     );
   }
 
@@ -301,7 +330,12 @@ bool _sameTranslations(Map<String, BilgiTranslation> a, Map<String, BilgiTransla
   if (a.length != b.length) return false;
   for (final entry in a.entries) {
     final other = b[entry.key];
-    if (other == null || other.text != entry.value.text || other.explanation != entry.value.explanation) return false;
+    if (other == null ||
+        other.text != entry.value.text ||
+        other.explanation != entry.value.explanation ||
+        other.hint != entry.value.hint) {
+      return false;
+    }
     if (!_sameStrings(other.options, entry.value.options)) return false;
   }
   return true;
@@ -315,6 +349,7 @@ bool sameStoredBilgiQuestion(BilgiQuestion saved, BilgiQuestion wanted) {
       saved.correct == wanted.correct &&
       saved.difficulty == wanted.difficulty &&
       saved.explanation == wanted.explanation &&
+      saved.hint == wanted.hint &&
       saved.status == wanted.status &&
       _sameStrings(saved.tags, wanted.tags) &&
       saved.rejectReason == wanted.rejectReason &&
@@ -341,6 +376,7 @@ class BilgiQuestionFormData {
     required this.subcategory,
     required this.difficulty,
     required this.explanation,
+    this.hint = '',
     required this.tags,
     required this.status,
     this.translations = const {},
@@ -355,6 +391,7 @@ class BilgiQuestionFormData {
   final String subcategory;
   final String difficulty;
   final String explanation;
+  final String hint;
   final List<String> tags;
   final String status;
   final Map<String, BilgiTranslation> translations;
@@ -382,6 +419,7 @@ class BilgiQuestionFormData {
       subcategory: sub,
       difficulty: question.difficulty,
       explanation: question.explanation,
+      hint: question.hint,
       tags: [for (final tag in question.tags) if (tag.isNotEmpty && tag != sub) tag],
       status: question.status,
       translations: question.translations,
@@ -398,6 +436,7 @@ class BilgiQuestionFormData {
       correct: correct,
       difficulty: difficulty,
       explanation: explanation,
+      hint: hint,
       status: asDraft ? 'draft' : (status.isEmpty ? 'pending' : status),
       tags: [if (subcategory.isNotEmpty) subcategory, ...tags],
       rejectReason: rejectReason ?? '',

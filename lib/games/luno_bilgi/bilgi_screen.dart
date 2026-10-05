@@ -28,6 +28,12 @@ import 'package:kelimelig/games/luno_bilgi/bilgi_shop.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_theme.dart';
 import 'package:kelimelig/injection.dart';
 
+/// Single-line A/B/C/D row on the quiz play screen.
+const _quizOptionRowMinHeight = 52.0;
+
+/// Space between two answer options on the quiz play screen.
+const _quizOptionGap = 8.0;
+
 class BilgiScreen extends StatefulWidget {
   const BilgiScreen({super.key});
 
@@ -1806,7 +1812,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
                     wrong: revealing && i == _game.lastPick && i != _game.revealCorrect,
                     onTap: revealing || round.hidden.contains(i) || _game.picked ? null : () => _game.pick(i),
                   ),
-                  if (i < options.length - 1) const SizedBox(height: 8),
+                  if (i < options.length - 1) const SizedBox(height: _quizOptionGap),
                 ],
                 if (revealing && (shown?.explanation.trim().isNotEmpty ?? false)) ...[
                   const SizedBox(height: 8),
@@ -1836,10 +1842,10 @@ class _BilgiScreenState extends State<BilgiScreen> {
             onTap: revealing ? _game.continueReveal : null,
             fill: revealing ? null : BilgiColors.error,
             horizontalPadding: 0,
-            verticalPadding: 10,
+            minHeight: _quizOptionRowMinHeight,
           ),
           if (round.jokerMax > 0) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: _quizOptionGap),
             Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
@@ -4387,8 +4393,9 @@ class _BilgiScreenState extends State<BilgiScreen> {
   }
 
   String _hintLine(BilgiQuestion? shown, String stored) {
-    if (shown != null && shown.explanation.trim().isNotEmpty) {
-      return bilgiHintClue(
+    if (shown != null) {
+      return bilgiPlayHint(
+        hint: shown.hint,
         explanation: shown.explanation,
         options: shown.options,
         correct: shown.correct,
@@ -5449,7 +5456,7 @@ class _BilgiQuizOptionState extends State<_BilgiQuizOption> with SingleTickerPro
       chip = const Color(0xFF1E3A8A);
     }
     final row = ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 52),
+      constraints: const BoxConstraints(minHeight: _quizOptionRowMinHeight),
       child: Material(
         color: widget.hidden ? BilgiColors.bg : fill,
         shape: RoundedRectangleBorder(
@@ -5657,75 +5664,91 @@ class _FaultReportState extends State<_FaultReport> {
   Widget build(BuildContext context) {
     final status = _error;
     if (!_open) {
-      return Align(
-        alignment: Alignment.topCenter,
-        child: TextButton(
-          onPressed: _busy
+      return Material(
+        color: const Color(0xFF2C2948),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Color(0xD9F4F1FB), width: 1.5),
+        ),
+        child: InkWell(
+          onTap: _busy
               ? null
               : () => setState(() {
                     _open = true;
                     _error = '';
                   }),
-          style: TextButton.styleFrom(
-            foregroundColor: status.isNotEmpty ? BilgiColors.warning : BilgiColors.muted,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            minimumSize: Size.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            visualDensity: VisualDensity.compact,
-          ),
-          child: Text(
-            status.isNotEmpty ? status : 'Hatalı soru bildir',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 12, height: 1.15),
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              status.isNotEmpty ? status : 'Hatalı soru bildir',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: status.isNotEmpty ? BilgiColors.warning : BilgiColors.muted,
+                fontSize: 13,
+                height: 1.15,
+              ),
+            ),
           ),
         ),
       );
     }
-    final noteHidden = status.isNotEmpty && _note.text.isNotEmpty;
-    return Row(
+    const fieldBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.all(Radius.circular(12)),
+      borderSide: BorderSide(color: Color(0xD9F4F1FB), width: 1.5),
+    );
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          child: noteHidden
-              ? GestureDetector(
-                  onTap: () => setState(() => _error = ''),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
+        TextField(
+          controller: _note,
+          autofocus: true,
+          enabled: !_busy,
+          minLines: 2,
+          maxLines: 3,
+          keyboardType: TextInputType.multiline,
+          textInputAction: TextInputAction.newline,
+          cursorColor: Colors.white,
+          style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.35),
+          decoration: const InputDecoration(
+            isDense: true,
+            filled: true,
+            fillColor: Color(0xFF2C2948),
+            hintText: 'Sorunun nesi hatalı?',
+            hintStyle: TextStyle(color: BilgiColors.muted, fontSize: 13, height: 1.35),
+            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            border: fieldBorder,
+            enabledBorder: fieldBorder,
+            focusedBorder: fieldBorder,
+            disabledBorder: fieldBorder,
+          ),
+        ),
+        Row(
+          children: [
+            Expanded(
+              child: status.isEmpty
+                  ? const SizedBox.shrink()
+                  : Text(
                       status,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: BilgiColors.warning, fontSize: 12, height: 1.15),
                     ),
-                  ),
-                )
-              : TextField(
-                  controller: _note,
-                  maxLines: 1,
-                  style: const TextStyle(color: Colors.white, fontSize: 12, height: 1.15),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    isCollapsed: true,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 2),
-                    border: InputBorder.none,
-                    hintText: status.isNotEmpty ? status : 'Sorunun nesi hatalı? Açıklama zorunlu.',
-                    hintStyle: TextStyle(
-                      color: status.isNotEmpty ? BilgiColors.warning : BilgiColors.muted,
-                      fontSize: 12,
-                      height: 1.15,
-                    ),
-                  ),
-                ),
-        ),
-        TextButton(
-          onPressed: _busy ? null : _send,
-          style: TextButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            minimumSize: Size.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            visualDensity: VisualDensity.compact,
-          ),
-          child: Text(_busy ? 'Gönderiliyor' : 'Gönder', style: const TextStyle(fontSize: 12, height: 1.15)),
+            ),
+            TextButton(
+              onPressed: _busy ? null : _send,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+              ),
+              child: Text(_busy ? 'Gönderiliyor' : 'Gönder', style: const TextStyle(fontSize: 12, height: 1.15)),
+            ),
+          ],
         ),
       ],
     );

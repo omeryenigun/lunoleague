@@ -227,11 +227,12 @@ Future<({Map<String, BilgiTranslation> translations, String? error})> _translate
             'text': q.text,
             'options': q.options,
             'explanation': q.explanation,
+            if (q.hint.trim().isNotEmpty) 'hint': q.hint.trim(),
             'locales': locales,
           }),
         )
         .timeout(const Duration(seconds: 90));
-    return _parseTranslations(response.statusCode, response.body, locales);
+    return _parseTranslations(response.statusCode, response.body, locales, sourceHint: q.hint);
   } catch (e) {
     return (translations: <String, BilgiTranslation>{}, error: 'network');
   }
@@ -243,6 +244,20 @@ Future<({Map<String, BilgiTranslation> translations, String? error})> _translate
   List<String> locales,
 ) async {
   final model = Platform.environment['OPENROUTER_MODEL'] ?? 'google/gemini-2.5-flash';
+  final withHint = q.hint.trim().isNotEmpty;
+  final sample = locales
+      .map(
+        (id) => withHint
+            ? '"$id":{"text":"","options":["","","",""],"explanation":"","hint":""}'
+            : '"$id":{"text":"","options":["","","",""],"explanation":""}',
+      )
+      .join(',');
+  final source = <String, Object>{
+    'text': q.text,
+    'options': q.options,
+    'explanation': q.explanation,
+    if (withHint) 'hint': q.hint.trim(),
+  };
   try {
     final response = await http
         .post(
@@ -264,15 +279,12 @@ Future<({Map<String, BilgiTranslation> translations, String? error})> _translate
                     'Translate this Turkish trivia item into ${locales.join(', ')}. '
                     'Keep the four options in the same order. Do not change which option is correct. '
                     'Every text, option, and explanation must be non-empty. '
-                    'Return only JSON: {${locales.map((id) => '"$id":{"text":"","options":["","","",""],"explanation":""}').join(',')}}.',
+                    '${withHint ? 'Translate hint as a short clue that does not name the correct option. Every hint must be non-empty. ' : ''}'
+                    'Return only JSON: {$sample}.',
               },
               {
                 'role': 'user',
-                'content': jsonEncode({
-                  'text': q.text,
-                  'options': q.options,
-                  'explanation': q.explanation,
-                }),
+                'content': jsonEncode(source),
               },
             ],
           }),
@@ -297,7 +309,7 @@ Future<({Map<String, BilgiTranslation> translations, String? error})> _translate
             : '');
     final raw = _jsonObject(text);
     if (raw == null) return (translations: <String, BilgiTranslation>{}, error: 'Tercüme okunamadı.');
-    return _translationsFromRaw(raw, locales);
+    return _translationsFromRaw(raw, locales, sourceHint: q.hint);
   } catch (_) {
     return (translations: <String, BilgiTranslation>{}, error: 'network');
   }
@@ -306,8 +318,9 @@ Future<({Map<String, BilgiTranslation> translations, String? error})> _translate
 ({Map<String, BilgiTranslation> translations, String? error}) _parseTranslations(
   int statusCode,
   String body,
-  List<String> locales,
-) {
+  List<String> locales, {
+  String sourceHint = '',
+}) {
   try {
     final decoded = jsonDecode(body);
     if (decoded is! Map) return (translations: <String, BilgiTranslation>{}, error: 'bad_json');
@@ -316,17 +329,23 @@ Future<({Map<String, BilgiTranslation> translations, String? error})> _translate
     }
     final raw = decoded['translations'];
     if (raw is! Map) return (translations: <String, BilgiTranslation>{}, error: 'no_translations');
-    return _translationsFromRaw(Map<String, dynamic>.from(raw), locales);
+    return _translationsFromRaw(Map<String, dynamic>.from(raw), locales, sourceHint: sourceHint);
   } catch (_) {
     return (translations: <String, BilgiTranslation>{}, error: 'bad_json');
   }
 }
 
-({Map<String, BilgiTranslation> translations, String? error}) _translationsFromRaw(Map raw, List<String> locales) {
+({Map<String, BilgiTranslation> translations, String? error}) _translationsFromRaw(
+  Map raw,
+  List<String> locales, {
+  String sourceHint = '',
+}) {
   final out = <String, BilgiTranslation>{};
   for (final locale in locales) {
     final row = BilgiTranslation.fromMap(raw[locale]);
-    if (row == null || !bilgiLanguageFieldsReady(row.text, row.options, row.explanation)) {
+    if (row == null ||
+        !bilgiLanguageFieldsReady(row.text, row.options, row.explanation) ||
+        !bilgiTranslatedHintReady(sourceHint, row.hint)) {
       return (translations: <String, BilgiTranslation>{}, error: 'incomplete_locale_$locale');
     }
     out[locale] = row;

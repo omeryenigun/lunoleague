@@ -47,6 +47,7 @@ Future<Response> _translate(Request request, Connection db) async {
 Future<Response> _question(Map<String, dynamic> body) async {
   final text = '${body['text'] ?? ''}'.trim();
   final explanation = '${body['explanation'] ?? ''}'.trim();
+  final hint = '${body['hint'] ?? ''}'.trim();
   final options = body['options'];
   if (options is! List || options.length != 4) {
     return jsonResponse({'error': 'Türkçe soru, dört şık ve açıklama dolu olmalı.'}, status: 400);
@@ -55,15 +56,32 @@ Future<Response> _question(Map<String, dynamic> body) async {
   if (!bilgiLanguageFieldsReady(text, choices, explanation)) {
     return jsonResponse({'error': 'Türkçe soru, dört şık ve açıklama dolu olmalı.'}, status: 400);
   }
+  if (hint.length > 500) {
+    return jsonResponse({'error': 'İpucu çok uzun.'}, status: 400);
+  }
   final targets = _requestedLocales(body);
   if (targets.isEmpty) return jsonResponse({'translations': <String, Object>{}});
-  final sample = targets.map((id) => '"$id":{"text":"","options":["","","",""],"explanation":""}').join(',');
+  final withHint = hint.isNotEmpty;
+  final sample = targets
+      .map(
+        (id) => withHint
+            ? '"$id":{"text":"","options":["","","",""],"explanation":"","hint":""}'
+            : '"$id":{"text":"","options":["","","",""],"explanation":""}',
+      )
+      .join(',');
+  final source = <String, Object>{
+    'text': text,
+    'options': choices,
+    'explanation': explanation,
+    if (withHint) 'hint': hint,
+  };
   final decoded = await _ask(
     'Translate this Turkish trivia item into ${targets.join(', ')}. '
     'Keep the four options in the same order. Do not change which option is correct. '
     'Every text, option, and explanation must be non-empty. '
+    '${withHint ? 'Translate hint as a short clue that does not name the correct option. Every hint must be non-empty. ' : ''}'
     'Return only JSON: {$sample}.',
-    jsonEncode({'text': text, 'options': choices, 'explanation': explanation}),
+    jsonEncode(source),
   );
   if (decoded is String) return jsonResponse({'error': decoded}, status: 502);
   if (decoded is! Map) return jsonResponse({'error': 'Tercüme okunamadı.'}, status: 502);
@@ -73,15 +91,22 @@ Future<Response> _question(Map<String, dynamic> body) async {
     if (row is! Map) return jsonResponse({'error': 'Tercüme eksik geldi.'}, status: 502);
     final translated = '${row['text'] ?? ''}'.trim();
     final note = '${row['explanation'] ?? ''}'.trim();
+    final translatedHint = '${row['hint'] ?? ''}'.trim();
     final rawOptions = row['options'];
     if (rawOptions is! List || rawOptions.length != 4) {
       return jsonResponse({'error': 'Tercüme eksik geldi.'}, status: 502);
     }
     final translatedOptions = [for (final item in rawOptions) '$item'.trim()];
-    if (!bilgiLanguageFieldsReady(translated, translatedOptions, note)) {
+    if (!bilgiLanguageFieldsReady(translated, translatedOptions, note) ||
+        !bilgiTranslatedHintReady(hint, translatedHint)) {
       return jsonResponse({'error': 'Tercüme eksik geldi.'}, status: 502);
     }
-    out[locale] = {'text': translated, 'options': translatedOptions, 'explanation': note};
+    out[locale] = {
+      'text': translated,
+      'options': translatedOptions,
+      'explanation': note,
+      'hint': translatedHint,
+    };
   }
   return jsonResponse({'translations': out});
 }

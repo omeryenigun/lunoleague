@@ -222,6 +222,7 @@ class BilgiPrimaryButton extends StatelessWidget {
     this.verticalPadding = 18,
     this.horizontalPadding = 20,
     this.fill,
+    this.minHeight,
   });
 
   final String label;
@@ -231,6 +232,10 @@ class BilgiPrimaryButton extends StatelessWidget {
 
   /// Solid color when [onTap] is null. Defaults to [BilgiColors.card].
   final Color? fill;
+
+  /// When set, the button is at least this tall and the label is centered.
+  /// Play-screen Devam passes the answer-row min height so the two stay equal.
+  final double? minHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -255,14 +260,25 @@ class BilgiPrimaryButton extends StatelessWidget {
             child: InkWell(
               onTap: onTap,
               borderRadius: BorderRadius.circular(bilgiRadius),
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: verticalPadding),
-                child: Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
-                ),
-              ),
+              child: minHeight == null
+                  ? Padding(
+                      padding: EdgeInsets.symmetric(vertical: verticalPadding),
+                      child: Text(
+                        label,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                      ),
+                    )
+                  : ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: minHeight!),
+                      child: Center(
+                        child: Text(
+                          label,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                        ),
+                      ),
+                    ),
             ),
           ),
         ),

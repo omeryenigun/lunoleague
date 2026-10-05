@@ -1031,7 +1031,8 @@ class LunoBilgiServer {
     } else if (type == 'time') {
       round.paused = true;
     } else if (type == 'hint') {
-      round.hint = bilgiHintClue(
+      round.hint = bilgiPlayHint(
+        hint: question.hint,
         explanation: question.explanation,
         options: question.options,
         correct: question.correct,

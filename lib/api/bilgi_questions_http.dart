@@ -48,6 +48,9 @@ Future<void> migrateBilgiQuestions(Connection db) async {
     'alter table bilgi_questions add column if not exists reviewed boolean not null default false',
   );
   await db.execute(
+    "alter table bilgi_questions add column if not exists hint text not null default ''",
+  );
+  await db.execute(
     'create index if not exists bilgi_questions_bank on bilgi_questions (category_id, status, difficulty)',
   );
   await db.execute(
@@ -248,7 +251,7 @@ Future<List<Map<String, dynamic>>> drawApprovedBilgiQuestions(
     final rows = await db.execute(
       Sql.named('''
         select id, category_id, text, options_json, correct, difficulty,
-               explanation, status, tags_json, reject_reason, translations_json, reviewed
+               explanation, status, tags_json, reject_reason, translations_json, reviewed, hint
         from bilgi_questions
         where status = 'approved'
           and (@category = 'tumu' or category_id = @category)
@@ -299,7 +302,7 @@ Future<List<Map<String, dynamic>>> drawApprovedBilgiQuestions(
       final rows = await db.execute(
         Sql.named('''
           select id, category_id, text, options_json, correct, difficulty,
-                 explanation, status, tags_json, reject_reason, translations_json, reviewed
+                 explanation, status, tags_json, reject_reason, translations_json, reviewed, hint
           from bilgi_questions
           where status = 'approved'
             and (@category = 'tumu' or category_id = @category)
@@ -514,7 +517,7 @@ Future<Response> _page(Request request, Connection db) async {
     Sql.named('''
       select q.id, q.category_id, q.text, q.options_json, q.correct, q.difficulty,
              q.explanation, q.status, q.tags_json, q.reject_reason, q.reviewed,
-             $readySql
+             $readySql, q.hint
       from bilgi_questions q
       where ${filter.where}
       order by q.id
@@ -627,7 +630,7 @@ Future<Response> _item(Connection db, String id) async {
   final rows = await db.execute(
     Sql.named('''
       select id, category_id, text, options_json, correct, difficulty,
-             explanation, status, tags_json, reject_reason, translations_json, reviewed
+             explanation, status, tags_json, reject_reason, translations_json, reviewed, hint
       from bilgi_questions
       where id = @id
     '''),
@@ -651,6 +654,7 @@ Map<String, dynamic> _jsonList(ResultRow row) {
     'rejectReason': row[9],
     'reviewed': row[10] == true,
     'translationReady': row.length > 11 && row[11] == true,
+    'hint': row.length > 12 ? '${row[12] ?? ''}' : '',
   };
 }
 
@@ -659,14 +663,14 @@ Future<Response> _list(Connection db, {required bool approvedOnly}) async {
     approvedOnly
         ? '''
             select id, category_id, text, options_json, correct, difficulty,
-                   explanation, status, tags_json, reject_reason, translations_json, reviewed
+                   explanation, status, tags_json, reject_reason, translations_json, reviewed, hint
             from bilgi_questions
             where status = 'approved'
             order by id
           '''
         : '''
             select id, category_id, text, options_json, correct, difficulty,
-                   explanation, status, tags_json, reject_reason, translations_json, reviewed
+                   explanation, status, tags_json, reject_reason, translations_json, reviewed, hint
             from bilgi_questions
             order by id
           ''',
@@ -729,10 +733,10 @@ Future<Response> _save(Request request, Connection db) async {
       Sql.named('''
         insert into bilgi_questions (
           id, category_id, text, options_json, correct, difficulty,
-          explanation, status, tags_json, reject_reason, translations_json, reviewed
+          explanation, status, tags_json, reject_reason, translations_json, reviewed, hint
         ) values (
           @id, @categoryId, @text, @options, @correct, @difficulty,
-          @explanation, @status, @tags, @rejectReason, @translations, @reviewed
+          @explanation, @status, @tags, @rejectReason, @translations, @reviewed, @hint
         )
         on conflict (id) do update set
           category_id = excluded.category_id,
@@ -748,7 +752,8 @@ Future<Response> _save(Request request, Connection db) async {
             when @keepTranslations then bilgi_questions.translations_json
             else excluded.translations_json
           end,
-          reviewed = excluded.reviewed
+          reviewed = excluded.reviewed,
+          hint = excluded.hint
       '''),
       parameters: question,
     );
@@ -777,6 +782,7 @@ Map<String, Object>? _read(Map<String, dynamic> map) {
   final difficulty = '${map['difficulty'] ?? ''}'.trim();
   final status = '${map['status'] ?? ''}'.trim();
   final explanation = '${map['explanation'] ?? ''}';
+  final hint = '${map['hint'] ?? ''}';
   final rejectReason = '${map['rejectReason'] ?? ''}';
   final options = _strings(map['options']);
   final tags = _strings(map['tags']);
@@ -789,7 +795,7 @@ Map<String, Object>? _read(Map<String, dynamic> map) {
   }
   if (correctIndex == null || correctIndex < 0 || correctIndex > 3) return null;
   if (!_difficulties.contains(difficulty) || !_statuses.contains(status)) return null;
-  if (explanation.length > 4000 || rejectReason.length > 400) return null;
+  if (explanation.length > 4000 || hint.length > 500 || rejectReason.length > 400) return null;
   if (tags == null || tags.length > 20 || tags.any((item) => item.length > 80)) return null;
   final keepTranslations = !map.containsKey('translations');
   final translations = _translations(map['translations']);
@@ -802,6 +808,7 @@ Map<String, Object>? _read(Map<String, dynamic> map) {
     'correct': correctIndex,
     'difficulty': difficulty,
     'explanation': explanation,
+    'hint': hint,
     'status': status,
     'tags': jsonEncode(tags),
     'rejectReason': rejectReason,
@@ -984,6 +991,7 @@ Map<String, dynamic> _json(ResultRow row) {
     'rejectReason': row[9],
     'translations': row.length > 10 ? _decodeMap(row[10]) : const <String, dynamic>{},
     'reviewed': row.length > 11 && row[11] == true,
+    'hint': row.length > 12 ? '${row[12] ?? ''}' : '',
   };
 }
 
@@ -1008,12 +1016,13 @@ Map<String, Object>? _translations(Object? raw) {
     final text = '${row['text'] ?? ''}'.trim();
     final options = _strings(row['options']);
     final explanation = '${row['explanation'] ?? ''}';
+    final hint = '${row['hint'] ?? ''}';
     if (text.isEmpty || text.length > 2000) return null;
     if (options == null || options.length != 4 || options.any((item) => item.trim().isEmpty || item.length > 500)) {
       return null;
     }
-    if (explanation.length > 4000) return null;
-    out[locale] = {'text': text, 'options': options, 'explanation': explanation};
+    if (explanation.length > 4000 || hint.length > 500) return null;
+    out[locale] = {'text': text, 'options': options, 'explanation': explanation, 'hint': hint};
   }
   return out;
 }

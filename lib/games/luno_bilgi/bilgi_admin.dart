@@ -1781,6 +1781,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
           correct: question.correct,
           difficulty: question.difficulty,
           explanation: question.explanation,
+          hint: question.hint,
           status: question.status,
           tags: [
             _moveSub,
@@ -1983,6 +1984,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
           text: question.text,
           options: question.options,
           explanation: question.explanation,
+          hint: question.hint,
           locales: targets,
         );
         if (!mounted) return;
@@ -2616,6 +2618,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       text: question.text,
       options: question.options,
       explanation: question.explanation,
+      hint: question.hint,
       locales: targets,
     );
     if (!mounted) return;
@@ -2853,6 +2856,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
           correct: draft.correct,
           difficulty: draft.difficulty,
           explanation: draft.explanation,
+          hint: draft.hint,
           status: draft.asDraft ? 'draft' : (existing == null ? 'pending' : draft.status),
           tags: draft.tags,
           rejectReason: existing?.rejectReason ?? '',
@@ -5282,6 +5286,7 @@ class _QuestionDraft {
     required this.categoryId,
     required this.difficulty,
     required this.explanation,
+    this.hint = '',
     required this.tags,
     required this.asDraft,
     required this.status,
@@ -5295,6 +5300,7 @@ class _QuestionDraft {
   final String categoryId;
   final String difficulty;
   final String explanation;
+  final String hint;
   final List<String> tags;
   final bool asDraft;
   final String status;
@@ -5333,6 +5339,7 @@ class _QuestionFormState extends State<_QuestionForm> {
       TextEditingController(text: widget.initial != null && i < widget.initial!.options.length ? widget.initial!.options[i] : ''),
   ];
   late final _explanation = TextEditingController(text: widget.initial?.explanation ?? '');
+  late final _hint = TextEditingController(text: widget.initial?.hint ?? '');
   final _newTag = TextEditingController();
   late var _correct = widget.initial?.correct ?? -1;
   late var _category = widget.initial?.categoryId ?? '';
@@ -5357,6 +5364,7 @@ class _QuestionFormState extends State<_QuestionForm> {
           widget.initial != null && i < widget.initial!.options.length ? widget.initial!.options[i] : '',
       ],
       explanation: widget.initial?.explanation ?? '',
+      hint: widget.initial?.hint ?? '',
     ),
   };
 
@@ -5367,6 +5375,7 @@ class _QuestionFormState extends State<_QuestionForm> {
       field.dispose();
     }
     _explanation.dispose();
+    _hint.dispose();
     _newTag.dispose();
     super.dispose();
   }
@@ -5381,6 +5390,7 @@ class _QuestionFormState extends State<_QuestionForm> {
             text: _text.text.trim(),
             options: [for (final field in _options) field.text.trim()],
             explanation: _explanation.text.trim(),
+            hint: _hint.text.trim(),
           )
         : _bag[id];
     if (row == null) return false;
@@ -5392,6 +5402,7 @@ class _QuestionFormState extends State<_QuestionForm> {
       text: _text.text.trim(),
       options: [for (final field in _options) field.text.trim()],
       explanation: _explanation.text.trim(),
+      hint: _hint.text.trim(),
     );
   }
 
@@ -5456,6 +5467,7 @@ class _QuestionFormState extends State<_QuestionForm> {
       text: turkish.text,
       options: turkish.options,
       explanation: turkish.explanation,
+      hint: turkish.hint,
       locales: targets,
     );
     if (!mounted) return;
@@ -5474,6 +5486,7 @@ class _QuestionFormState extends State<_QuestionForm> {
         _options[i].text = row != null && i < row.options.length ? row.options[i] : '';
       }
       _explanation.text = row?.explanation ?? '';
+      _hint.text = row?.hint ?? '';
     }
     if (_category.isEmpty || _sub.trim().isEmpty) {
       setState(() {
@@ -5506,6 +5519,7 @@ class _QuestionFormState extends State<_QuestionForm> {
       _options[i].text = row != null && i < row.options.length ? row.options[i] : '';
     }
     _explanation.text = row?.explanation ?? '';
+    _hint.text = row?.hint ?? '';
     setState(() => _lang = lang);
   }
 
@@ -5529,6 +5543,7 @@ class _QuestionFormState extends State<_QuestionForm> {
           categoryId: _category,
           difficulty: _difficulty,
           explanation: turkish?.explanation ?? '',
+          hint: turkish?.hint ?? '',
           tags: tags.toList(),
           asDraft: draft,
           status: draft ? 'draft' : (_status.isEmpty ? 'pending' : _status),
@@ -5554,7 +5569,12 @@ class _QuestionFormState extends State<_QuestionForm> {
   @override
   Widget build(BuildContext context) {
     final turkish = _lang == 'tr'
-        ? BilgiTranslation(text: _text.text.trim(), options: [for (final field in _options) field.text.trim()], explanation: _explanation.text.trim())
+        ? BilgiTranslation(
+            text: _text.text.trim(),
+            options: [for (final field in _options) field.text.trim()],
+            explanation: _explanation.text.trim(),
+            hint: _hint.text.trim(),
+          )
         : _bag['tr'];
     final ready = (turkish?.text.isNotEmpty ?? false) &&
         (turkish?.options.every((item) => item.isNotEmpty) ?? false) &&
@@ -5710,6 +5730,16 @@ class _QuestionFormState extends State<_QuestionForm> {
                     onChanged: (_) => setState(() {}),
                     style: const TextStyle(color: Colors.white, fontSize: 14),
                     decoration: _input(hint: 'Doğru cevap sonrası gösterilecek açıklama...'),
+                  ),
+                ]),
+                _card('6. İpucu', [
+                  _label('Joker ipucu'),
+                  TextField(
+                    controller: _hint,
+                    minLines: 2,
+                    maxLines: 4,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    decoration: _input(hint: 'Doğru şıkkı söylemeden daraltan kısa ipucu...'),
                   ),
                 ]),
                 const SizedBox(height: 8),
@@ -6803,6 +6833,7 @@ class _ContestQuestionDialogState extends State<_ContestQuestionDialog> {
       correct: _correct.clamp(0, 3),
       difficulty: _difficulty,
       explanation: current?.explanation ?? '',
+      hint: current?.hint ?? '',
       status: current?.status ?? 'approved',
       tags: current?.tags ?? const [],
       rejectReason: current?.rejectReason ?? '',

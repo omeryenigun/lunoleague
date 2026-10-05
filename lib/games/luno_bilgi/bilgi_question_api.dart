@@ -111,6 +111,7 @@ class BilgiQuestionApi {
     required String text,
     required List<String> options,
     required String explanation,
+    String hint = '',
     List<String>? locales,
   }) async {
     final wanted = locales ?? bilgiExtraLocales(null);
@@ -120,6 +121,7 @@ class BilgiQuestionApi {
       'text': text,
       'options': options,
       'explanation': explanation,
+      if (hint.trim().isNotEmpty) 'hint': hint.trim(),
       'locales': wanted,
     });
     if (decoded.error != null) return (translations: <String, BilgiTranslation>{}, error: decoded.error);
@@ -128,7 +130,9 @@ class BilgiQuestionApi {
     final out = <String, BilgiTranslation>{};
     for (final id in wanted) {
       final row = BilgiTranslation.fromMap(raw[id]);
-      if (row == null || !bilgiLanguageFieldsReady(row.text, row.options, row.explanation)) {
+      if (row == null ||
+          !bilgiLanguageFieldsReady(row.text, row.options, row.explanation) ||
+          !bilgiTranslatedHintReady(hint, row.hint)) {
         return (translations: <String, BilgiTranslation>{}, error: 'Tercüme eksik geldi.');
       }
       out[id] = row;

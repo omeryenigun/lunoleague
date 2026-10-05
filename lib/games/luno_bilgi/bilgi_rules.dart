@@ -314,6 +314,21 @@ String bilgiHintClue({
   return bilgiHintWithheld;
 }
 
+/// Stored hint wins. An empty hint falls back to the explanation.
+String bilgiPlayHint({
+  required String hint,
+  required String explanation,
+  required List<String> options,
+  required int correct,
+}) {
+  final stored = hint.trim();
+  return bilgiHintClue(
+    explanation: stored.isNotEmpty ? stored : explanation,
+    options: options,
+    correct: correct,
+  );
+}
+
 String _stripHintLetter(String text, String letter) {
   final mark = letter.trim().toUpperCase();
   if (mark.length != 1) return text;
