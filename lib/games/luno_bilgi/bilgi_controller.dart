@@ -1238,7 +1238,7 @@ class BilgiController extends ChangeNotifier {
     final selected = boardCategoryId;
     if (boardScope == 'category' &&
         selected != null &&
-        (selected == tumuKarmaId || !bilgiCategoryListed(selected, categoryCounts[selected]))) {
+        (selected == tumuKarmaId || !bilgiCategoryListed(selected, difficultySlices))) {
       boardCategoryId = null;
     }
     final scope = boardScope == 'general' ? 'global' : boardScope;
@@ -1264,7 +1264,7 @@ class BilgiController extends ChangeNotifier {
     boardRows = snap.rows;
     boardSeed = snap.seed;
     boardRealCount = snap.realCount;
-    boardCategoryIds = bilgiLeagueCatalog(categoryCounts);
+    boardCategoryIds = bilgiLeagueCatalog(difficultySlices);
     boardCategoryRanks = ranks;
     boardCategoryPlayerCounts = remote != null ? remote.categoryPlayerCounts : local.categoryPlayerCounts;
     boardClosed = snap.closed;

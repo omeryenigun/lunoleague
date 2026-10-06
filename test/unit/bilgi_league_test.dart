@@ -38,7 +38,8 @@ BilgiProfile _player(
 }
 
 Map<String, int> _enoughPublished() => {
-      for (final category in bilgiCategories) category.id: bilgiMinPublishedQuestions,
+      for (final category in bilgiCategories)
+        for (final level in bilgiDifficultyLevels) '${category.id}||$level': bilgiMinPublishedPerDifficulty,
     };
 
 void main() {
@@ -75,18 +76,18 @@ void main() {
     final scored = _player('ada', category: 'genel', categoryTotal: 40, total: 40);
     final playedEmpty = _player('ada', category: 'felsefe', categoryTotal: 0, played: true, total: 40);
     final counts = _enoughPublished();
-    expect(bilgiMyOpenLeagueIds(scored, publishedCounts: counts), ['genel']);
+    expect(bilgiMyOpenLeagueIds(scored, slices: counts), ['genel']);
     expect(bilgiPlayedCategory(playedEmpty, 'felsefe'), isTrue);
-    expect(bilgiMyOpenLeagueIds(playedEmpty, publishedCounts: counts), isEmpty);
+    expect(bilgiMyOpenLeagueIds(playedEmpty, slices: counts), isEmpty);
     final open = bilgiOpenCategoryIds([
       scored,
       _player('berk', category: 'felsefe', categoryTotal: 10, total: 10),
     ]);
     expect(open, contains('felsefe'));
-    expect(bilgiMyOpenLeagueIds(scored, publishedCounts: counts), isNot(contains('felsefe')));
+    expect(bilgiMyOpenLeagueIds(scored, slices: counts), isNot(contains('felsefe')));
   });
 
-  test('a category under 60 published questions is hidden from player leagues', () {
+  test('a category missing 75 approved questions in any difficulty is hidden', () {
     final user = _player('ada', category: 'genel', categoryTotal: 40, total: 40).copyWith(
       categoryScores: const {
         'genel': BilgiCategoryPoints(total: 40),
@@ -95,13 +96,22 @@ void main() {
       },
     );
     expect(bilgiCategoryListed('felsefe', null), isFalse);
-    expect(bilgiCategoryListed('felsefe', 0), isFalse);
-    expect(bilgiCategoryListed('felsefe', bilgiMinPublishedQuestions - 1), isFalse);
-    expect(bilgiCategoryListed('felsefe', bilgiMinPublishedQuestions), isTrue);
-    expect(bilgiCategoryListed('karma', 12), isFalse);
-    expect(bilgiCategoryListed('karma', bilgiMinPublishedQuestions), isTrue);
+    expect(bilgiCategoryListed('felsefe', const {}), isFalse);
+    expect(
+      bilgiCategoryListed('felsefe', {
+        for (final level in bilgiDifficultyLevels) 'felsefe||$level': bilgiMinPublishedPerDifficulty,
+      }..['felsefe||efsane'] = bilgiMinPublishedPerDifficulty - 1),
+      isFalse,
+    );
+    expect(
+      bilgiCategoryListed('felsefe', {
+        for (final level in bilgiDifficultyLevels) 'felsefe||$level': bilgiMinPublishedPerDifficulty,
+      }),
+      isTrue,
+    );
+    expect(bilgiCategoryListed('felsefe', const {'felsefe||kolay': 300}), isFalse);
+    expect(bilgiMinPublishedPerDifficulty, 75);
     expect(bilgiMinPublishedQuestions, 60);
-    expect(bilgiMixQuotas(bilgiMinPublishedQuestions), [15, 15, 15, 15]);
     final thin = {
       'mitoloji|Mezopotamya Mitolojisi|kolay': 7,
       'mitoloji|Mezopotamya Mitolojisi|orta': 187,
@@ -109,24 +119,33 @@ void main() {
       'mitoloji|Mezopotamya Mitolojisi|efsane': 8,
     };
     expect(bilgiSubListed('mitoloji', 'Mezopotamya Mitolojisi', thin), isFalse);
-    expect(bilgiCategoryListed('mitoloji', 7 + 187 + 80 + 8), isTrue);
+    expect(
+      bilgiCategoryListed('mitoloji', const {
+        'mitoloji||kolay': 7,
+        'mitoloji||orta': 187,
+        'mitoloji||zor': 80,
+        'mitoloji||efsane': 8,
+      }),
+      isFalse,
+    );
     final ready = {
-      for (final level in bilgiDifficultyLevels) 'mitoloji|Yunan Mitolojisi|$level': 15,
+      for (final level in bilgiDifficultyLevels) 'mitoloji|Yunan Mitolojisi|$level': bilgiMinPublishedPerDifficulty,
     };
     expect(bilgiSubListed('mitoloji', 'Yunan Mitolojisi', ready), isTrue);
-    ready['mitoloji|Yunan Mitolojisi|efsane'] = 14;
+    ready['mitoloji|Yunan Mitolojisi|efsane'] = bilgiMinPublishedPerDifficulty - 1;
     expect(bilgiSubListed('mitoloji', 'Yunan Mitolojisi', ready), isFalse);
-    expect(bilgiPublishedSubReady('mitoloji', 'Yunan Mitolojisi', [15, 15, 15, 15]), isTrue);
-    expect(bilgiPublishedSubReady('mitoloji', 'Yunan Mitolojisi', [172, 103, 14, 69]), isFalse);
+    expect(bilgiPublishedSubReady('mitoloji', 'Yunan Mitolojisi', [75, 75, 75, 75]), isTrue);
+    expect(bilgiPublishedSubReady('mitoloji', 'Yunan Mitolojisi', [15, 15, 15, 15]), isFalse);
+    expect(bilgiPublishedSubReady('mitoloji', 'Yunan Mitolojisi', [172, 103, 74, 69]), isFalse);
     final counts = _enoughPublished()
-      ..['felsefe'] = 59
-      ..['karma'] = 12;
-    final mine = bilgiMyOpenLeagueIds(user, publishedCounts: counts);
+      ..['felsefe||efsane'] = bilgiMinPublishedPerDifficulty - 1
+      ..['karma||kolay'] = 12;
+    final mine = bilgiMyOpenLeagueIds(user, slices: counts);
     expect(mine, contains('genel'));
     expect(mine, isNot(contains('felsefe')));
     expect(mine, isNot(contains('karma')));
-    final unknown = Map<String, int>.from(counts)..remove('genel');
-    expect(bilgiMyOpenLeagueIds(user, publishedCounts: unknown), isNot(contains('genel')));
+    final unknown = Map<String, int>.from(counts)..remove('genel||kolay');
+    expect(bilgiMyOpenLeagueIds(user, slices: unknown), isNot(contains('genel')));
   });
 
   test('a guest with points ranks in general and only in a category they played', () {
@@ -529,13 +548,12 @@ void main() {
     expect(admin.rows, hasLength(200));
   });
 
-  test('a category with 60 approved questions is in the league catalog without points', () {
+  test('a category with 75 approved questions in every difficulty is in the league catalog without points', () {
     final counts = <String, int>{
-      'felsefe': bilgiMinPublishedQuestions,
-      'genel': bilgiMinPublishedQuestions - 1,
-      'karma': bilgiMinPublishedQuestions,
-      tumuKarmaId: bilgiMinPublishedQuestions,
+      for (final id in ['felsefe', 'genel', 'karma', tumuKarmaId])
+        for (final level in bilgiDifficultyLevels) '$id||$level': bilgiMinPublishedPerDifficulty,
     };
+    counts['genel||zor'] = bilgiMinPublishedPerDifficulty - 1;
     final catalog = bilgiLeagueCatalog(counts);
     final idle = _player('ada', category: 'felsefe', played: false, total: 0);
     expect(idle.categoryScores, isEmpty);

@@ -1382,7 +1382,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
         const Text('Yayınlı sorular', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
         const Text(
-          'Onaylı soru sayısı. Her zorlukta en az 15 soru varsa yeşil, biri eksikse kırmızı.',
+          'Onaylı soru sayısı. Her zorlukta en az $bilgiMinPublishedPerDifficulty soru varsa yeşil, biri eksikse kırmızı.',
           style: TextStyle(color: BilgiColors.muted, fontSize: 12, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 12),
@@ -1506,7 +1506,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                 style: header
                     ? labelStyle
                     : TextStyle(
-                        color: i < 4 && (i < counts.length ? counts[i] : 0) < 15
+                        color: i < 4 && (i < counts.length ? counts[i] : 0) < bilgiMinPublishedPerDifficulty
                             ? BilgiColors.error
                             : tone,
                         fontSize: 13,

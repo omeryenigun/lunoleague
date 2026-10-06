@@ -135,31 +135,37 @@ Map<String, int> bilgiCategoryPlayerCounts(Iterable<BilgiProfile> users) {
   return counts;
 }
 
-/// Approved questions a category needs before the player may see it.
+/// Admin published-count floor stays at this total. Listing uses [bilgiMinPublishedPerDifficulty].
 const bilgiMinPublishedQuestions = 60;
 
-/// Player lists and category leagues share this rule.
-/// [publishedCount] is the sum of that category's subcategory pools. Null is not loaded yet and stays hidden.
-bool bilgiCategoryListed(String categoryId, int? publishedCount) {
-  if (categoryId.trim().isEmpty) return false;
-  return publishedCount != null && publishedCount >= bilgiMinPublishedQuestions;
-}
+/// Approved questions required in kolay, orta, zor, and efsane.
+/// The admin row is green, and the player sees the category or subcategory, only when every difficulty reaches this.
+const bilgiMinPublishedPerDifficulty = 75;
 
-/// A subcategory stays out of the game until each difficulty holds its even share of [bilgiMinPublishedQuestions].
-/// Sixty splits as 15 kolay, 15 orta, 15 zor and 15 efsane. The category total is a separate check.
-bool bilgiSubListed(String categoryId, String subName, Map<String, int> slices) {
+/// Player lists and category leagues share this rule.
+/// [slices] holds the category buckets `id||kolay` … `id||efsane` already summed for that category.
+/// Null is not loaded yet and stays hidden. One short difficulty hides the category.
+bool bilgiCategoryListed(String categoryId, Map<String, int>? slices) {
   final category = categoryId.trim();
-  final sub = subName.trim();
-  if (category.isEmpty || sub.isEmpty) return false;
-  final quotas = bilgiMixQuotas(bilgiMinPublishedQuestions);
-  for (var i = 0; i < bilgiDifficultyLevels.length; i++) {
-    final count = slices['$category|$sub|${bilgiDifficultyLevels[i]}'] ?? 0;
-    if (count < quotas[i]) return false;
+  if (category.isEmpty || slices == null) return false;
+  for (final level in bilgiDifficultyLevels) {
+    if ((slices['$category||$level'] ?? 0) < bilgiMinPublishedPerDifficulty) return false;
   }
   return true;
 }
 
-/// Yayın tablosundaki kolay, orta, zor, efsane sayıları 15 eşiğini geçiyor mu.
+/// A subcategory stays out of the game until each of its own four difficulties has [bilgiMinPublishedPerDifficulty] approved questions.
+bool bilgiSubListed(String categoryId, String subName, Map<String, int> slices) {
+  final category = categoryId.trim();
+  final sub = subName.trim();
+  if (category.isEmpty || sub.isEmpty) return false;
+  for (final level in bilgiDifficultyLevels) {
+    if ((slices['$category|$sub|$level'] ?? 0) < bilgiMinPublishedPerDifficulty) return false;
+  }
+  return true;
+}
+
+/// Yayın tablosundaki kolay, orta, zor, efsane sayıları [bilgiMinPublishedPerDifficulty] eşiğini geçiyor mu.
 bool bilgiPublishedSubReady(String categoryId, String subName, List<int> counts) {
   final slices = <String, int>{
     for (var i = 0; i < bilgiDifficultyLevels.length; i++)
@@ -168,15 +174,15 @@ bool bilgiPublishedSubReady(String categoryId, String subName, List<int> counts)
   return bilgiSubListed(categoryId, subName, slices);
 }
 
-/// Categories with at least [bilgiMinPublishedQuestions] approved questions.
-/// Karma and the mix id stay out. A missing count is not loaded yet and stays hidden.
-List<String> bilgiLeagueCatalog(Map<String, int> publishedCounts) {
+/// Categories whose kolay, orta, zor, and efsane buckets each have [bilgiMinPublishedPerDifficulty] approved questions.
+/// Karma and the mix id stay out. A missing difficulty stays hidden.
+List<String> bilgiLeagueCatalog(Map<String, int> slices) {
   return [
     for (final category in bilgiCategories)
       if (category.id != tumuKarmaId &&
           category.id != 'karma' &&
           !bilgiSpecialEventCategory(category) &&
-          bilgiCategoryListed(category.id, publishedCounts[category.id]))
+          bilgiCategoryListed(category.id, slices))
         category.id,
   ];
 }
@@ -254,16 +260,15 @@ List<String> bilgiSortLeagueCatalog(
   return rows;
 }
 
-/// Categories where [user] has an all-time score and at least [bilgiMinPublishedQuestions] approved questions.
+/// Categories where [user] has an all-time score and every difficulty has [bilgiMinPublishedPerDifficulty] approved questions.
 List<String> bilgiMyOpenLeagueIds(
   BilgiProfile? user, {
-  required Map<String, int> publishedCounts,
+  required Map<String, int> slices,
 }) {
   if (user == null) return const [];
   return [
     for (final category in bilgiCategories)
-      if ((user.categoryScores[category.id]?.total ?? 0) > 0 &&
-          bilgiCategoryListed(category.id, publishedCounts[category.id]))
+      if ((user.categoryScores[category.id]?.total ?? 0) > 0 && bilgiCategoryListed(category.id, slices))
         category.id,
   ];
 }

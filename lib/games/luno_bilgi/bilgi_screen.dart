@@ -141,10 +141,10 @@ class _BilgiScreenState extends State<BilgiScreen> {
     super.dispose();
   }
 
-  /// Active categories whose subcategory pools add up to at least [bilgiMinPublishedQuestions].
+  /// Active categories with at least [bilgiMinPublishedPerDifficulty] approved questions in every difficulty.
   List<BilgiCategory> get _listedCategories => [
         for (final category in _game.categories)
-          if (!bilgiSpecialEventCategory(category) && bilgiCategoryListed(category.id, _game.categoryCounts[category.id])) category,
+          if (!bilgiSpecialEventCategory(category) && bilgiCategoryListed(category.id, _game.difficultySlices)) category,
       ];
 
   @override
@@ -1926,7 +1926,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
       children: [
         if (_game.notice != null) _note(_game.notice!),
         Container(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 6),
           decoration: BoxDecoration(
             gradient: const LinearGradient(
               begin: Alignment.topLeft,
@@ -1937,26 +1937,29 @@ class _BilgiScreenState extends State<BilgiScreen> {
           ),
           child: Column(
             children: [
-              Text(won ? '🎉' : '🎮', style: const TextStyle(fontSize: 28)),
-              const SizedBox(height: 4),
-              Text(won ? _game.t('result_great') : _game.t('result_done'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 4),
-              Text(_game.t('mode_${mode.id}'), style: const TextStyle(color: Color(0xE6FFFFFF), fontSize: 13)),
+              Text(won ? '🎉' : '🎮', style: const TextStyle(fontSize: 20, height: 1)),
+              const SizedBox(height: 2),
+              Text(
+                won ? _game.t('result_great') : _game.t('result_done'),
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, height: 1.05),
+              ),
+              const SizedBox(height: 2),
+              Text(_game.t('mode_${mode.id}'), style: const TextStyle(color: Color(0xE6FFFFFF), fontSize: 13, height: 1.1)),
               if (round.standings.length > 1) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
                 for (final seat in round.standings)
                   Text(
                     '${seat['name']} • ${seat['score'] ?? '0'}',
-                    style: const TextStyle(color: Color(0xE6FFFFFF), fontWeight: FontWeight.w700),
+                    style: const TextStyle(color: Color(0xE6FFFFFF), fontWeight: FontWeight.w700, height: 1.1),
                   ),
               ],
-              const SizedBox(height: 8),
-              Text(_grouped(round.score), style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w900, color: BilgiColors.secondary, height: 1)),
               const SizedBox(height: 4),
+              Text(_grouped(round.score), style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w900, color: BilgiColors.secondary, height: 1)),
+              const SizedBox(height: 2),
               const Text(
                 'Kazanılan Lig Puanı',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Color(0xCCFFFFFF), fontSize: 13, fontWeight: FontWeight.w800),
+                style: TextStyle(color: Color(0xCCFFFFFF), fontSize: 13, fontWeight: FontWeight.w800, height: 1.1),
               ),
             ],
           ),
@@ -2503,7 +2506,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
 
   List<Widget> _leagueCategories() {
     final ids = bilgiSortLeagueCatalog(
-      bilgiLeagueCatalog(_game.categoryCounts),
+      bilgiLeagueCatalog(_game.difficultySlices),
       sort: _leagueSort,
       questionCounts: _game.categoryCounts,
       playerCounts: _game.boardCategoryPlayerCounts,
@@ -2522,7 +2525,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
       if (ids.isEmpty)
         const Padding(
           padding: EdgeInsets.all(20),
-          child: Text('60 onaylı sorusu olan kategori yok.'),
+          child: Text('Her zorlukta $bilgiMinPublishedPerDifficulty onaylı sorusu olan kategori yok.'),
         )
       else
         for (final id in ids) _leagueCategoryRow(id),
