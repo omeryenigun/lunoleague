@@ -1,4 +1,31 @@
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_rules.dart';
+
+/// Host picks one of these question counts for a duel or private room.
+const bilgiInviteCounts = [5, 10, 20];
+
+/// Host picks one of these per-question timers, in seconds.
+const bilgiInviteSeconds = [10, 15, 20];
+
+const bilgiInviteDifficulties = {'kolay', 'orta', 'zor', 'efsane', 'hepsi', bilgiMixDifficulty};
+
+bool bilgiInviteMode(String modeId) => modeId == 'duello' || modeId == 'oda';
+
+int bilgiInviteCount(String kind, int requested) {
+  if (bilgiInviteCounts.contains(requested)) return requested;
+  return kind == 'duello' ? 10 : 20;
+}
+
+int bilgiInvitePace(String kind, int requested) {
+  if (bilgiInviteSeconds.contains(requested)) return requested;
+  return kind == 'duello' ? 10 : 15;
+}
+
+String bilgiInviteDifficulty(String requested) {
+  final value = requested.trim();
+  if (bilgiInviteDifficulties.contains(value)) return value;
+  return 'hepsi';
+}
 
 class BilgiRoomSync {
   const BilgiRoomSync({
@@ -35,6 +62,8 @@ class BilgiRoomHooks {
     required String categoryId,
     required String subcategory,
     required String difficulty,
+    required int questionCount,
+    required int seconds,
   }) create;
 
   final Future<BilgiRoomSync> Function({

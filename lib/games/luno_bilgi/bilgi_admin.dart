@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:kelimelig/admin/word_csv_pick.dart';
+import 'package:kelimelig/api/bilgi_bank_query.dart';
 import 'package:kelimelig/core/constants/game_version.dart';
 import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/core/mail/mail_template.dart';
@@ -94,6 +95,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   var _bankStatus = '';
   var _bankLang = '';
   var _bankReviewed = '';
+  var _bankDetail = '';
   var _bankPage = 0;
   var _bankPageSize = bilgiBankPageSize;
   BilgiBankSummary _bankSummary = BilgiBankSummary.empty;
@@ -328,6 +330,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
         status: _bankStatus,
         translation: _bankLang,
         reviewed: _bankReviewed,
+        detail: _bankDetail,
         search: _bankSearch.text,
         categorySubs: category?.subs ?? const <String>[],
         isTranslated: _questionReady,
@@ -350,6 +353,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       status: _bankStatus,
       translation: _bankLang,
       reviewed: _bankReviewed,
+      detail: _bankDetail,
       search: _bankSearch.text,
       page: _bankPage,
       size: _bankPageSize,
@@ -383,6 +387,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       status: status.isEmpty ? _bankStatus : status,
       translation: translation.isEmpty ? (status.isEmpty ? _bankLang : translation) : translation,
       reviewed: status.isEmpty ? _bankReviewed : '',
+      detail: status.isEmpty ? _bankDetail : '',
       search: status.isEmpty ? _bankSearch.text : '',
       page: 0,
       size: 200,
@@ -401,6 +406,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
         status: status.isEmpty ? _bankStatus : status,
         translation: translation.isEmpty ? (status.isEmpty ? _bankLang : translation) : translation,
         reviewed: status.isEmpty ? _bankReviewed : '',
+        detail: status.isEmpty ? _bankDetail : '',
         search: status.isEmpty ? _bankSearch.text : '',
         page: page,
         size: 200,
@@ -2033,6 +2039,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       _bankStatus = '';
       _bankLang = '';
       _bankReviewed = '';
+      _bankDetail = '';
       _bankPage = 0;
       _bulkMenu = '';
       _moveCat = '';
@@ -2198,6 +2205,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                   _select(_bankDiff, [('','Tüm Zorluklar'), ('kolay','Kolay'), ('orta','Orta'), ('zor','Zor'), ('efsane','Efsane')], (v) { _bankDiff = v; _retuneBank(); }),
                   _select(_bankStatus, [('','Tüm Durumlar'), ('approved','Onaylı'), ('pending','Bekleyen'), ('draft','Taslak'), ('rejected','Reddedilen')], (v) { _bankStatus = v; _retuneBank(); }),
                   _select(_bankLang, [('','Tüm Tercümeler'), ('ready','Tercüme tamam'), ('missing','Tercüme eksik')], (v) { _bankLang = v; _retuneBank(); }),
+                  _select(_bankDetail, [('','Tüm detay'), ('filled','Detay dolu'), ('empty','Boş')], (v) { _bankDetail = v; _retuneBank(); }),
                   _select(_bankReviewed, [('','Tüm Kontroller'), ('yes','Kontrol edildi'), ('no','Kontrol edilmedi')], (v) { _bankReviewed = v; _retuneBank(); }),
                 ],
               ),
@@ -2972,6 +2980,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                   const SizedBox(height: 6),
                   const Text('Açıklama, soru cevaplandıktan sonra gösterilen doğru cevap metnidir. Virgül varsa tırnak içine alın.', style: TextStyle(color: Colors.white70, fontSize: 13)),
                   const SizedBox(height: 6),
+                  const Text('İpucu isteğe bağlıdır. Boşsa ipucu jokeri o soruda pasif kalır.', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                  const SizedBox(height: 6),
                   const Text('Kategori ana kategori adıdır. Alt kategori zorunludur. Bilinmeyen satır atlanır. Yeni sorular onay bekler.', style: TextStyle(color: Colors.white70, fontSize: 13)),
                 ]),
               ],
@@ -3050,6 +3060,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
           categoryId: category,
           difficulty: difficulty,
           explanation: fields.explanation,
+          hint: fields.hint.length > 500 ? fields.hint.substring(0, 500) : fields.hint,
           status: 'pending',
           tags: [subcategory],
         ),
@@ -5394,7 +5405,10 @@ class _QuestionFormState extends State<_QuestionForm> {
           )
         : _bag[id];
     if (row == null) return false;
-    return bilgiLanguageFieldsReady(row.text, row.options, row.explanation);
+    if (!bilgiLanguageFieldsReady(row.text, row.options, row.explanation)) return false;
+    if (id == 'tr') return true;
+    final sourceHint = _lang == 'tr' ? _hint.text.trim() : (_bag['tr']?.hint.trim() ?? '');
+    return bilgiTranslatedHintReady(sourceHint, row.hint);
   }
 
   void _storeLang() {
@@ -5553,7 +5567,8 @@ class _QuestionFormState extends State<_QuestionForm> {
               if (entry.key != 'tr' &&
                   _publishedLocales.contains(entry.key) &&
                   entry.value.text.isNotEmpty &&
-                  entry.value.options.every((item) => item.isNotEmpty))
+                  entry.value.options.every((item) => item.isNotEmpty) &&
+                  bilgiTranslatedHintReady(turkish?.hint ?? '', entry.value.hint))
                 entry.key: entry.value,
           },
         ),
@@ -6115,6 +6130,7 @@ List<BilgiQuestion> bilgiFilterBankQuestions(
   String status = '',
   String translation = '',
   String reviewed = '',
+  String detail = '',
   String search = '',
   Iterable<String> categorySubs = const [],
   bool Function(BilgiQuestion question)? isTranslated,
@@ -6141,6 +6157,7 @@ List<BilgiQuestion> bilgiFilterBankQuestions(
         status: wantedStatus,
         translation: translation.trim(),
         reviewed: reviewed.trim(),
+        detail: detail.trim(),
         searching: searching,
         foldedQuery: foldedQuery,
         isTranslated: isTranslated,
@@ -6158,6 +6175,7 @@ bool _bilgiBankVisible(
   required String status,
   required String translation,
   required String reviewed,
+  required String detail,
   required bool searching,
   required String foldedQuery,
   required bool Function(BilgiQuestion question)? isTranslated,
@@ -6169,6 +6187,7 @@ bool _bilgiBankVisible(
   final translated = isTranslated?.call(question) ?? false;
   if (translation == 'ready' && !translated) return false;
   if (translation == 'missing' && translated) return false;
+  if (!bilgiBankDetailVisible(detail, question.explanation, question.hint)) return false;
   if (reviewed == 'yes' && !question.reviewed) return false;
   if (reviewed == 'no' && question.reviewed) return false;
   if (!searching) return true;

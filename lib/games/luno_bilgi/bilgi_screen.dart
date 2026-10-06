@@ -21,6 +21,7 @@ import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_opening_loader.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_profile_name.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_report.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_room.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_rules.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_round_loading.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
@@ -61,6 +62,13 @@ class _BilgiScreenState extends State<BilgiScreen> {
   bool _goldHelpQueued = false;
   bool _duelJoin = false;
   bool _roomJoin = false;
+  bool _duelForm = false;
+  bool _roomForm = false;
+  String _inviteCategory = tumuKarmaId;
+  String _inviteSub = '';
+  String _inviteDifficulty = 'hepsi';
+  int _inviteCount = 10;
+  int _inviteSeconds = 10;
 
   @override
   void initState() {
@@ -85,8 +93,14 @@ class _BilgiScreenState extends State<BilgiScreen> {
     }
     final help = _game.goldHelpSerial;
     final focusGold = _game.pendingShopGold && _game.page == 'shop';
-    if (_game.page != 'duel') _duelJoin = false;
-    if (_game.page != 'room') _roomJoin = false;
+    if (_game.page != 'duel') {
+      _duelJoin = false;
+      _duelForm = false;
+    }
+    if (_game.page != 'room') {
+      _roomJoin = false;
+      _roomForm = false;
+    }
     _refreshProfileName();
     if (mounted) setState(() {});
     if (help != _goldHelpSeen) {
@@ -1867,12 +1881,13 @@ class _BilgiScreenState extends State<BilgiScreen> {
                     item.$2,
                     _game.t('joker_${item.$1}'),
                     _game.profile?.jokers[item.$1] ?? 0,
-                    round.jokersUsed >= round.jokerMax
+                    round.jokersUsed >= round.jokerMax || (item.$1 == 'hint' && (shown?.hint.trim().isEmpty ?? true))
                         ? null
                         : () => setState(() {
                               _jokerPrompt = item.$1;
                               _jokerPromptIndex = round.index;
                             }),
+                    dim: item.$1 == 'hint' && (shown?.hint.trim().isEmpty ?? true),
                   ),
               ],
             ),
@@ -3290,13 +3305,17 @@ class _BilgiScreenState extends State<BilgiScreen> {
       children: [
         _pageHeader(
           _game.t('page_duel'),
-          onBack: _duelJoin && !lobby
-              ? () => setState(() => _duelJoin = false)
-              : _game.back,
+          onBack: _duelForm && !lobby
+              ? () => setState(() => _duelForm = false)
+              : _duelJoin && !lobby
+                  ? () => setState(() => _duelJoin = false)
+                  : _game.back,
         ),
         if (_game.notice != null) _note(_game.notice!),
         if (lobby)
           _roomLobby(room)
+        else if (_duelForm)
+          ..._inviteForm('duello')
         else if (_duelJoin)
           _codeJoin(
             title: 'Düelloya katıl',
@@ -3309,15 +3328,15 @@ class _BilgiScreenState extends State<BilgiScreen> {
           ),
           BilgiPrimaryButton(
             label: 'Düello Oluştur',
-            onTap: () {
-              setState(() => _duelJoin = false);
-              _game.makeRoom('duello');
-            },
+            onTap: () => _openInviteForm('duello'),
           ),
           const SizedBox(height: 12),
           BilgiPrimaryButton(
             label: 'Düelloya Katıl',
-            onTap: () => setState(() => _duelJoin = true),
+            onTap: () => setState(() {
+              _duelForm = false;
+              _duelJoin = true;
+            }),
           ),
         ],
       ],
@@ -3336,13 +3355,17 @@ class _BilgiScreenState extends State<BilgiScreen> {
       children: [
         _pageHeader(
           lobby ? title : 'Özel oda',
-          onBack: _roomJoin && !lobby
-              ? () => setState(() => _roomJoin = false)
-              : _game.back,
+          onBack: _roomForm && !lobby
+              ? () => setState(() => _roomForm = false)
+              : _roomJoin && !lobby
+                  ? () => setState(() => _roomJoin = false)
+                  : _game.back,
         ),
         if (_game.notice != null) _note(_game.notice!),
         if (lobby)
           _roomLobby(room)
+        else if (_roomForm)
+          ..._inviteForm('oda')
         else if (_roomJoin)
           _codeJoin(
             title: 'Özel odaya katıl',
@@ -3355,19 +3378,235 @@ class _BilgiScreenState extends State<BilgiScreen> {
           ),
           BilgiPrimaryButton(
             label: 'Özel Oda Kur',
-            onTap: () {
-              setState(() => _roomJoin = false);
-              _game.makeRoom('oda');
-            },
+            onTap: () => _openInviteForm('oda'),
           ),
           const SizedBox(height: 12),
           BilgiPrimaryButton(
             label: 'Özel Odaya Katıl',
-            onTap: () => setState(() => _roomJoin = true),
+            onTap: () => setState(() {
+              _roomForm = false;
+              _roomJoin = true;
+            }),
           ),
         ],
       ],
     );
+  }
+
+  void _openInviteForm(String kind) {
+    setState(() {
+      _inviteCategory = tumuKarmaId;
+      _inviteSub = '';
+      _inviteDifficulty = 'hepsi';
+      _inviteCount = kind == 'duello' ? 10 : 20;
+      _inviteSeconds = kind == 'duello' ? 10 : 15;
+      if (kind == 'duello') {
+        _duelJoin = false;
+        _duelForm = true;
+      } else {
+        _roomJoin = false;
+        _roomForm = true;
+      }
+    });
+  }
+
+  List<Widget> _inviteForm(String kind) {
+    final subs = _inviteSubs();
+    final diffs = [
+      (const Color(0xFF3DDC97), 'Kolay', 'kolay'),
+      (const Color(0xFFFFB800), 'Orta', 'orta'),
+      (const Color(0xFFFF4D6D), 'Zor', 'zor'),
+      (const Color(0xFF8A879E), 'Efsane', 'efsane'),
+      (const Color(0xFFB388FF), 'Karışık', bilgiMixDifficulty),
+      (const Color(0xFF7EB6FF), 'Hepsi', 'hepsi'),
+    ];
+    final categories = <(String, String)>[
+      (tumuKarmaId, 'Tümü Karma'),
+      for (final category in _game.categories) (category.id, _game.categoryLabel(category.id, category.name)),
+    ];
+    return [
+      const Padding(
+        padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
+        child: Text(
+          'Kategori, zorluk, soru sayısı ve süreyi sen seçersin. Başlangıçta can ve reklam yok. Reklam tur bitince açılır.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: BilgiColors.muted, fontSize: 13),
+        ),
+      ),
+      _sectionLabel('KATEGORİ'),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: _inviteMenu(
+          value: _inviteCategory,
+          options: categories,
+          onChanged: (value) => setState(() {
+            _inviteCategory = value;
+            _inviteSub = '';
+          }),
+        ),
+      ),
+      if (_inviteCategory != tumuKarmaId && subs.isNotEmpty) ...[
+        _sectionLabel('ALT KATEGORİ'),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: _inviteMenu(
+            value: _inviteSub,
+            options: [
+              ('', 'Tüm alt kategoriler'),
+              for (final sub in subs) (sub, _game.subLabel(_inviteCategory, sub)),
+            ],
+            onChanged: (value) => setState(() => _inviteSub = value),
+          ),
+        ),
+      ],
+      _sectionLabel('ZORLUK'),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+        child: _setupTray(
+          child: Column(
+            children: [
+              for (var row = 0; row < 2; row++) ...[
+                if (row > 0) const SizedBox(height: 4),
+                Row(
+                  children: [
+                    for (final item in (row == 0 ? diffs.take(3) : diffs.skip(3)))
+                      Expanded(
+                        child: _setupDiffChip(
+                          color: item.$1,
+                          label: item.$2,
+                          active: _inviteDifficulty == item.$3,
+                          onTap: () => setState(() => _inviteDifficulty = item.$3),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      _sectionLabel('SORU SAYISI'),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: _setupTray(
+          child: Row(
+            children: [
+              for (final count in bilgiInviteCounts)
+                Expanded(
+                  child: _setupCountSeg(
+                    count: count,
+                    active: _inviteCount == count,
+                    onTap: () => setState(() => _inviteCount = count),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+      _sectionLabel('SÜRE'),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: _setupTray(
+          child: Row(
+            children: [
+              for (final pace in bilgiInviteSeconds)
+                Expanded(
+                  child: _setupCountSeg(
+                    count: pace,
+                    active: _inviteSeconds == pace,
+                    onTap: () => setState(() => _inviteSeconds = pace),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+      const Padding(
+        padding: EdgeInsets.fromLTRB(24, 6, 20, 0),
+        child: Text('Saniye, her soru için.', style: TextStyle(color: BilgiColors.muted, fontSize: 11)),
+      ),
+      const SizedBox(height: 16),
+      BilgiPrimaryButton(
+        label: kind == 'duello' ? 'Düello Oluştur' : 'Özel Oda Kur',
+        onTap: () {
+          final category = _inviteCategory;
+          final sub = category == tumuKarmaId ? '' : _inviteSub;
+          _game.makeRoom(
+            kind,
+            categoryId: category,
+            subcategory: sub,
+            difficulty: _inviteDifficulty,
+            questionCount: _inviteCount,
+            seconds: _inviteSeconds,
+          );
+        },
+      ),
+      const SizedBox(height: 24),
+    ];
+  }
+
+  List<String> _inviteSubs() {
+    if (_inviteCategory == tumuKarmaId) return const [];
+    final live = _game.categories.where((item) => item.id == _inviteCategory).firstOrNull;
+    final all = live?.subs ?? const <String>[];
+    return [
+      for (final sub in all)
+        if (bilgiSubListed(_inviteCategory, sub, _game.difficultySlices)) sub,
+    ];
+  }
+
+  Widget _inviteMenu({
+    required String value,
+    required List<(String, String)> options,
+    required ValueChanged<String> onChanged,
+  }) {
+    final selected = options.any((item) => item.$1 == value) ? value : options.first.$1;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: BilgiColors.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xD9F4F1FB), width: 1.5),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            isExpanded: true,
+            value: selected,
+            dropdownColor: const Color(0xFF1C1A33),
+            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700),
+            items: [
+              for (final item in options)
+                DropdownMenuItem(
+                  value: item.$1,
+                  child: Text(item.$2, overflow: TextOverflow.ellipsis),
+                ),
+            ],
+            onChanged: (next) {
+              if (next != null) onChanged(next);
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _inviteSummary(BilgiRoom room) {
+    final category = _game.categories.where((item) => item.id == room.categoryId).firstOrNull;
+    final name = room.categoryId == tumuKarmaId || category == null
+        ? 'Tümü Karma'
+        : _game.categoryLabel(category.id, category.name);
+    final sub = room.subcategory.trim();
+    final where = sub.isEmpty ? name : '$name • ${_game.subLabel(room.categoryId, sub)}';
+    final level = switch (room.difficulty) {
+      'kolay' => 'Kolay',
+      'orta' => 'Orta',
+      'zor' => 'Zor',
+      'efsane' => 'Efsane',
+      'karisik' => 'Karışık',
+      _ => 'Hepsi',
+    };
+    return '$where • $level • ${room.questionCount} soru • ${room.seconds} sn';
   }
 
   Widget _roomLobby(BilgiRoom room) {
@@ -3382,6 +3621,8 @@ class _BilgiScreenState extends State<BilgiScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Kod ${room.code}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 4),
+                Text(_inviteSummary(room), style: const TextStyle(color: BilgiColors.muted, fontSize: 12)),
                 const SizedBox(height: 4),
                 const Text('Aynı sorular herkese iner. Puanlar tur boyunca görünür.', style: TextStyle(color: BilgiColors.muted, fontSize: 12)),
                 TextButton(
@@ -4911,11 +5152,13 @@ class _BilgiScreenState extends State<BilgiScreen> {
     if (afterUse < beforeUse) setState(() => _jokerBurst = type);
   }
 
-  Widget _jokerButton(String emoji, String label, int stock, VoidCallback? onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: SizedBox(
+  Widget _jokerButton(String emoji, String label, int stock, VoidCallback? onTap, {bool dim = false}) {
+    return Opacity(
+      opacity: dim ? 0.35 : 1,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: SizedBox(
         width: 60,
         height: 58,
         child: Stack(
@@ -4958,6 +5201,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 

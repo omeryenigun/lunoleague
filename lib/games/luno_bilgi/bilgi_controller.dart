@@ -129,6 +129,7 @@ class BilgiController extends ChangeNotifier {
   List<String> _badgesBeforePick = const [];
   bool scoreDoubled = false;
   bool adWatching = false;
+  bool _endingRound = false;
   BilgiRewardLoad? rewardLoad;
   int _rewardEpoch = 0;
   bool _alive = true;
@@ -675,7 +676,7 @@ class BilgiController extends ChangeNotifier {
     back();
   }
 
-  Future<void> start({bool adCleared = false, int? count, String? forcedMode}) async {
+  Future<void> start({bool adCleared = false, int? count, int? seconds, String? forcedMode}) async {
     if (busy) return;
     final mode = forcedMode ?? modeId;
     final pending = round;
@@ -736,6 +737,7 @@ class BilgiController extends ChangeNotifier {
       subcategory: saved?.subcategory ?? subName,
       difficulty: saved?.difficulty ?? (freshLeague ? 'hepsi' : difficulty),
       questionCount: freshLeague ? bilgiModeById('lig').questions : (count ?? questionChoice),
+      seconds: seconds,
       adCleared: saved != null || adCleared,
       fixedQuestions: saved?.questions,
       fixedSpare: saved?.spare,
@@ -1113,7 +1115,7 @@ class BilgiController extends ChangeNotifier {
   Future<void> useJoker(String type) async {
     final live = round;
     if (live == null) return;
-    final result = await server.useJoker(roundId: live.id, type: type);
+    final result = await server.useJoker(roundId: live.id, type: type, locale: locale);
     profile = result.profile ?? profile;
     round = result.round ?? live;
     if (result.message == 'joker') {
@@ -1131,22 +1133,39 @@ class BilgiController extends ChangeNotifier {
   }
 
   Future<void> endRound() async {
+    if (_endingRound) return;
     final live = round;
-    if (live == null) return;
-    _timer?.cancel();
-    final beforeBadges = [...?profile?.badges];
-    final result = await server.finish(live.id);
-    profile = result.profile ?? profile;
-    round = result.round ?? live;
-    if (live.modeId == 'gunluk') dailyQuestionUsed = true;
-    if (bilgiLeagueResumable(live.modeId)) unawaited(_syncLeague(result.round ?? live));
-    _clearRoomAfterRound(result.round ?? live);
-    newBadgeIds = (profile?.badges ?? const []).where((id) => !beforeBadges.contains(id)).toList();
-    revealing = false;
-    stack
-      ..clear()
-      ..add('result');
-    notifyListeners();
+    if (live == null || live.finished) return;
+    _endingRound = true;
+    try {
+      _timer?.cancel();
+      final beforeBadges = [...?profile?.badges];
+      final result = await server.finish(live.id);
+      if (!_alive) return;
+      profile = result.profile ?? profile;
+      round = result.round ?? live;
+      if (live.modeId == 'gunluk') dailyQuestionUsed = true;
+      if (bilgiLeagueResumable(live.modeId)) unawaited(_syncLeague(result.round ?? live));
+      _clearRoomAfterRound(result.round ?? live);
+      newBadgeIds = (profile?.badges ?? const []).where((id) => !beforeBadges.contains(id)).toList();
+      revealing = false;
+      if (bilgiInviteMode(live.modeId)) await _playInviteEndAd();
+      if (!_alive) return;
+      stack
+        ..clear()
+        ..add('result');
+      notifyListeners();
+    } finally {
+      _endingRound = false;
+    }
+  }
+
+  Future<void> _playInviteEndAd() async {
+    final user = profile;
+    if (user == null || ads == null) return;
+    if (bilgiPlusActive(user, DateTime.now())) return;
+    if (user.adFreeLeft > 0) return;
+    await _playAd();
   }
 
   /// Today's post-game 2x watches. A counter from another day does not count.
@@ -1542,7 +1561,14 @@ class BilgiController extends ChangeNotifier {
     back();
   }
 
-  Future<void> makeRoom(String kind) async {
+  Future<void> makeRoom(
+    String kind, {
+    required String categoryId,
+    required String subcategory,
+    required String difficulty,
+    required int questionCount,
+    required int seconds,
+  }) async {
     final waiting = room;
     if (waiting != null && (waiting.status == 'lobby' || waiting.status == 'playing')) {
       notice = waiting.status == 'playing' ? 'Tur bitmeden yeni oda açılmaz.' : 'Önce açık odayı kapat.';
@@ -1552,8 +1578,10 @@ class BilgiController extends ChangeNotifier {
     room = await server.createRoom(
       kind: kind,
       categoryId: categoryId,
-      subcategory: subName,
+      subcategory: subcategory,
       difficulty: difficulty,
+      questionCount: questionCount,
+      seconds: seconds,
     );
     if (room == null) {
       notice = 'Oda açılamadı. Bağlantını kontrol et.';
@@ -1623,9 +1651,10 @@ class BilgiController extends ChangeNotifier {
       return;
     }
     categoryId = current.categoryId;
-    difficulty = current.difficulty;
+    subName = current.subcategory;
+    difficulty = current.difficulty.isEmpty ? 'hepsi' : current.difficulty;
     modeId = current.kind == 'duello' ? 'duello' : 'oda';
-    await start(count: current.questionCount, forcedMode: modeId);
+    await start(count: current.questionCount, seconds: current.seconds, forcedMode: modeId);
   }
 
   Future<void> leaveRoom() async {
@@ -1747,6 +1776,7 @@ class BilgiController extends ChangeNotifier {
       subcategory: subName,
       difficulty: difficulty,
       questionCount: sync.questions.length,
+      seconds: current.seconds,
       fixedQuestions: sync.questions,
       fixedSpares: sync.spares.isNotEmpty
           ? sync.spares

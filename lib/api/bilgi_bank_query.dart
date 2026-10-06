@@ -105,6 +105,42 @@ String _readyBundle(List<String> locales) {
   return '(${parts.join(' and ')})';
 }
 
+/// Açıklama veya ipucu kırpılınca boşsa soru boştur. İkisi de doluysa detay dolu.
+/// Null boş sayılır. Tercüme alanları sayılmaz; kaynak metin yeter.
+bool bilgiBankDetailEmpty(String? explanation, String? hint) {
+  return (explanation ?? '').trim().isEmpty || (hint ?? '').trim().isEmpty;
+}
+
+/// `detail` boş, `filled` veya `empty`. Bilinmeyen değer süzgeç uygulamaz.
+bool bilgiBankDetailVisible(String detail, String? explanation, String? hint) {
+  switch (detail.trim()) {
+    case 'empty':
+      return bilgiBankDetailEmpty(explanation, hint);
+    case 'filled':
+      return !bilgiBankDetailEmpty(explanation, hint);
+    default:
+      return true;
+  }
+}
+
+/// Sayfa sorgusundaki detay koşulu. Boş dize süzgeç yok demektir.
+/// Kaynak sütunlar `q.explanation` ve `q.hint`.
+String bilgiBankDetailSql(String detail) {
+  final empty = '(${_detailBlankSql('q.explanation')} or ${_detailBlankSql('q.hint')})';
+  switch (detail.trim()) {
+    case 'empty':
+      return 'and $empty';
+    case 'filled':
+      return 'and not $empty';
+    default:
+      return '';
+  }
+}
+
+String _detailBlankSql(String column) {
+  return "coalesce($column, '') ~ '^[[:space:]]*\$'";
+}
+
 String _turkishReady() {
   return '''
 (

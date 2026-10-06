@@ -271,7 +271,7 @@ Future<({Map<String, BilgiTranslation> translations, String? error})> _translate
           body: jsonEncode({
             'model': model,
             'temperature': 0.2,
-            'max_tokens': 2000,
+            'max_tokens': 4096,
             'messages': [
               {
                 'role': 'system',
@@ -279,7 +279,7 @@ Future<({Map<String, BilgiTranslation> translations, String? error})> _translate
                     'Translate this Turkish trivia item into ${locales.join(', ')}. '
                     'Keep the four options in the same order. Do not change which option is correct. '
                     'Every text, option, and explanation must be non-empty. '
-                    '${withHint ? 'Translate hint as a short clue that does not name the correct option. Every hint must be non-empty. ' : ''}'
+                    '${bilgiHintTranslateRule(q.hint)}'
                     'Return only JSON: {$sample}.',
               },
               {
@@ -343,12 +343,20 @@ Future<({Map<String, BilgiTranslation> translations, String? error})> _translate
   final out = <String, BilgiTranslation>{};
   for (final locale in locales) {
     final row = BilgiTranslation.fromMap(raw[locale]);
-    if (row == null ||
-        !bilgiLanguageFieldsReady(row.text, row.options, row.explanation) ||
-        !bilgiTranslatedHintReady(sourceHint, row.hint)) {
+    if (row == null) {
       return (translations: <String, BilgiTranslation>{}, error: 'incomplete_locale_$locale');
     }
-    out[locale] = row;
+    final hint = bilgiClipTranslatedHint(row.hint);
+    if (!bilgiLanguageFieldsReady(row.text, row.options, row.explanation) ||
+        !bilgiTranslatedHintReady(sourceHint, hint)) {
+      return (translations: <String, BilgiTranslation>{}, error: 'incomplete_locale_$locale');
+    }
+    out[locale] = BilgiTranslation(
+      text: row.text,
+      options: row.options,
+      explanation: row.explanation,
+      hint: hint,
+    );
   }
   return (translations: out, error: null);
 }

@@ -648,14 +648,19 @@ void main() {
 
   test('csv explanation and every question field survive the save', () async {
     const raw =
-        'soru,a,b,c,d,dogru,kategori,altkategori,zorluk,aciklama\n'
-        'Osmanlı\'nın kurucusu?,Orhan,Osman,Murat,Bayezid,B,Osmanlı Tarihi,Kuruluş,kolay,"Osman Bey, 1299\'da kurmuştur."\n'
-        'Eski satır?,A,B,C,D,A,Osmanlı Tarihi,Kuruluş,orta\n';
+        'soru,a,b,c,d,dogru,kategori,altkategori,zorluk,aciklama,ipucu\n'
+        'Osmanlı\'nın kurucusu?,Orhan,Osman,Murat,Bayezid,B,Osmanlı Tarihi,Kuruluş,kolay,"Osman Bey, 1299\'da kurmuştur.",Beylik sınırında kurulmuştur.\n'
+        'Eski satır?,A,B,C,D,A,Osmanlı Tarihi,Kuruluş,orta\n'
+        'Açıklamalı?,A,B,C,D,A,Osmanlı Tarihi,Kuruluş,kolay,Kısa açıklama\n';
     final lines = raw.split('\n').map(parseBilgiCsvLine).toList();
     expect(lines[0].kind, BilgiCsvKind.header);
     expect(lines[1].kind, BilgiCsvKind.row);
     expect(lines[1].fields!.explanation, "Osman Bey, 1299'da kurmuştur.");
+    expect(lines[1].fields!.hint, 'Beylik sınırında kurulmuştur.');
     expect(lines[2].fields!.explanation, isEmpty);
+    expect(lines[2].fields!.hint, isEmpty);
+    expect(lines[3].fields!.explanation, 'Kısa açıklama');
+    expect(lines[3].fields!.hint, isEmpty);
 
     final fields = lines[1].fields!;
     final question = BilgiQuestion(
@@ -666,6 +671,7 @@ void main() {
       correct: 1,
       difficulty: 'kolay',
       explanation: fields.explanation,
+      hint: fields.hint,
       status: 'pending',
       tags: const ['Kuruluş'],
     );
@@ -675,6 +681,7 @@ void main() {
     final stored = (await server.questions()).single;
     expect(sameStoredBilgiQuestion(stored, question), isTrue);
     expect(stored.explanation, "Osman Bey, 1299'da kurmuştur.");
+    expect(stored.hint, 'Beylik sınırında kurulmuştur.');
     expect(stored.options, ['Orhan', 'Osman', 'Murat', 'Bayezid']);
     expect(stored.correct, 1);
     expect(stored.categoryId, 'osmanli');
@@ -888,7 +895,7 @@ void main() {
     );
   });
 
-  test('hint joker stores a clue and does not hide options', () async {
+  test('hint joker stays unused when the question has no hint', () async {
     final server = LunoBilgiServer(MemoryKeyValueStore(), clock: () => DateTime(2026, 9, 28));
     server.remoteDraw = ({
       required String categoryId,
@@ -918,13 +925,63 @@ void main() {
       difficulty: 'kolay',
       questionCount: 1,
     );
-    await server.buyJoker('hint');
+    final bought = await server.buyJoker('hint');
+    final stock = bought.profile!.jokers['hint'];
     final used = await server.useJoker(roundId: started.round!.id, type: 'hint');
     expect(used.message, isNull);
-    expect(used.round!.hint, "Fransa'nın başkentidir.");
-    expect(used.round!.hint, isNot(contains('Paris')));
+    expect(used.round!.hint, isEmpty);
     expect(used.round!.hidden, isEmpty);
-    expect(used.round!.jokerMax, started.round!.jokerMax);
+    expect(used.round!.jokersUsed, started.round!.jokersUsed);
+    expect(used.profile!.jokers['hint'], stock);
+  });
+
+  test('hint joker uses the stored hint and does not hide options', () async {
+    final server = LunoBilgiServer(MemoryKeyValueStore(), clock: () => DateTime(2026, 9, 28));
+    server.remoteDraw = ({
+      required String categoryId,
+      required String subcategory,
+      required String difficulty,
+      required int count,
+      required List<String> exclude,
+      required String locale,
+    }) async {
+      return const [
+        BilgiQuestion(
+          id: 'hint-q',
+          categoryId: 'genel',
+          text: 'Fransa’nın başkenti?',
+          options: ['Paris', 'Lyon', 'Nice', 'Lille'],
+          correct: 0,
+          difficulty: 'kolay',
+          explanation: "Doğru cevap Paris'tir. Fransa'nın başkentidir.",
+          hint: 'Sen nehri bu kentten geçer.',
+          tags: ['Atasözleri'],
+          translations: {
+            'en': BilgiTranslation(
+              text: 'Capital of France?',
+              options: ['Paris', 'Lyon', 'Nice', 'Lille'],
+              explanation: 'Paris is the capital.',
+              hint: 'The Seine runs through this city.',
+            ),
+          },
+        ),
+      ];
+    };
+    final started = await server.startRound(
+      modeId: 'hizli',
+      categoryId: 'genel',
+      subcategory: 'Atasözleri',
+      difficulty: 'kolay',
+      questionCount: 1,
+    );
+    await server.buyJoker('hint');
+    final usedBefore = started.round!.jokersUsed;
+    final used = await server.useJoker(roundId: started.round!.id, type: 'hint', locale: 'en');
+    expect(used.message, isNull);
+    expect(used.round!.hint, 'The Seine runs through this city.');
+    expect(used.round!.hidden, isEmpty);
+    expect(used.round!.jokersUsed, usedBefore + 1);
+    expect(used.profile!.jokers['hint'], 0);
   });
 
   test('a stored hint is used before the explanation', () {
@@ -937,6 +994,15 @@ void main() {
         correct: 0,
       ),
       'Sen nehri bu kentten geçer.',
+    );
+    expect(
+      bilgiPlayHint(
+        hint: '  ',
+        explanation: "Doğru cevap Paris'tir. Fransa'nın başkentidir.",
+        options: options,
+        correct: 0,
+      ),
+      isEmpty,
     );
     final question = BilgiQuestion(
       id: 'q',
@@ -966,6 +1032,19 @@ void main() {
     expect(bilgiTranslatedHintReady('', ''), isTrue);
     expect(bilgiTranslatedHintReady('ipucu', ''), isFalse);
     expect(bilgiTranslatedHintReady('ipucu', 'clue'), isTrue);
+    expect(bilgiHintTranslateRule(''), isEmpty);
+    expect(bilgiHintTranslateRule('   '), isEmpty);
+    final rule = bilgiHintTranslateRule('ipucu');
+    expect(rule, contains('non-empty hint'));
+    expect(rule, contains('500'));
+    expect(rule, contains('A, B, C, or D'));
+    expect(rule, contains('include the wording'));
+    expect(rule, contains('An empty hint is not allowed'));
+    expect(rule, isNot(contains('Do not name the correct option')));
+    final longHint = 'a' * 501;
+    expect(bilgiClipTranslatedHint(longHint).length, 500);
+    expect(bilgiClipTranslatedHint(' kısa '), 'kısa');
+    expect(bilgiTranslatedHintReady('ipucu', bilgiClipTranslatedHint(longHint)), isTrue);
   });
 
   test('gold help lists ad, shop, and claimable daily gold only', () {

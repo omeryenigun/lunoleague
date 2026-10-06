@@ -646,6 +646,7 @@ class LunoBilgiServer {
     String subcategory = '',
     String difficulty = '',
     int? questionCount,
+    int? seconds,
     bool adCleared = false,
     List<BilgiQuestion>? fixedQuestions,
     BilgiQuestion? fixedSpare,
@@ -681,7 +682,8 @@ class LunoBilgiServer {
     }
     final blocked = await startGate(user, mode, spendLife: chargeLife);
     if (blocked != null) return BilgiResult(message: blocked, profile: user);
-    if (needsAd(user, cfg) && !adCleared) {
+    final invite = bilgiInviteMode(mode.id);
+    if (!invite && needsAd(user, cfg) && !adCleared) {
       return BilgiResult(message: 'ad', profile: user);
     }
     final visible = resolveBilgiCategories(openedCatalog ?? await catalog(), playableOnly: true).where((category) => category.publishesIn(user.locale));
@@ -717,9 +719,9 @@ class LunoBilgiServer {
         lives: cfg.livesEnabled ? user.lives - mode.lifeCost : user.lives,
         livesAt: user.lives >= cfg.maxLives ? _clock() : user.livesAt,
         gamesPlayed: user.gamesPlayed + 1,
-        adFreeLeft: user.adFreeLeft > 0 ? user.adFreeLeft - 1 : 0,
-        lastPlayDay: today,
-        freePlaysUsed: user.adFreeLeft > 0
+        adFreeLeft: invite || user.adFreeLeft <= 0 ? user.adFreeLeft : user.adFreeLeft - 1,
+        lastPlayDay: invite ? user.lastPlayDay : today,
+        freePlaysUsed: invite || user.adFreeLeft > 0
             ? user.freePlaysUsed
             : (user.lastPlayDay == today ? user.freePlaysUsed : 0) + 1,
       );
@@ -752,7 +754,7 @@ class LunoBilgiServer {
       difficulty: difficulty,
       questions: pool,
       multiplier: mode.multiplier,
-      seconds: mode.seconds,
+      seconds: seconds != null && seconds > 0 ? seconds : mode.seconds,
       totalSeconds: mode.totalSeconds,
       jokerMax: mode.jokerMax,
       lifeCost: mode.lifeCost,
@@ -987,6 +989,7 @@ class LunoBilgiServer {
   Future<BilgiResult> useJoker({
     required String roundId,
     required String type,
+    String locale = 'tr',
   }) async {
     final round = _rounds[roundId];
     final user = await profile();
@@ -1002,6 +1005,10 @@ class LunoBilgiServer {
     if (question == null) return const BilgiResult(message: '❓ Bu kategoride yeterli soru yok.');
     if (type == 'change' && _takeSpare(round, question.difficulty, remove: false) == null) {
       return BilgiResult(message: '❓ Bu kategoride yeterli soru yok.', profile: user);
+    }
+    final shown = question.shown(locale);
+    if (type == 'hint' && shown.hint.trim().isEmpty) {
+      return BilgiResult(profile: user, round: round);
     }
     BilgiProfile saved;
     if (remoteWallet != null) {
@@ -1032,10 +1039,10 @@ class LunoBilgiServer {
       round.paused = true;
     } else if (type == 'hint') {
       round.hint = bilgiPlayHint(
-        hint: question.hint,
-        explanation: question.explanation,
-        options: question.options,
-        correct: question.correct,
+        hint: shown.hint,
+        explanation: shown.explanation,
+        options: shown.options,
+        correct: shown.correct,
       );
     } else if (type == 'change') {
       final next = _takeSpare(round, question.difficulty, remove: true);
@@ -1510,7 +1517,7 @@ class LunoBilgiServer {
           seconds: 10,
           totalSeconds: 0,
           jokerMax: 2,
-          lifeCost: 1,
+          lifeCost: 0,
           waiting: true,
         ),
       );
@@ -1529,9 +1536,15 @@ class LunoBilgiServer {
     String kind = 'oda',
     String categoryId = tumuKarmaId,
     String subcategory = '',
-    String difficulty = 'orta',
+    String difficulty = 'hepsi',
+    int questionCount = 0,
+    int seconds = 0,
   }) async {
     final user = await profile();
+    final count = bilgiInviteCount(kind, questionCount);
+    final pace = bilgiInvitePace(kind, seconds);
+    final level = bilgiInviteDifficulty(difficulty);
+    final sub = categoryId == tumuKarmaId ? '' : subcategory.trim();
     final remote = remoteRooms;
     if (remote != null) {
       final sync = await remote.create(
@@ -1539,8 +1552,10 @@ class LunoBilgiServer {
         playerId: user.id,
         name: user.username,
         categoryId: categoryId,
-        subcategory: subcategory,
-        difficulty: difficulty,
+        subcategory: sub,
+        difficulty: level,
+        questionCount: count,
+        seconds: pace,
       );
       return sync.room;
     }
@@ -1550,10 +1565,10 @@ class LunoBilgiServer {
       hostId: user.id,
       hostName: user.username,
       categoryId: categoryId,
-      questionCount: kind == 'duello' ? 10 : 20,
-      seconds: kind == 'duello' ? 10 : 15,
-      difficulty: difficulty,
-      subcategory: subcategory,
+      questionCount: count,
+      seconds: pace,
+      difficulty: level,
+      subcategory: sub,
       players: [
         {'id': user.id, 'name': user.username, 'role': 'host'},
       ],

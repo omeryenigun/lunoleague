@@ -24,6 +24,8 @@ class BilgiRoomApi {
     required String categoryId,
     required String subcategory,
     required String difficulty,
+    required int questionCount,
+    required int seconds,
   }) {
     return _send('/v1/bilgi/rooms', {
       'kind': kind,
@@ -32,6 +34,8 @@ class BilgiRoomApi {
       'categoryId': categoryId,
       'subcategory': subcategory,
       'difficulty': difficulty,
+      'questionCount': questionCount,
+      'seconds': seconds,
     });
   }
 

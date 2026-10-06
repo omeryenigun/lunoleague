@@ -114,6 +114,34 @@ void main() {
     }
   });
 
+  test('detail empty keeps a blank explanation or hint, and paging uses that set', () {
+    BilgiQuestion row(String id, String explanation, String hint) {
+      return _question(
+        id: id,
+        categoryId: 'felsefe',
+        subcategory: 'Antik Yunan Felsefesi',
+        status: 'pending',
+      ).copyWith(explanation: explanation, hint: hint);
+    }
+
+    final rows = [
+      row('dolu', 'neden', 'ipucu'),
+      row('aciklama-bos', '   ', 'ipucu'),
+      row('ipucu-bos', 'neden', '\t'),
+      row('ikisi-bos', '', '  '),
+    ];
+
+    expect(bilgiFilterBankQuestions(rows, detail: 'filled').map((question) => question.id), ['dolu']);
+    expect(
+      bilgiFilterBankQuestions(rows, detail: 'empty').map((question) => question.id),
+      ['aciklama-bos', 'ipucu-bos', 'ikisi-bos'],
+    );
+
+    final window = bilgiBankWindow(bilgiFilterBankQuestions(rows, detail: 'empty'), 0);
+    expect(window.total, 3);
+    expect(window.slice.map((question) => question.id), ['aciklama-bos', 'ipucu-bos', 'ikisi-bos']);
+  });
+
   test('bank list correct column is the choice letter', () {
     expect(bilgiCorrectChoiceLetter(questions.first), 'A');
     expect(

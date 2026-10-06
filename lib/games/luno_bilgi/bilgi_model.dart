@@ -29,6 +29,25 @@ bool bilgiTranslatedHintReady(String sourceHint, String translatedHint) {
   return translatedHint.trim().isNotEmpty;
 }
 
+/// Kaynak ipucu boşsa istem ipucu istemez. Doluysa her dilde kısa çeviri zorunludur.
+/// Doğru şık harfi yazılmaz. Cevap metni kaçınılmazsa ipucu yine de yazılır.
+String bilgiHintTranslateRule(String sourceHint) {
+  if (sourceHint.trim().isEmpty) return '';
+  return 'Translate hint as a short translation of the Turkish hint in every requested language. '
+      'Never omit the hint. Every requested language must include a non-empty hint of at most 500 characters. '
+      'Do not write the letter of the correct option (A, B, C, or D). '
+      'Prefer not to copy the correct option\'s wording into the hint. '
+      'If the Turkish hint cannot be translated without that wording, still translate it and include the wording. '
+      'An empty hint is not allowed. ';
+}
+
+/// Sunucu 500 karakterden uzun ipucuyu reddeder. Çeviri kayda girmeden kesilir.
+String bilgiClipTranslatedHint(String hint) {
+  final trimmed = hint.trim();
+  if (trimmed.length <= 500) return trimmed;
+  return trimmed.substring(0, 500);
+}
+
 /// Yayın listesindeki Türkçe dışındaki diller. null veya boş: dokuz dil.
 List<String> bilgiExtraLocales(List<String>? locales) {
   if (locales == null || locales.isEmpty) {
@@ -187,7 +206,7 @@ class BilgiQuestion {
   final String difficulty;
   final String explanation;
 
-  /// Joker ipucu. Boşsa joker açıklamadan üretir.
+  /// Joker ipucu. Boşsa ipucu jokeri o soruda pasiftir.
   final String hint;
   final String status;
   final List<String> tags;
@@ -971,8 +990,8 @@ const bilgiModes = <BilgiMode>[
   BilgiMode(id: 'klasik', name: 'Klasik Tur', emoji: '🎯', blurb: '20 soru • 20 sn • 1x puan', questions: 20, seconds: 20, totalSeconds: 0, multiplier: 1, lifeCost: 1, jokerMax: 3, group: 'solo'),
   BilgiMode(id: 'maraton', name: 'Maraton', emoji: '🏃', blurb: '50 soru • 15 dk toplam süre', questions: 50, seconds: 0, totalSeconds: 900, multiplier: 2, lifeCost: 3, jokerMax: 5, group: 'solo'),
   BilgiMode(id: 'sakin', name: 'Sakin Mod', emoji: '🧘', blurb: '10 soru • Süresiz • 0.5x puan', questions: 10, seconds: 0, totalSeconds: 0, multiplier: 0.5, lifeCost: 1, jokerMax: 3, group: 'solo'),
-  BilgiMode(id: 'duello', name: 'Düello', emoji: '⚔️', blurb: 'Birebir • 10 sn • Rakip eşleşme', questions: 10, seconds: 10, totalSeconds: 0, multiplier: 1, lifeCost: 1, jokerMax: 2, group: 'multi'),
-  BilgiMode(id: 'oda', name: 'Özel Oda', emoji: '🔒', blurb: 'Arkadaşlarınla oda kur', questions: 20, seconds: 15, totalSeconds: 0, multiplier: 1, lifeCost: 1, jokerMax: 3, group: 'multi'),
+  BilgiMode(id: 'duello', name: 'Düello', emoji: '⚔️', blurb: 'Birebir • Kurucu seçer • Can yok', questions: 10, seconds: 10, totalSeconds: 0, multiplier: 1, lifeCost: 0, jokerMax: 2, group: 'multi'),
+  BilgiMode(id: 'oda', name: 'Özel Oda', emoji: '🔒', blurb: 'Arkadaşlarınla oda kur • Can yok', questions: 20, seconds: 15, totalSeconds: 0, multiplier: 1, lifeCost: 0, jokerMax: 3, group: 'multi'),
   BilgiMode(id: 'gunluk', name: 'Günün Sorusu', emoji: '📅', blurb: 'Günde 1 soru • 2x puan', questions: 1, seconds: 30, totalSeconds: 0, multiplier: 2, lifeCost: 0, jokerMax: 0, group: 'special'),
   BilgiMode(id: 'yarisma', name: 'Günün Yarışması', emoji: '🏁', blurb: '20 soru • Günde 1 • Can yok', questions: 20, seconds: 15, totalSeconds: 0, multiplier: 1, lifeCost: 0, jokerMax: 3, group: 'special'),
   BilgiMode(id: 'lig', name: 'Luno Ligi', emoji: '🏆', blurb: 'Haftalık turnuva • 20 soru', questions: 20, seconds: 15, totalSeconds: 0, multiplier: 1, lifeCost: 1, jokerMax: 3, group: 'special'),

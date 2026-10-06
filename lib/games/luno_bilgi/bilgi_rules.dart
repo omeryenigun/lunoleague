@@ -314,7 +314,7 @@ String bilgiHintClue({
   return bilgiHintWithheld;
 }
 
-/// Stored hint wins. An empty hint falls back to the explanation.
+/// İpucu yalnız kayıtlı metinden gelir. Boşsa joker pasiftir; açıklamaya düşülmez.
 String bilgiPlayHint({
   required String hint,
   required String explanation,
@@ -322,8 +322,9 @@ String bilgiPlayHint({
   required int correct,
 }) {
   final stored = hint.trim();
+  if (stored.isEmpty) return '';
   return bilgiHintClue(
-    explanation: stored.isNotEmpty ? stored : explanation,
+    explanation: stored,
     options: options,
     correct: correct,
   );

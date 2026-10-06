@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:kelimelig/api/admin_http.dart';
 import 'package:kelimelig/api/bilgi_questions_http.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_room.dart';
 import 'package:postgres/postgres.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
@@ -63,15 +64,17 @@ Future<Response> _create(Request request, Connection db) async {
     return jsonResponse({'error': 'Oda isteği geçersiz.'}, status: 400);
   }
   final categoryId = '${body['categoryId'] ?? tumuKarmaId}'.trim();
-  final subcategory = '${body['subcategory'] ?? ''}'.trim();
-  final difficulty = '${body['difficulty'] ?? ''}'.trim();
-  if (categoryId.isEmpty || categoryId.length > 80 || subcategory.length > 80 || difficulty.length > 20) {
+  final rawSub = '${body['subcategory'] ?? ''}'.trim();
+  final rawDifficulty = '${body['difficulty'] ?? ''}'.trim();
+  if (categoryId.isEmpty || categoryId.length > 80 || rawSub.length > 80 || rawDifficulty.length > 20) {
     return jsonResponse({'error': 'Oda isteği geçersiz.'}, status: 400);
   }
+  final subcategory = categoryId == tumuKarmaId ? '' : rawSub;
+  final difficulty = bilgiInviteDifficulty(rawDifficulty);
   final code = await _freshCode(db);
   if (code == null) return jsonResponse({'error': 'Oda açılamadı. Bağlantını kontrol et.'}, status: 503);
-  final count = kind == 'duello' ? 10 : 20;
-  final seconds = kind == 'duello' ? 10 : 15;
+  final count = bilgiInviteCount(kind, _roomInt(body['questionCount']));
+  final seconds = bilgiInvitePace(kind, _roomInt(body['seconds']));
   await db.execute(
     Sql.named('''
       insert into bilgi_rooms (
@@ -390,4 +393,10 @@ String? _name(Object? raw) {
   final value = '${raw ?? ''}'.trim();
   if (value.isEmpty) return null;
   return value.length > 40 ? value.substring(0, 40) : value;
+}
+
+int _roomInt(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse('${value ?? ''}') ?? 0;
 }

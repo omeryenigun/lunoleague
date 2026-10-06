@@ -477,6 +477,7 @@ int _asInt(Object? value) {
       : translation == 'missing'
           ? 'and not ($readySql)'
           : '';
+  final detailClause = bilgiBankDetailSql(query['detail'] ?? '');
   final searchClause = searching
       ? "and ($textFold like @like escape '\\' or $optionFold like @like escape '\\')"
       : '';
@@ -491,6 +492,7 @@ int _asInt(Object? value) {
       or (@reviewed = 'no' and not q.reviewed)
     )
     $translationClause
+    $detailClause
     $searchClause
   ''';
   return (where: where, params: params);

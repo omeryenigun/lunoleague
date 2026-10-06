@@ -69,6 +69,47 @@ void main() {
     expect(summary.bankBadge, 2);
   });
 
+  test('detail filter is empty when explanation or hint is blank', () {
+    expect(bilgiBankDetailEmpty('neden', 'ipucu'), isFalse);
+    expect(bilgiBankDetailVisible('filled', 'neden', 'ipucu'), isTrue);
+    expect(bilgiBankDetailVisible('empty', 'neden', 'ipucu'), isFalse);
+
+    expect(bilgiBankDetailEmpty('', 'ipucu'), isTrue);
+    expect(bilgiBankDetailVisible('empty', '', 'ipucu'), isTrue);
+    expect(bilgiBankDetailVisible('filled', '', 'ipucu'), isFalse);
+
+    expect(bilgiBankDetailEmpty('neden', ''), isTrue);
+    expect(bilgiBankDetailVisible('empty', 'neden', ''), isTrue);
+    expect(bilgiBankDetailVisible('filled', 'neden', ''), isFalse);
+
+    expect(bilgiBankDetailEmpty('', ''), isTrue);
+    expect(bilgiBankDetailEmpty(null, null), isTrue);
+    expect(bilgiBankDetailEmpty(null, 'ipucu'), isTrue);
+    expect(bilgiBankDetailEmpty('neden', null), isTrue);
+
+    expect(bilgiBankDetailEmpty('   ', 'ipucu'), isTrue);
+    expect(bilgiBankDetailEmpty('neden', ' \n\t '), isTrue);
+    expect(bilgiBankDetailEmpty('  ', '\t'), isTrue);
+    expect(bilgiBankDetailVisible('empty', ' \n ', ' \t '), isTrue);
+    expect(bilgiBankDetailVisible('filled', ' \n ', 'ipucu'), isFalse);
+
+    expect(bilgiBankDetailVisible('', ' ', ''), isTrue);
+    expect(bilgiBankDetailSql(''), '');
+    expect(bilgiBankDetailSql('other'), '');
+
+    final emptySql = bilgiBankDetailSql('empty');
+    expect(emptySql, contains("coalesce(q.explanation, '')"));
+    expect(emptySql, contains("coalesce(q.hint, '')"));
+    expect(emptySql, contains(' or '));
+    expect(emptySql.contains('translations'), isFalse);
+
+    final filledSql = bilgiBankDetailSql('filled');
+    expect(filledSql, contains('not'));
+    expect(filledSql, contains("coalesce(q.explanation, '')"));
+    expect(filledSql, contains("coalesce(q.hint, '')"));
+    expect(filledSql.contains('translations'), isFalse);
+  });
+
   test('published matrix keeps category, subcategory and difficulty', () {
     final matrix = bilgiPublishedMatrix([
       {'categoryId': 'felsefe', 'sub': 'Ahlak Felsefesi', 'difficulty': 'kolay', 'count': 58},

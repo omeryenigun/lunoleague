@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kelimelig/data/local/key_value_store.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_room.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
 
 BilgiRoom _room({
   String hostId = 'host',
@@ -86,5 +88,89 @@ void main() {
     });
     expect(room.hostId, 'seat-host');
     expect(bilgiRoomStartVisible(room, 'seat-host'), isTrue);
+  });
+
+  test('invite setup keeps the host choice and falls back when the value is outside the list', () {
+    expect(bilgiInviteCount('duello', 5), 5);
+    expect(bilgiInviteCount('duello', 7), 10);
+    expect(bilgiInviteCount('oda', 0), 20);
+    expect(bilgiInvitePace('oda', 20), 20);
+    expect(bilgiInvitePace('duello', 12), 10);
+    expect(bilgiInviteDifficulty('zor'), 'zor');
+    expect(bilgiInviteDifficulty('kolayca'), 'hepsi');
+  });
+
+  test('a duel or private room stores the host setup', () async {
+    final server = LunoBilgiServer(MemoryKeyValueStore());
+    final duel = await server.createRoom(
+      kind: 'duello',
+      categoryId: 'tarih',
+      subcategory: 'Osmanlı',
+      difficulty: 'zor',
+      questionCount: 5,
+      seconds: 20,
+    );
+    expect(duel!.questionCount, 5);
+    expect(duel.seconds, 20);
+    expect(duel.difficulty, 'zor');
+    expect(duel.categoryId, 'tarih');
+    expect(duel.subcategory, 'Osmanlı');
+
+    final mixed = await server.createRoom(
+      kind: 'oda',
+      categoryId: 'tumu',
+      subcategory: 'Osmanlı',
+      difficulty: 'yok',
+      questionCount: 99,
+      seconds: 15,
+    );
+    expect(mixed!.questionCount, 20);
+    expect(mixed.seconds, 15);
+    expect(mixed.difficulty, 'hepsi');
+    expect(mixed.subcategory, '');
+  });
+
+  test('starting a duel spends no life and skips the pre-game ad', () async {
+    final clock = DateTime(2026, 10, 6, 12);
+    final store = MemoryKeyValueStore();
+    final server = LunoBilgiServer(store, clock: () => clock);
+    final user = await server.profile();
+    await store.put(
+      'users',
+      user.id,
+      user.copyWith(lives: 3, livesAt: clock, lastPlayDay: '2026-10-06', freePlaysUsed: 5, adFreeLeft: 0).toMap(),
+    );
+    final question = BilgiQuestion(
+      id: 'q1',
+      categoryId: 'genel',
+      text: 'Soru',
+      options: const ['A', 'B', 'C', 'D'],
+      correct: 0,
+      difficulty: 'kolay',
+      explanation: 'aciklama',
+    );
+    final solo = await server.startRound(
+      modeId: 'hizli',
+      categoryId: 'tumu',
+      fixedQuestions: [question],
+      questionCount: 1,
+    );
+    expect(solo.message, 'ad');
+    expect((await server.profile()).lives, 3);
+
+    final duel = await server.startRound(
+      modeId: 'duello',
+      categoryId: 'tumu',
+      fixedQuestions: [question],
+      questionCount: 1,
+      seconds: 20,
+    );
+    expect(duel.message, isNull);
+    expect(duel.round!.seconds, 20);
+    expect(duel.round!.lifeCost, 0);
+    final after = await server.profile();
+    expect(after.lives, 3);
+    expect(after.freePlaysUsed, 5);
+    expect(after.adFreeLeft, 0);
   });
 }

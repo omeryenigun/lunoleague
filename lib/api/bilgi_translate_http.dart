@@ -79,7 +79,7 @@ Future<Response> _question(Map<String, dynamic> body) async {
     'Translate this Turkish trivia item into ${targets.join(', ')}. '
     'Keep the four options in the same order. Do not change which option is correct. '
     'Every text, option, and explanation must be non-empty. '
-    '${withHint ? 'Translate hint as a short clue that does not name the correct option. Every hint must be non-empty. ' : ''}'
+    '${bilgiHintTranslateRule(hint)}'
     'Return only JSON: {$sample}.',
     jsonEncode(source),
   );
@@ -91,7 +91,7 @@ Future<Response> _question(Map<String, dynamic> body) async {
     if (row is! Map) return jsonResponse({'error': 'Tercüme eksik geldi.'}, status: 502);
     final translated = '${row['text'] ?? ''}'.trim();
     final note = '${row['explanation'] ?? ''}'.trim();
-    final translatedHint = '${row['hint'] ?? ''}'.trim();
+    final translatedHint = bilgiClipTranslatedHint('${row['hint'] ?? ''}');
     final rawOptions = row['options'];
     if (rawOptions is! List || rawOptions.length != 4) {
       return jsonResponse({'error': 'Tercüme eksik geldi.'}, status: 502);
@@ -184,7 +184,7 @@ Future<Object?> _complete({
     final payload = <String, Object>{
       'model': model,
       'temperature': 0.2,
-      'max_tokens': 2000,
+      'max_tokens': 4096,
       'messages': [
         {'role': 'system', 'content': instruction},
         {'role': 'user', 'content': source},

@@ -1,4 +1,4 @@
-/// CSV columns: soru, a, b, c, d, dogru, kategori, altkategori, zorluk, aciklama.
+/// CSV columns: soru, a, b, c, d, dogru, kategori, altkategori, zorluk, aciklama, ipucu.
 const bilgiCsvColumns = [
   'soru',
   'a',
@@ -10,10 +10,11 @@ const bilgiCsvColumns = [
   'altkategori',
   'zorluk',
   'aciklama',
+  'ipucu',
 ];
 
 const bilgiCsvExample =
-    "Osmanlı'nın kurucusu?,Orhan,Osman,Murat,Bayezid,B,Osmanlı Tarihi,Kuruluş,kolay,Osman Bey kurmuştur.";
+    "Osmanlı'nın kurucusu?,Orhan,Osman,Murat,Bayezid,B,Osmanlı Tarihi,Kuruluş,kolay,Osman Bey kurmuştur.,Beylik sınırında kurulmuştur.";
 
 final bilgiCsvTemplate = '${bilgiCsvColumns.join(',')}\n$bilgiCsvExample\n';
 
@@ -26,6 +27,7 @@ class BilgiCsvFields {
     required this.subcategory,
     required this.difficulty,
     required this.explanation,
+    this.hint = '',
   });
 
   final String text;
@@ -35,6 +37,7 @@ class BilgiCsvFields {
   final String subcategory;
   final String difficulty;
   final String explanation;
+  final String hint;
 }
 
 enum BilgiCsvKind { blank, header, invalid, row }
@@ -66,6 +69,7 @@ BilgiCsvLine parseBilgiCsvLine(String line) {
       subcategory: parts[7].trim(),
       difficulty: parts[8].trim(),
       explanation: parts.length >= 10 ? parts[9].trim() : '',
+      hint: parts.length >= 11 ? parts[10].trim() : '',
     ),
   );
 }
