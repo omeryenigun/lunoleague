@@ -14,6 +14,8 @@ const siteCardsSloganKey = 'site_cards_slogan_v1';
 const siteCardsShotKey = 'site_cards_shots_v1';
 const siteCardsGridKey = 'site_cards_grid_v1';
 const siteCardsBilgiKey = 'site_cards_bilgi_v1';
+const siteCardsBilgiLiveKey = 'site_cards_bilgi_live_v1';
+const siteBilgiPlayUrl = 'https://play.google.com/store/apps/details?id=com.lunobilgi.game';
 
 const _iconPaths = [
   '/seed/luno_league_icon.png',
@@ -285,10 +287,10 @@ Future<void> seedSiteCardBilgi(Connection db) async {
   await db.execute(
     Sql.named('''
       insert into site_cards (
-        id, name, description, status, sort_order, name_en, description_en
+        id, name, description, status, sort_order, name_en, description_en, play_url
       )
       values (
-        'luno_bilgi', @name, @description, 'soon', 4, @nameEn, @descriptionEn
+        'luno_bilgi', @name, @description, 'live', 4, @nameEn, @descriptionEn, @playUrl
       )
       on conflict (id) do update set
         name = excluded.name,
@@ -296,13 +298,15 @@ Future<void> seedSiteCardBilgi(Connection db) async {
         status = excluded.status,
         sort_order = excluded.sort_order,
         name_en = excluded.name_en,
-        description_en = excluded.description_en
+        description_en = excluded.description_en,
+        play_url = excluded.play_url
     '''),
     parameters: {
-      'name': 'Luno Bilgi',
+      'name': 'Luno Bilgi Yarışması',
       'description': 'Dört şıktan doğruyu bul.',
-      'nameEn': 'Luno Bilgi',
+      'nameEn': 'Luno Trivia',
       'descriptionEn': 'Find the right answer among four.',
+      'playUrl': siteBilgiPlayUrl,
     },
   );
   final icon = await _storeSeedImage(
@@ -324,7 +328,40 @@ Future<void> seedSiteCardBilgi(Connection db) async {
     '''),
     parameters: {'key': siteCardsBilgiKey},
   );
-  stdout.writeln('site card bilgi seeded soon');
+  stdout.writeln('site card bilgi seeded live');
+}
+
+/// Marks Luno Bilgi published and stores the Play link. Runs once over an older soon card.
+Future<void> seedSiteCardBilgiLive(Connection db) async {
+  final meta = await db.execute(
+    Sql.named('select value from kv_meta where item_key = @key'),
+    parameters: {'key': siteCardsBilgiLiveKey},
+  );
+  if (meta.isNotEmpty && meta.first[0] == '1') return;
+  await db.execute(
+    Sql.named('''
+      update site_cards
+      set name = @name,
+          name_en = @nameEn,
+          status = 'live',
+          play_url = @playUrl
+      where id = 'luno_bilgi'
+    '''),
+    parameters: {
+      'name': 'Luno Bilgi Yarışması',
+      'nameEn': 'Luno Trivia',
+      'playUrl': siteBilgiPlayUrl,
+    },
+  );
+  await db.execute(
+    Sql.named('''
+      insert into kv_meta (item_key, value)
+      values (@key, '1')
+      on conflict (item_key) do update set value = excluded.value
+    '''),
+    parameters: {'key': siteCardsBilgiLiveKey},
+  );
+  stdout.writeln('site card bilgi published');
 }
 
 void mountSiteCards(Router router, Connection db) {

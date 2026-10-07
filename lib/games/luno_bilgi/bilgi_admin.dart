@@ -120,7 +120,9 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   var _bulkBusy = false;
   var _bulkMenu = '';
   var _formSerial = 0;
-  String? _translatingId;
+  final _translatingIds = <String>{};
+  static const _translateLanes = 3;
+  static const _translateGap = Duration(seconds: 1);
   String? _reviewingId;
   BilgiQuestion? _editing;
   var _csvName = '';
@@ -1962,67 +1964,126 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       setState(() => _note = 'Önce soru seç.');
       return;
     }
-    setState(() => _bulkBusy = true);
+    final queue = List<BilgiQuestion>.from(chosen);
+    final total = queue.length;
+    var cursor = 0;
+    var active = 0;
     var translated = 0;
     var skipped = 0;
     var failed = 0;
-    try {
-      for (var i = 0; i < chosen.length; i++) {
-        if (!mounted) return;
-        final loaded = await BilgiQuestionApi.loadOne(sl<ApiSession>().adminToken ?? '', chosen[i].id);
-        final question = loaded ?? chosen[i];
-        if (!bilgiLanguageFieldsReady(question.text, question.options, question.explanation)) {
-          skipped++;
-          setState(() => _note = 'Türkçe soru, dört şık ve açıklama dolu olmalı.');
-          continue;
-        }
-        final targets = bilgiExtraLocales(_publishLocales(question.categoryId));
-        if (targets.isEmpty) {
-          skipped++;
-          continue;
-        }
-        setState(() {
-          _translatingId = question.id;
-          _note = 'Çevriliyor... (${i + 1}/${chosen.length})';
-        });
-        final result = await BilgiQuestionApi.translateQuestion(
-          sl<ApiSession>().adminToken ?? '',
-          text: question.text,
-          options: question.options,
-          explanation: question.explanation,
-          hint: question.hint,
-          locales: targets,
-        );
-        if (!mounted) return;
-        if (result.error != null) {
-          failed++;
-          setState(() => _note = result.error!);
-          continue;
-        }
-        final written = question.copyWith(translations: {...question.translations, ...result.translations});
-        try {
-          setState(() => _note = 'Tercüme kaydediliyor... (${i + 1}/${chosen.length})');
-          await _saveRemote([written]);
-          translated++;
-          _rememberSaved([written]);
-        } on StateError catch (error) {
-          failed++;
-          if (!mounted) return;
-          setState(() => _note = error.message);
-        } catch (_) {
-          failed++;
-          if (!mounted) return;
-          setState(() => _note = 'Soru kaydedilemedi.');
-        }
+    DateTime? lastStart;
+    var scheduling = false;
+    final idle = Completer<void>();
+
+    void mark(String text) {
+      if (!mounted) return;
+      setState(() => _note = text);
+    }
+
+    void settle() {
+      if (active == 0 && (cursor >= total || !mounted)) {
+        if (!idle.isCompleted) idle.complete();
+        return;
       }
+      if (mounted && active > 0) {
+        mark('Çevriliyor... ${translated + skipped + failed}/$total · $active açık');
+      }
+    }
+
+    void schedule() {
+      if (scheduling) return;
+      scheduling = true;
+      unawaited(() async {
+        try {
+          while (mounted && cursor < total && active < _translateLanes) {
+            if (lastStart != null) {
+              final wait = _translateGap - DateTime.now().difference(lastStart!);
+              if (wait > Duration.zero) {
+                await Future<void>.delayed(wait);
+                continue;
+              }
+            }
+            if (!mounted || cursor >= total || active >= _translateLanes) break;
+            final seed = queue[cursor];
+            cursor++;
+            active++;
+            lastStart = DateTime.now();
+            mark('Çevriliyor... ${translated + skipped + failed}/$total · $active açık');
+            unawaited(() async {
+              final outcome = await _translateBulkItem(seed);
+              if (outcome == 'translated') {
+                translated++;
+              } else if (outcome == 'skipped') {
+                skipped++;
+              } else if (outcome == 'failed') {
+                failed++;
+              }
+              active--;
+              settle();
+              schedule();
+            }());
+          }
+        } finally {
+          scheduling = false;
+          if (mounted && cursor < total && active < _translateLanes) {
+            schedule();
+          } else {
+            settle();
+          }
+        }
+      }());
+    }
+
+    setState(() {
+      _bulkBusy = true;
+      _note = 'Çevriliyor... 0/$total · 0 açık';
+    });
+    try {
+      schedule();
+      await idle.future;
     } finally {
       if (mounted) {
         setState(() {
           _bulkBusy = false;
-          _translatingId = null;
+          _translatingIds.clear();
           _note = '$translated soru çevrildi. $skipped atlandı. $failed başarısız.';
         });
       }
+    }
+  }
+
+  Future<String> _translateBulkItem(BilgiQuestion seed) async {
+    final loaded = await BilgiQuestionApi.loadOne(sl<ApiSession>().adminToken ?? '', seed.id);
+    if (!mounted) return 'stopped';
+    final question = loaded ?? seed;
+    if (!bilgiLanguageFieldsReady(question.text, question.options, question.explanation)) {
+      return 'skipped';
+    }
+    final targets = bilgiExtraLocales(_publishLocales(question.categoryId));
+    if (targets.isEmpty) return 'skipped';
+    setState(() => _translatingIds.add(question.id));
+    try {
+      final result = await BilgiQuestionApi.translateQuestion(
+        sl<ApiSession>().adminToken ?? '',
+        text: question.text,
+        options: question.options,
+        explanation: question.explanation,
+        hint: question.hint,
+        locales: targets,
+      );
+      if (!mounted) return 'stopped';
+      if (result.error != null) return 'failed';
+      final written = question.copyWith(translations: {...question.translations, ...result.translations});
+      await _saveRemote([written]);
+      if (!mounted) return 'stopped';
+      _rememberSaved([written]);
+      return 'translated';
+    } on StateError {
+      return 'failed';
+    } catch (_) {
+      return 'failed';
+    } finally {
+      if (mounted) setState(() => _translatingIds.remove(question.id));
     }
   }
 
@@ -2579,11 +2640,12 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   }
 
   Widget _rowTranslateBtn(BilgiQuestion question) {
-    final busy = _translatingId == question.id;
+    final busy = _translatingIds.contains(question.id);
+    final blocked = _bulkBusy || busy;
     return Tooltip(
       message: 'Seçili dilleri çevir',
       child: InkWell(
-        onTap: busy ? null : () => _translateRow(question),
+        onTap: blocked ? null : () => _translateRow(question),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
           child: busy
@@ -2592,9 +2654,13 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                   height: 14,
                   child: CircularProgressIndicator(strokeWidth: 2, color: BilgiColors.primary),
                 )
-              : const Text(
+              : Text(
                   'Çevir',
-                  style: TextStyle(color: BilgiColors.primary, fontSize: 11, fontWeight: FontWeight.w800),
+                  style: TextStyle(
+                    color: blocked ? BilgiColors.muted : BilgiColors.primary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
         ),
       ),
@@ -2602,63 +2668,55 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   }
 
   Future<void> _translateRow(BilgiQuestion question) async {
+    if (_bulkBusy || _translatingIds.contains(question.id)) return;
     final loaded = await BilgiQuestionApi.loadOne(sl<ApiSession>().adminToken ?? '', question.id);
+    if (!mounted) return;
     if (loaded != null) question = loaded;
-    if (_translatingId == question.id) return;
+    if (_bulkBusy || _translatingIds.contains(question.id)) return;
     if (!bilgiLanguageFieldsReady(question.text, question.options, question.explanation)) {
       setState(() => _note = 'Türkçe soru, dört şık ve açıklama dolu olmalı.');
       return;
     }
     setState(() {
-      _translatingId = question.id;
+      _translatingIds.add(question.id);
       _note = 'Çevriliyor...';
     });
     final targets = bilgiExtraLocales(_publishLocales(question.categoryId));
     if (targets.isEmpty) {
       setState(() {
-        _translatingId = null;
+        _translatingIds.remove(question.id);
         _note = 'Bu kategoride başka yayın dili yok.';
       });
       return;
     }
-    final result = await BilgiQuestionApi.translateQuestion(
-      sl<ApiSession>().adminToken ?? '',
-      text: question.text,
-      options: question.options,
-      explanation: question.explanation,
-      hint: question.hint,
-      locales: targets,
-    );
-    if (!mounted) return;
-    if (result.error != null) {
-      setState(() {
-        _translatingId = null;
-        _note = result.error!;
-      });
-      return;
-    }
-    final written = question.copyWith(translations: {...question.translations, ...result.translations});
     try {
+      final result = await BilgiQuestionApi.translateQuestion(
+        sl<ApiSession>().adminToken ?? '',
+        text: question.text,
+        options: question.options,
+        explanation: question.explanation,
+        hint: question.hint,
+        locales: targets,
+      );
+      if (!mounted) return;
+      if (result.error != null) {
+        setState(() => _note = result.error!);
+        return;
+      }
+      final written = question.copyWith(translations: {...question.translations, ...result.translations});
       setState(() => _note = 'Tercüme kaydediliyor...');
       await _saveRemote([written]);
       if (!mounted) return;
       _rememberSaved([written]);
-      setState(() {
-        _translatingId = null;
-        _note = 'Soru çevrildi ve kaydedildi.';
-      });
+      setState(() => _note = 'Soru çevrildi ve kaydedildi.');
     } on StateError catch (error) {
       if (!mounted) return;
-      setState(() {
-        _translatingId = null;
-        _note = error.message;
-      });
+      setState(() => _note = error.message);
     } catch (_) {
       if (!mounted) return;
-      setState(() {
-        _translatingId = null;
-        _note = 'Soru kaydedilemedi.';
-      });
+      setState(() => _note = 'Soru kaydedilemedi.');
+    } finally {
+      if (mounted) setState(() => _translatingIds.remove(question.id));
     }
   }
 
