@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -92,6 +93,13 @@ String bilgiGuestUsername(String id, [Set<String> takenLower = const {}]) {
   return first ?? 'Misafir$body';
 }
 
+class _RoundFinishPayout {
+  const _RoundFinishPayout({required this.gold, required this.xp});
+
+  final int gold;
+  final int xp;
+}
+
 class LunoBilgiServer {
   LunoBilgiServer(this._store, {DateTime Function()? clock, Random? random})
       : _clock = clock ?? DateTime.now,
@@ -101,6 +109,8 @@ class LunoBilgiServer {
   final DateTime Function() _clock;
   final Random _random;
   final Map<String, BilgiRound> _rounds = {};
+  bool _flushingFinishes = false;
+  bool _flushAgain = false;
 
   /// When set, a round asks the API for only the questions it needs.
   Future<List<BilgiQuestion>?> Function({
@@ -122,6 +132,7 @@ class LunoBilgiServer {
   Future<Map<String, dynamic>?> Function(BilgiProfile user)? remoteUpsert;
 
   /// When set, gold, jokers, XP, and lives change on the server. The phone shows the reply.
+  /// A round finish is saved on the phone first. The same payload stays queued until the server accepts it.
   Future<BilgiWalletReply> Function({required String op, required Map<String, dynamic> body})? remoteWallet;
 
   static const _users = 'users';
@@ -133,6 +144,7 @@ class LunoBilgiServer {
   static const _active = 'activeUser';
   static const _config = 'config';
   static const _catalog = 'catalog';
+  static const _finishQueue = 'finish_queue';
 
   Future<void> ensureSeed() async {
     for (final category in bilgiCategories) {
@@ -371,13 +383,16 @@ class LunoBilgiServer {
 
   /// Loads the server wallet when [remoteWallet] is set. Otherwise mirrors the local profile.
   Future<BilgiProfile> pullRemoteProfile() async {
+    await _flushFinishQueue();
     final user = await profile();
     final hook = remoteWallet;
     if (hook == null) return _pushRemote(user);
     try {
       final reply = await hook(op: 'sync', body: {'userId': user.id});
       if (reply.profile == null) return user;
-      final next = bilgiApplyWallet(user, reply.profile!, livesReported: reply.livesReported);
+      final next = await _withPendingFinishes(
+        bilgiApplyWallet(user, reply.profile!, livesReported: reply.livesReported),
+      );
       await _save(next);
       return next;
     } catch (_) {
@@ -389,23 +404,148 @@ class LunoBilgiServer {
   Future<BilgiResult?> _serverWallet(String op, Map<String, dynamic> body, {BilgiRound? round}) async {
     final hook = remoteWallet;
     if (hook == null) return null;
+    await _flushFinishQueue();
     try {
       final reply = await hook(op: op, body: body);
       if (reply.profile == null) {
         return BilgiResult(message: reply.error ?? 'Bağlantı kurulamadı.', round: round);
       }
       final local = await profile();
-      final next = bilgiApplyWallet(local, reply.profile!, livesReported: reply.livesReported);
+      final next = await _withPendingFinishes(
+        bilgiApplyWallet(local, reply.profile!, livesReported: reply.livesReported),
+      );
       if (reply.profile!.id != local.id) {
         await _store.putMeta(_active, next.id);
-        await _save(next);
-        return BilgiResult(profile: next, round: round);
       }
       await _save(next);
       return BilgiResult(profile: next, round: round);
     } catch (_) {
       return BilgiResult(message: 'Bağlantı kurulamadı.', round: round);
     }
+  }
+
+  /// Keeps an unacked round finish. A later sync must not wipe the gold this payload already added locally.
+  Future<void> _enqueueFinish(Map<String, dynamic> body) async {
+    final roundId = '${body['roundId'] ?? ''}'.trim();
+    if (roundId.isEmpty) return;
+    await _store.put(_finishQueue, roundId, Map<String, dynamic>.from(body));
+  }
+
+  /// Sends queued finishes. A failed or timed-out send stays queued for the next boot, sync, or wallet call.
+  Future<void> _flushFinishQueue() async {
+    if (remoteWallet == null) return;
+    if (_flushingFinishes) {
+      _flushAgain = true;
+      return;
+    }
+    _flushingFinishes = true;
+    try {
+      do {
+        _flushAgain = false;
+        await _sendQueuedFinishes();
+      } while (_flushAgain && remoteWallet != null);
+    } finally {
+      _flushingFinishes = false;
+    }
+  }
+
+  Future<void> _sendQueuedFinishes() async {
+    final hook = remoteWallet;
+    if (hook == null) return;
+    final pending = await _store.values(_finishQueue);
+    for (final row in pending) {
+      final body = Map<String, dynamic>.from(row);
+      final roundId = '${body['roundId'] ?? ''}'.trim();
+      if (roundId.isEmpty) continue;
+      try {
+        final reply = await hook(op: 'finish', body: body);
+        if (reply.profile == null) continue;
+        await _store.delete(_finishQueue, roundId);
+        final local = await profile();
+        final next = await _withPendingFinishes(
+          bilgiApplyWallet(local, reply.profile!, livesReported: reply.livesReported),
+        );
+        if (reply.profile!.id != local.id) {
+          await _store.putMeta(_active, next.id);
+        }
+        await _save(next);
+      } catch (_) {}
+    }
+  }
+
+  /// Adds each still-queued finish onto a server snapshot. The acked round is already removed, so it is not added twice.
+  Future<BilgiProfile> _withPendingFinishes(BilgiProfile user) async {
+    final rows = await _store.values(_finishQueue);
+    if (rows.isEmpty) return user;
+    var next = user;
+    for (final row in rows) {
+      next = _applyFinishRewards(next, row);
+    }
+    return next;
+  }
+
+  Map<String, dynamic> _finishBody(BilgiProfile user, BilgiRound round) {
+    return {
+      'userId': user.id,
+      'roundId': round.id,
+      'score': round.score,
+      'multiplier': round.multiplier,
+      'modeId': round.modeId,
+      'correct': round.correct,
+      'categoryId': round.categoryId,
+      'opponentName': round.opponentName,
+      'opponentScore': round.opponentScore,
+      'difficulty': round.difficulty,
+    };
+  }
+
+  _RoundFinishPayout _finishPayout(Map<String, dynamic> body) {
+    final score = bilgiInt(body['score'], 0);
+    final raw = body['multiplier'];
+    final multiplier = raw is num ? raw.toDouble() : double.tryParse('$raw') ?? 1;
+    final modeId = '${body['modeId'] ?? ''}';
+    final correct = bilgiInt(body['correct'], 0);
+    final opponentName = '${body['opponentName'] ?? ''}';
+    final opponentScore = bilgiInt(body['opponentScore'], -1);
+    var gold = goldForScore(score, multiplier);
+    var xp = xpForScore(score);
+    if (modeId == 'yarisma') {
+      gold = bilgiContestGold(correct);
+      xp = bilgiContestXp(correct);
+    }
+    if (modeId == 'gunluk' && correct > 0) {
+      gold = 100;
+      xp = 50;
+    }
+    if (modeId == 'duello' && opponentName.isNotEmpty && opponentScore >= 0) {
+      gold = score >= opponentScore ? 50 : 10;
+    }
+    return _RoundFinishPayout(gold: gold, xp: xp);
+  }
+
+  BilgiProfile _applyFinishRewards(BilgiProfile user, Map<String, dynamic> body) {
+    final score = bilgiInt(body['score'], 0);
+    final modeId = '${body['modeId'] ?? ''}';
+    final correct = bilgiInt(body['correct'], 0);
+    final categoryId = '${body['categoryId'] ?? ''}';
+    final opponentName = '${body['opponentName'] ?? ''}';
+    final opponentScore = bilgiInt(body['opponentScore'], -1);
+    final payout = _finishPayout(body);
+    final level = applyXp(level: user.level, xp: user.xp, gained: payout.xp);
+    final scored = modeId == 'yarisma' ? user : bilgiAddScore(user, points: score, categoryId: categoryId, now: _clock());
+    final duelWins = user.duelWins +
+        ((modeId == 'duello' && opponentName.isNotEmpty && opponentScore >= 0 && score >= opponentScore) ? 1 : 0);
+    return _withBadges(scored.copyWith(
+      gold: scored.gold + payout.gold,
+      xp: level.xp,
+      level: level.level,
+      diamond: scored.diamond + level.diamondsGained,
+      correctTotal: scored.correctTotal + correct,
+      bestScore: score > scored.bestScore ? score : scored.bestScore,
+      categoriesPlayed: modeId == 'yarisma' ? user.categoriesPlayed : {...user.categoriesPlayed, categoryId}.toList(),
+      duelWins: duelWins,
+      title: level.level >= 10 ? 'Bilge' : user.title,
+    ));
   }
 
   Future<List<BilgiQuestion>> questions() async {
@@ -1074,85 +1214,25 @@ class LunoBilgiServer {
   Future<BilgiResult> finish(String roundId) async {
     final round = _rounds[roundId];
     if (round == null) return const BilgiResult(message: '⚠️ Bir şeyler ters gitti. Tekrar dene.');
-    if (!round.finished) {
-      final user = await profile();
-      var gold = goldForScore(round.score, round.multiplier);
-      var xp = xpForScore(round.score);
-      if (round.modeId == 'yarisma') {
-        gold = bilgiContestGold(round.correct);
-        xp = bilgiContestXp(round.correct);
-      }
-      if (round.modeId == 'gunluk' && round.correct > 0) {
-        gold = 100;
-        xp = 50;
-      }
-      if (round.modeId == 'duello' && round.opponentName.isNotEmpty && round.opponentScore >= 0) {
-        gold = round.score >= round.opponentScore ? 50 : 10;
-      }
-      if (remoteWallet != null) {
-        final remote = await _serverWallet('finish', {
-          'userId': user.id,
-          'roundId': round.id,
-          'score': round.score,
-          'multiplier': round.multiplier,
-          'modeId': round.modeId,
-          'correct': round.correct,
-          'categoryId': round.categoryId,
-          'opponentName': round.opponentName,
-          'opponentScore': round.opponentScore,
-          'difficulty': round.difficulty,
-        }, round: round);
-        if (remote == null || remote.profile == null) {
-          return remote ?? BilgiResult(message: 'Bağlantı kurulamadı.', round: round);
-        }
-        round.finished = true;
-        round.gold = gold;
-        round.xp = xp;
-        await _publishScore(round);
-        await _store.put(_games, round.id, round.toMap());
-        if (round.modeId == 'gunluk') {
-          await _store.putMeta('dailyQuestion', DateKeys.dayKey(_clock()));
-        }
-        return BilgiResult(profile: remote.profile, round: round);
-      }
-      round.finished = true;
-      final level = applyXp(level: user.level, xp: user.xp, gained: xp);
-      final cats = round.modeId == 'yarisma'
-          ? user.categoriesPlayed
-          : {...user.categoriesPlayed, round.categoryId}.toList();
-      final scored = round.modeId == 'yarisma'
-          ? user
-          : bilgiAddScore(user, points: round.score, categoryId: round.categoryId, now: _clock());
-      final duelWins = user.duelWins +
-          ((round.modeId == 'duello' &&
-                  round.opponentName.isNotEmpty &&
-                  round.opponentScore >= 0 &&
-                  round.score >= round.opponentScore)
-              ? 1
-              : 0);
-      var next = scored.copyWith(
-        gold: scored.gold + gold,
-        xp: level.xp,
-        level: level.level,
-        diamond: scored.diamond + level.diamondsGained,
-        correctTotal: scored.correctTotal + round.correct,
-        bestScore: round.score > scored.bestScore ? round.score : scored.bestScore,
-        categoriesPlayed: cats,
-        duelWins: duelWins,
-        title: level.level >= 10 ? 'Bilge' : user.title,
-      );
-      next = _withBadges(next);
-      round.gold = gold;
-      round.xp = xp;
-      await _publishScore(round);
-      await _save(next);
-      await _store.put(_games, round.id, round.toMap());
-      if (round.modeId == 'gunluk') {
-        await _store.putMeta('dailyQuestion', DateKeys.dayKey(_clock()));
-      }
-      return BilgiResult(profile: next, round: round);
+    if (round.finished) {
+      return BilgiResult(profile: await profile(), round: round);
     }
-    return BilgiResult(profile: await profile(), round: round);
+    final user = await profile();
+    final body = _finishBody(user, round);
+    final payout = _finishPayout(body);
+    final next = _applyFinishRewards(user, body);
+    if (remoteWallet != null) await _enqueueFinish(body);
+    round.finished = true;
+    round.gold = payout.gold;
+    round.xp = payout.xp;
+    await _publishScore(round);
+    await _save(next);
+    await _store.put(_games, round.id, round.toMap());
+    if (round.modeId == 'gunluk') {
+      await _store.putMeta('dailyQuestion', DateKeys.dayKey(_clock()));
+    }
+    if (remoteWallet != null) unawaited(_flushFinishQueue());
+    return BilgiResult(profile: next, round: round);
   }
 
   /// Adds the finished round's score again after a completed rewarded ad.

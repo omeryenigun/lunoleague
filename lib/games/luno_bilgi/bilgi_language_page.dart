@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:kelimelig/core/l10n/game_locale.dart';
-import 'package:kelimelig/core/theme/shimmer_title.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_l10n.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_theme.dart';
+
+const _langBg = Color(0xFF16082C);
+const _langGold = Color(0xFFFFC83D);
+const _langGoldText = Color(0xFFFFD76A);
+const _langInk = Color(0xFF3A2500);
+const _langSelected = Color(0xFFFFC83D);
+const _langDim = Color(0xFF2A0E48);
 
 /// Bilgi language picker. Locale is saved only on the Bilgi profile.
 class BilgiLanguagePage extends StatefulWidget {
@@ -56,7 +63,9 @@ class _BilgiLanguagePageState extends State<BilgiLanguagePage>
     final international = bilgiT('en', 'game_name');
     final continueLabel = bilgiT(selected, 'continue');
     final continueEn = bilgiT('en', 'continue');
-    return SafeArea(
+    return ColoredBox(
+      color: _langBg,
+      child: SafeArea(
         child: FadeTransition(
           opacity: _fade,
           child: SlideTransition(
@@ -96,17 +105,31 @@ class _BilgiLanguagePageState extends State<BilgiLanguagePage>
                           ),
                         ),
                         const SizedBox(height: 20),
-                        ShimmerTitle(
-                          text: title,
-                          fontSize: 32,
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            title,
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            softWrap: false,
+                            style: GoogleFonts.nunito(
+                              color: _langGoldText,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 32,
+                              height: 1.05,
+                              shadows: const [
+                                Shadow(color: Color(0xFF8A4B00), offset: Offset(0, 2), blurRadius: 0),
+                              ],
+                            ),
+                          ),
                         ),
                         if (title != international) ...[
                           const SizedBox(height: 6),
                           Text(
                             international,
                             textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: BilgiColors.text.withValues(alpha: 0.7),
+                            style: GoogleFonts.nunito(
+                              color: _langGoldText.withValues(alpha: 0.85),
                               fontWeight: FontWeight.w700,
                               fontSize: 18,
                               letterSpacing: 0.2,
@@ -118,14 +141,8 @@ class _BilgiLanguagePageState extends State<BilgiLanguagePage>
                           width: 88,
                           height: 3,
                           decoration: BoxDecoration(
+                            color: _langGold,
                             borderRadius: BorderRadius.circular(2),
-                            gradient: const LinearGradient(
-                              colors: [
-                                BilgiColors.primary,
-                                BilgiColors.secondary,
-                                Colors.transparent,
-                              ],
-                            ),
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -155,10 +172,9 @@ class _BilgiLanguagePageState extends State<BilgiLanguagePage>
                       ],
                     ),
                   ),
-                  CosmicContinueButton(
+                  _GoldContinueButton(
                     label: continueLabel,
                     subtitle: continueLabel == continueEn ? null : continueEn,
-                    showArrow: false,
                     onPressed: widget.onConfirm,
                   ),
                 ],
@@ -166,6 +182,7 @@ class _BilgiLanguagePageState extends State<BilgiLanguagePage>
             ),
           ),
         ),
+      ),
     );
   }
 }
@@ -222,20 +239,15 @@ class _LangCard extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
-  bool get _tr => locale.id == 'tr';
-
   @override
   Widget build(BuildContext context) {
-    final accent = _tr ? BilgiColors.secondary : BilgiColors.primary;
-    final badge = _tr
-        ? const [BilgiColors.secondary, BilgiColors.info]
-        : const [BilgiColors.primary, BilgiColors.primaryLight];
+    final fill = selected ? _langSelected : _langDim;
     return AnimatedScale(
       scale: selected ? 1.01 : 1,
       duration: const Duration(milliseconds: 280),
       curve: Curves.easeOutCubic,
       child: Material(
-        color: BilgiColors.card,
+        color: fill,
         borderRadius: BorderRadius.circular(18),
         child: InkWell(
           onTap: onTap,
@@ -244,17 +256,9 @@ class _LangCard extends StatelessWidget {
             duration: const Duration(milliseconds: 280),
             padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
             decoration: BoxDecoration(
+              color: fill,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: selected ? accent : accent.withValues(alpha: 0.35),
-                width: selected ? 2.2 : 1.4,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: accent.withValues(alpha: selected ? 0.28 : 0.1),
-                  blurRadius: selected ? 22 : 10,
-                ),
-              ],
+              border: Border.all(color: _langGold, width: 2),
             ),
             child: Row(
               children: [
@@ -263,19 +267,13 @@ class _LangCard extends StatelessWidget {
                   height: 36,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
+                    color: selected ? _langInk : _langGold,
                     borderRadius: BorderRadius.circular(10),
-                    gradient: LinearGradient(colors: badge),
-                    boxShadow: [
-                      BoxShadow(
-                        color: accent.withValues(alpha: 0.45),
-                        blurRadius: 16,
-                      ),
-                    ],
                   ),
                   child: Text(
                     locale.id.toUpperCase(),
-                    style: const TextStyle(
-                      color: BilgiColors.bg,
+                    style: GoogleFonts.nunito(
+                      color: selected ? _langGold : _langInk,
                       fontWeight: FontWeight.w900,
                       fontSize: 12,
                       letterSpacing: 0.6,
@@ -288,8 +286,8 @@ class _LangCard extends StatelessWidget {
                     locale.nativeName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: BilgiColors.text,
+                    style: GoogleFonts.nunito(
+                      color: selected ? _langInk : Colors.white,
                       fontWeight: FontWeight.w800,
                       fontSize: 14,
                     ),
@@ -307,19 +305,77 @@ class _LangCard extends StatelessWidget {
                       height: 22,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        gradient: LinearGradient(colors: badge),
-                        boxShadow: [
-                          BoxShadow(
-                            color: accent.withValues(alpha: 0.55),
-                            blurRadius: 12,
-                          ),
-                        ],
+                        color: selected ? _langInk : _langGold,
                       ),
-                      child: const Icon(Icons.check, size: 14, color: BilgiColors.bg),
+                      child: Icon(Icons.check, size: 14, color: selected ? _langGold : _langInk),
                     ),
                   ),
                 ),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GoldContinueButton extends StatelessWidget {
+  const _GoldContinueButton({
+    required this.label,
+    required this.onPressed,
+    this.subtitle,
+  });
+
+  final String label;
+  final String? subtitle;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: _langGold,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: const [
+            BoxShadow(color: Color(0xFFD08A12), blurRadius: 0, offset: Offset(0, 4)),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onPressed,
+            borderRadius: BorderRadius.circular(18),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.nunito(
+                      color: _langInk,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 17,
+                      height: 1.1,
+                    ),
+                  ),
+                  if (subtitle != null)
+                    Text(
+                      subtitle!,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.nunito(
+                        color: _langInk.withValues(alpha: 0.72),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        height: 1.2,
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),

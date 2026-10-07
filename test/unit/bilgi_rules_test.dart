@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
@@ -11,6 +13,7 @@ import 'package:kelimelig/games/luno_bilgi/bilgi_report.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_rules.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_trial_questions.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_wallet.dart';
 
 void main() {
   test('a mixed draw splits the count across four difficulties', () {
@@ -103,6 +106,105 @@ void main() {
     expect(doubled.profile!.totalScore, total + score);
     expect(doubled.profile!.gold, finished.profile!.gold);
     expect(doubled.profile!.adDoubleToday, 1);
+  });
+
+  test('DEVAM on the last question opens the result while wallet finish is still pending', () async {
+    final clock = DateTime(2026, 10, 7, 15);
+    final store = MemoryKeyValueStore();
+    final server = LunoBilgiServer(store, clock: () => clock);
+    final game = BilgiController(server);
+    addTearDown(game.dispose);
+    final question = BilgiQuestion(
+      id: 'q-last',
+      categoryId: 'genel',
+      text: 'Son soru',
+      options: const ['A', 'B', 'C', 'D'],
+      correct: 0,
+      difficulty: 'kolay',
+      explanation: 'aciklama',
+    );
+    final started = await server.startRound(
+      modeId: 'hizli',
+      categoryId: tumuKarmaId,
+      fixedQuestions: [question],
+      questionCount: 1,
+    );
+    final round = started.round!;
+    final stale = started.profile!;
+    final beforeGold = stale.gold;
+    final beforeScore = stale.totalScore;
+    game.profile = stale;
+    game.round = round;
+    game.secondsLeft = round.seconds;
+    game.stack
+      ..clear()
+      ..add('game');
+
+    final hang = Completer<BilgiWalletReply>();
+    final finishBodies = <Map<String, dynamic>>[];
+    var phase = 'hang';
+    server.remoteWallet = ({required String op, required Map<String, dynamic> body}) async {
+      if (op == 'finish') {
+        finishBodies.add(Map<String, dynamic>.from(body));
+        if (phase == 'hang') return hang.future;
+        if (phase == 'fail') throw TimeoutException('wallet finish');
+        return BilgiWalletReply(profile: await server.profile());
+      }
+      if (op == 'sync') {
+        if (phase == 'ok') return BilgiWalletReply(profile: await server.profile());
+        return BilgiWalletReply(profile: stale);
+      }
+      return BilgiWalletReply(profile: await server.profile());
+    };
+
+    final pending = game.pick(0);
+    expect(game.revealing, isTrue);
+    game.continueReveal();
+    expect(game.page, 'game');
+    expect(game.revealing, isTrue);
+    expect(game.round!.current, isNull);
+    expect(game.round!.finished, isFalse);
+
+    await pending;
+    await pumpEventQueue();
+    expect(game.page, 'result');
+    expect(game.round!.finished, isTrue);
+    expect(hang.isCompleted, isFalse);
+    expect(game.profile!.gold, greaterThan(beforeGold));
+    expect(game.profile!.totalScore, greaterThan(beforeScore));
+    final gold = game.profile!.gold;
+    final score = game.profile!.totalScore;
+    expect((await server.profile()).gold, gold);
+    expect((await server.profile()).totalScore, score);
+    expect(finishBodies, hasLength(1));
+
+    hang.complete(const BilgiWalletReply(error: 'Bağlantı kurulamadı.'));
+    await pumpEventQueue();
+    expect(game.page, 'result');
+    expect(game.notice, isNull);
+    expect(game.profile!.gold, gold);
+    expect((await server.profile()).gold, gold);
+    expect((await server.profile()).totalScore, score);
+
+    phase = 'fail';
+    final restarted = LunoBilgiServer(store, clock: () => clock)..remoteWallet = server.remoteWallet;
+    final kept = await restarted.pullRemoteProfile();
+    expect(kept.gold, gold);
+    expect(kept.totalScore, score);
+    expect(finishBodies, hasLength(2));
+    expect(finishBodies[1], finishBodies.first);
+
+    phase = 'ok';
+    final acked = await restarted.pullRemoteProfile();
+    expect(acked.gold, gold);
+    expect(acked.totalScore, score);
+    expect((await server.profile()).gold, gold);
+    expect((await server.profile()).totalScore, score);
+    expect(game.profile!.gold, gold);
+    expect(game.profile!.totalScore, score);
+    expect(finishBodies, hasLength(3));
+    expect(finishBodies[2], finishBodies.first);
+    expect(game.page, 'result');
   });
 
   test('post-game 2x lock counts only today', () async {
@@ -449,7 +551,7 @@ void main() {
     expect(await server.hideCategory('afet'), isNull);
     final stored = resolveBilgiCategories(await server.catalog());
     expect(stored.where((category) => category.id == 'afet'), isEmpty);
-    expect(stored, hasLength(70));
+    expect(stored, hasLength(67));
     await server.addCategory(group: 'A. Temel Bilgi', name: 'Deneme', emoji: '📚');
     final added = resolveBilgiCategories(await server.catalog());
     final created = added.last;

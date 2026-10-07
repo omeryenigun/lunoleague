@@ -2,7 +2,14 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_theme.dart';
+
+const _loadBg = Color(0xFF16082C);
+const _loadCard = Color(0xFF3C1468);
+const _loadGold = Color(0xFFFFC83D);
+const _loadGoldText = Color(0xFFFFD76A);
+const _loadMuted = Color(0xFFD4C4E8);
 
 /// Full-screen loader shown after Start while that round's questions draw.
 /// Not the app-open splash ([BilgiOpeningLoader]).
@@ -96,7 +103,7 @@ class _BilgiRoundLoadingState extends State<BilgiRoundLoading>
     final dotCount = widget.questionCount.clamp(1, 20);
 
     return ColoredBox(
-      color: BilgiColors.bg,
+      color: _loadBg,
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -126,21 +133,23 @@ class _BilgiRoundLoadingState extends State<BilgiRoundLoading>
                   Text(
                     widget.modeName,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: BilgiColors.text,
+                    style: GoogleFonts.nunito(
+                      color: _loadGoldText,
                       fontSize: 26,
                       fontWeight: FontWeight.w900,
                       letterSpacing: 0.2,
+                      height: 1.05,
+                      shadows: const [Shadow(color: Color(0xFF8A4B00), offset: Offset(0, 2), blurRadius: 0)],
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     widget.subtitle,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: BilgiColors.muted,
+                    style: GoogleFonts.nunito(
+                      color: Colors.white,
                       fontSize: 14,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 22),
@@ -169,10 +178,10 @@ class _BilgiRoundLoadingState extends State<BilgiRoundLoading>
                   Text(
                     widget.tip,
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: BilgiColors.muted.withValues(alpha: 0.9),
+                    style: GoogleFonts.nunito(
+                      color: _loadMuted,
                       fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.w600,
                       height: 1.35,
                     ),
                   ),
@@ -195,8 +204,11 @@ class _CancelButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: BilgiColors.card,
-      borderRadius: BorderRadius.circular(12),
+      color: _loadCard,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: _loadGold, width: 2),
+      ),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
@@ -252,11 +264,11 @@ class _ModeBadge extends StatelessWidget {
             gradient: const LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [BilgiColors.primary, BilgiColors.primaryLight],
+              colors: [_loadGold, _loadGold],
             ),
             boxShadow: [
               BoxShadow(
-                color: BilgiColors.primary.withValues(alpha: 0.55),
+                color: _loadGold.withValues(alpha: 0.55),
                 blurRadius: 28,
                 spreadRadius: 2,
                 offset: const Offset(0, 10),
@@ -303,9 +315,9 @@ class _SettingsCard extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: BilgiColors.card.withValues(alpha: 0.72),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            color: _loadCard,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: _loadGold, width: 2),
           ),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
@@ -374,10 +386,10 @@ class _StatCell extends StatelessWidget {
         children: [
           Text(
             label.toUpperCase(),
-            style: const TextStyle(
-              color: BilgiColors.muted,
+            style: GoogleFonts.nunito(
+              color: _loadMuted,
               fontSize: 10,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w800,
               letterSpacing: 1.1,
             ),
           ),
@@ -386,8 +398,8 @@ class _StatCell extends StatelessWidget {
             value,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: valueColor ?? BilgiColors.text,
+            style: GoogleFonts.nunito(
+              color: valueColor ?? Colors.white,
               fontSize: 14,
               fontWeight: FontWeight.w800,
             ),
@@ -422,18 +434,18 @@ class _ProgressBlock extends StatelessWidget {
             Expanded(
               child: Text(
                 status.toUpperCase(),
-                style: const TextStyle(
-                  color: BilgiColors.muted,
+                style: GoogleFonts.nunito(
+                  color: _loadMuted,
                   fontSize: 11,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w800,
                   letterSpacing: 1.4,
                 ),
               ),
             ),
             Text(
               '$percent%',
-              style: const TextStyle(
-                color: BilgiColors.secondary,
+              style: GoogleFonts.nunito(
+                color: _loadGoldText,
                 fontSize: 13,
                 fontWeight: FontWeight.w800,
               ),
@@ -466,11 +478,11 @@ class _ProgressBlock extends StatelessWidget {
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(99),
                       gradient: const LinearGradient(
-                        colors: [BilgiColors.primary, BilgiColors.secondary],
+                        colors: [_loadGold, _loadGoldText],
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: BilgiColors.secondary.withValues(alpha: 0.35),
+                          color: _loadGoldText.withValues(alpha: 0.35),
                           blurRadius: 8,
                         ),
                       ],
@@ -485,10 +497,10 @@ class _ProgressBlock extends StatelessWidget {
                         height: 14,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: BilgiColors.secondary,
+                          color: _loadGoldText,
                           boxShadow: [
                             BoxShadow(
-                              color: BilgiColors.secondary.withValues(alpha: 0.7),
+                              color: _loadGoldText.withValues(alpha: 0.7),
                               blurRadius: 10,
                             ),
                           ],
@@ -512,7 +524,7 @@ class _ProgressBlock extends StatelessWidget {
                   height: 14,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: BilgiColors.secondary.withValues(alpha: 0.85),
+                    color: _loadGoldText.withValues(alpha: 0.85),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -520,10 +532,10 @@ class _ProgressBlock extends StatelessWidget {
                   child: Text(
                     message,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: BilgiColors.muted,
+                    style: GoogleFonts.nunito(
+                      color: Colors.white,
                       fontSize: 13,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -558,7 +570,7 @@ class _QuestionDots extends StatelessWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: i < filled
-                  ? BilgiColors.secondary
+                  ? _loadGoldText
                   : Colors.white.withValues(alpha: 0.14),
             ),
           ),
@@ -587,8 +599,8 @@ class _GlowBackground extends StatelessWidget {
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    BilgiColors.primary.withValues(alpha: 0.35),
-                    BilgiColors.primary.withValues(alpha: 0),
+                    _loadGold.withValues(alpha: 0.35),
+                    _loadGold.withValues(alpha: 0),
                   ],
                 ),
               ),
@@ -607,8 +619,8 @@ class _GlowBackground extends StatelessWidget {
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    BilgiColors.secondary.withValues(alpha: 0.22),
-                    BilgiColors.secondary.withValues(alpha: 0),
+                    _loadGoldText.withValues(alpha: 0.22),
+                    _loadGoldText.withValues(alpha: 0),
                   ],
                 ),
               ),
@@ -631,10 +643,10 @@ class _ConicRingPainter extends CustomPainter {
       ..strokeWidth = 2.2
       ..shader = SweepGradient(
         colors: [
-          BilgiColors.primary.withValues(alpha: 0),
-          BilgiColors.primaryLight.withValues(alpha: 0.55),
-          BilgiColors.secondary.withValues(alpha: 0.35),
-          BilgiColors.primary.withValues(alpha: 0),
+          _loadGold.withValues(alpha: 0),
+          _loadGold.withValues(alpha: 0.55),
+          _loadGoldText.withValues(alpha: 0.35),
+          _loadGold.withValues(alpha: 0),
         ],
       ).createShader(rect);
     canvas.drawCircle(center, radius, paint);
@@ -652,12 +664,12 @@ class _FloatingDotsPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final dots = <(double, double, double, Color)>[
-      (0.18, 0.22, 3.5, BilgiColors.secondary),
-      (0.78, 0.18, 2.8, BilgiColors.primaryLight),
-      (0.12, 0.62, 2.4, BilgiColors.primary),
-      (0.86, 0.55, 3.2, BilgiColors.secondary),
-      (0.55, 0.78, 2.6, BilgiColors.primaryLight),
-      (0.42, 0.14, 2.2, BilgiColors.secondary),
+      (0.18, 0.22, 3.5, _loadGoldText),
+      (0.78, 0.18, 2.8, _loadGold),
+      (0.12, 0.62, 2.4, _loadGold),
+      (0.86, 0.55, 3.2, _loadGoldText),
+      (0.55, 0.78, 2.6, _loadGold),
+      (0.42, 0.14, 2.2, _loadGoldText),
     ];
     for (var i = 0; i < dots.length; i++) {
       final (nx, ny, r, color) = dots[i];

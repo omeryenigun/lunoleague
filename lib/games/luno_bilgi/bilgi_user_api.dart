@@ -62,11 +62,13 @@ class BilgiUserApi {
   /// Asks the server wallet to apply [op]. The phone displays the returned profile.
   static Future<BilgiWalletReply> wallet({required String op, required Map<String, dynamic> body}) async {
     try {
-      final response = await http.post(
-        Uri.parse('${ApiConfig.baseUrl}/v1/bilgi/wallet'),
-        headers: {'content-type': 'application/json; charset=utf-8'},
-        body: jsonEncode({'op': op, ...body}),
-      );
+      final response = await http
+          .post(
+            Uri.parse('${ApiConfig.baseUrl}/v1/bilgi/wallet'),
+            headers: {'content-type': 'application/json; charset=utf-8'},
+            body: jsonEncode({'op': op, ...body}),
+          )
+          .timeout(const Duration(seconds: 12));
       final decoded = jsonDecode(response.body);
       if (decoded is! Map) return const BilgiWalletReply(error: 'İşlem tamamlanamadı.');
       if (response.statusCode < 200 || response.statusCode >= 300 || decoded['user'] is! Map) {

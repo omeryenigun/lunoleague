@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:kelimelig/core/theme/colors.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class BilgiColors {
   static const primary = Color(0xFF6C3CE9);
@@ -170,7 +170,7 @@ class BilgiTopBar extends StatelessWidget {
   }
 }
 
-/// Fixed green title for Bilgi page headers.
+/// Gold title for Bilgi page headers, matching the home brand.
 class BilgiHeaderTitle extends StatelessWidget {
   const BilgiHeaderTitle(this.text, {super.key, this.align = TextAlign.center});
 
@@ -184,12 +184,13 @@ class BilgiHeaderTitle extends StatelessWidget {
       textAlign: align,
       maxLines: 1,
       softWrap: false,
-      style: const TextStyle(
+      style: GoogleFonts.nunito(
         fontSize: 24,
-        fontWeight: FontWeight.w800,
+        fontWeight: FontWeight.w900,
         letterSpacing: -0.3,
         height: 1,
-        color: AppColors.cosmicGreen,
+        color: const Color(0xFFFFD76A),
+        shadows: const [Shadow(color: Color(0xFF8A4B00), offset: Offset(0, 2), blurRadius: 0)],
       ),
     );
   }
@@ -223,6 +224,7 @@ class BilgiPrimaryButton extends StatelessWidget {
     this.horizontalPadding = 20,
     this.fill,
     this.minHeight,
+    this.green = false,
   });
 
   final String label;
@@ -237,36 +239,36 @@ class BilgiPrimaryButton extends StatelessWidget {
   /// Play-screen Devam passes the answer-row min height so the two stay equal.
   final double? minHeight;
 
+  /// Green fill for start actions. Other primaries use the gold fill.
+  final bool green;
+
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
+    final ink = green ? const Color(0xFF22C55E) : const Color(0xFFFFC83D);
+    final labelColor = enabled ? (green ? Colors.white : const Color(0xFF3A2200)) : Colors.white;
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SizedBox(
         width: double.infinity,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            gradient: enabled
-                ? const LinearGradient(colors: [BilgiColors.primary, BilgiColors.primaryLight])
-                : null,
-            color: enabled ? null : (fill ?? BilgiColors.card),
-            borderRadius: BorderRadius.circular(bilgiRadius),
-            boxShadow: enabled
-                ? const [BoxShadow(color: Color(0x666C3CE9), blurRadius: 24, offset: Offset(0, 8))]
-                : null,
+            color: enabled ? ink : (fill ?? const Color(0xFF3C1468)),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFFFC83D), width: enabled ? 2 : 1.5),
           ),
           child: Material(
             color: Colors.transparent,
             child: InkWell(
               onTap: onTap,
-              borderRadius: BorderRadius.circular(bilgiRadius),
+              borderRadius: BorderRadius.circular(18),
               child: minHeight == null
                   ? Padding(
                       padding: EdgeInsets.symmetric(vertical: verticalPadding),
                       child: Text(
                         label,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                        style: GoogleFonts.nunito(fontWeight: FontWeight.w900, fontSize: 16, color: labelColor),
                       ),
                     )
                   : ConstrainedBox(
@@ -275,7 +277,7 @@ class BilgiPrimaryButton extends StatelessWidget {
                         child: Text(
                           label,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                          style: GoogleFonts.nunito(fontWeight: FontWeight.w900, fontSize: 16, color: labelColor),
                         ),
                       ),
                     ),
@@ -335,10 +337,10 @@ class BilgiBottomNav extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
-        color: BilgiColors.card,
-        border: Border(top: BorderSide(color: Color(0x14FFFFFF))),
+        color: Color(0xFF12081F),
+        border: Border(top: BorderSide(color: Color(0x33FFC83D))),
       ),
-      padding: const EdgeInsets.fromLTRB(0, 8, 0, 8),
+      padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
       child: Row(
         children: [
           _Nav('home', '🏠', home, current, onSelect),
@@ -364,30 +366,39 @@ class _Nav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final active = current == id;
-    final color = active ? BilgiColors.primary : BilgiColors.muted;
+    final color = active ? const Color(0xFFFFD76A) : const Color(0xFF8E84A8);
     return Expanded(
       child: InkWell(
         onTap: () => onSelect(id),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 24,
-                height: 24,
-                child: Center(child: Text(icon, style: const TextStyle(fontSize: 20, height: 1))),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Align(
+              alignment: Alignment.topCenter,
+              child: Container(
+                height: 3,
+                width: 36,
+                margin: const EdgeInsets.only(bottom: 6),
+                decoration: BoxDecoration(
+                  color: active ? const Color(0xFFFFC83D) : Colors.transparent,
+                  borderRadius: const BorderRadius.vertical(bottom: Radius.circular(3)),
+                ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 10, height: 1.15, fontWeight: FontWeight.w600, color: color),
-              ),
-            ],
-          ),
+            ),
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: Center(child: Text(icon, style: const TextStyle(fontSize: 20, height: 1))),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.nunito(fontSize: 10, height: 1.15, fontWeight: FontWeight.w800, color: color),
+            ),
+          ],
         ),
       ),
     );

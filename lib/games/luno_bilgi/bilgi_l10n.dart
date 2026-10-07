@@ -22,6 +22,7 @@ const _pages = <String, Map<String, String>>{
     'mode_grup': 'Grup',
     'mode_oda': 'Özel Oda',
     'mode_gunluk': 'Günün Sorusu',
+    'mode_yarisma': 'Günün Yarışması',
     'mode_lig': 'Luno Ligi',
     'page_play': 'Bilgini Sına',
     'page_categories': 'Kategoriler',
@@ -36,6 +37,7 @@ const _pages = <String, Map<String, String>>{
     'page_achievements': 'Başarılar',
     'page_history': 'Oyun Geçmişi',
     'page_league': 'Luno Lig',
+    'did_you_know': 'Biliyor muydun?',
   },
   'en': {
     'mode_hizli': 'Quick round',
@@ -60,6 +62,7 @@ const _pages = <String, Map<String, String>>{
     'page_achievements': 'Achievements',
     'page_history': 'History',
     'page_league': 'Luno League',
+    'did_you_know': 'Did you know?',
   },
   'de': {
     'mode_hizli': 'Schnelle Runde',
@@ -84,6 +87,7 @@ const _pages = <String, Map<String, String>>{
     'page_achievements': 'Erfolge',
     'page_history': 'Verlauf',
     'page_league': 'Liga',
+    'did_you_know': 'Wusstest du schon?',
   },
   'es': {
     'mode_hizli': 'Ronda rápida',
@@ -108,6 +112,7 @@ const _pages = <String, Map<String, String>>{
     'page_achievements': 'Logros',
     'page_history': 'Historial',
     'page_league': 'Liga',
+    'did_you_know': '¿Sabías que?',
   },
   'fr': {
     'mode_hizli': 'Tour rapide',
@@ -118,6 +123,7 @@ const _pages = <String, Map<String, String>>{
     'mode_grup': 'Groupe',
     'mode_oda': 'Salle privée',
     'mode_gunluk': 'Question du jour',
+    'mode_yarisma': 'Concours du jour',
     'mode_lig': 'Ligue Luno',
     'page_play': 'Teste tes connaissances',
     'page_categories': 'Catégories',
@@ -132,6 +138,7 @@ const _pages = <String, Map<String, String>>{
     'page_achievements': 'Succès',
     'page_history': 'Historique',
     'page_league': 'Ligue',
+    'did_you_know': 'Le savais-tu ?',
   },
   'it': {
     'mode_hizli': 'Turno veloce',
@@ -142,9 +149,7 @@ const _pages = <String, Map<String, String>>{
     'mode_grup': 'Gruppo',
     'mode_oda': 'Stanza privata',
     'mode_gunluk': 'Domanda del giorno',
-    'mode_lig': 'Lega Luno',
-    'page_play': 'Metti alla prova',
-    'page_categories': 'Categorie',
+    'mode_yarisma': 'Concorso del giorno',
     'page_detail': 'Categoria',
     'page_setup': 'Impostazioni partita',
     'page_shop': 'Negozio',
@@ -156,6 +161,7 @@ const _pages = <String, Map<String, String>>{
     'page_achievements': 'Obiettivi',
     'page_history': 'Cronologia',
     'page_league': 'Lega',
+    'did_you_know': 'Lo sapevi?',
   },
   'ru': {
     'mode_hizli': 'Быстрый раунд',
@@ -169,6 +175,7 @@ const _pages = <String, Map<String, String>>{
     'mode_lig': 'Лига Luno',
     'page_play': 'Проверь знания',
     'page_categories': 'Категории',
+    'mode_yarisma': 'Конкурс дня',
     'page_detail': 'Категория',
     'page_setup': 'Настройки игры',
     'page_shop': 'Магазин',
@@ -180,6 +187,7 @@ const _pages = <String, Map<String, String>>{
     'page_achievements': 'Достижения',
     'page_history': 'История',
     'page_league': 'Лига',
+    'did_you_know': 'А вы знали?',
   },
   'nl': {
     'mode_hizli': 'Snelle ronde',
@@ -193,6 +201,7 @@ const _pages = <String, Map<String, String>>{
     'mode_lig': 'Luno competitie',
     'page_play': 'Test je kennis',
     'page_categories': 'Categorieën',
+    'mode_yarisma': 'Dagwedstrijd',
     'page_detail': 'Categorie',
     'page_setup': 'Spelinstelling',
     'page_shop': 'Winkel',
@@ -204,6 +213,7 @@ const _pages = <String, Map<String, String>>{
     'page_achievements': 'Prestaties',
     'page_history': 'Geschiedenis',
     'page_league': 'Competitie',
+    'did_you_know': 'Wist je dat?',
   },
   'pt': {
     'mode_hizli': 'Ronda rápida',
@@ -217,6 +227,7 @@ const _pages = <String, Map<String, String>>{
     'mode_lig': 'Liga Luno',
     'page_play': 'Testa o teu saber',
     'page_categories': 'Categorias',
+    'mode_yarisma': 'Concurso do dia',
     'page_detail': 'Categoria',
     'page_setup': 'Definições do jogo',
     'page_shop': 'Loja',
@@ -228,6 +239,7 @@ const _pages = <String, Map<String, String>>{
     'page_achievements': 'Conquistas',
     'page_history': 'Histórico',
     'page_league': 'Liga',
+    'did_you_know': 'Sabias que?',
   },
   'pl': {
     'mode_hizli': 'Szybka runda',
@@ -241,6 +253,7 @@ const _pages = <String, Map<String, String>>{
     'mode_lig': 'Liga Luno',
     'page_play': 'Sprawdź wiedzę',
     'page_categories': 'Kategorie',
+    'mode_yarisma': 'Konkurs dnia',
     'page_detail': 'Kategoria',
     'page_setup': 'Ustawienia gry',
     'page_shop': 'Sklep',
@@ -252,6 +265,7 @@ const _pages = <String, Map<String, String>>{
     'page_achievements': 'Osiągnięcia',
     'page_history': 'Historia',
     'page_league': 'Liga',
+    'did_you_know': 'Czy wiesz, że?',
   },
 };
 

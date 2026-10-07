@@ -80,6 +80,47 @@ const bilgiPlaySkus = <BilgiPlaySku>[
   bilgiPlusYillik,
 ];
 
+/// Question before a Luno-gold shop spend, and the reward-load line after it.
+class BilgiShopExchangeCopy {
+  const BilgiShopExchangeCopy({
+    required this.confirm,
+    required this.icon,
+    required this.amount,
+    required this.caption,
+  });
+
+  final String confirm;
+  final String icon;
+  final String amount;
+  final String caption;
+}
+
+BilgiShopExchangeCopy bilgiShopJokerExchange({
+  required String name,
+  required int price,
+  required int stockAfter,
+  required String icon,
+}) {
+  return BilgiShopExchangeCopy(
+    confirm: '$price altın harcanacak.\n$name yüklenecek. Stok $stockAfter.',
+    icon: icon,
+    amount: '$price',
+    caption: '$price altın → $name, stok $stockAfter',
+  );
+}
+
+BilgiShopExchangeCopy bilgiShopLifeExchange({
+  required int price,
+  required int livesAfter,
+}) {
+  return BilgiShopExchangeCopy(
+    confirm: '$price altın harcanacak.\nCanın $livesAfter olacak.',
+    icon: '❤️',
+    amount: '$price',
+    caption: '$price altın → Can doldu, $livesAfter',
+  );
+}
+
 /// The catalog row for this Play product, or null when the ids are not sold here.
 BilgiPlaySku? bilgiPlaySku(String productId, [String? basePlanId]) {
   final plan = basePlanId?.trim() ?? '';

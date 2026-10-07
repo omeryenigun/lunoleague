@@ -170,7 +170,7 @@ class _BilgiAvatarSheetState extends State<_BilgiAvatarSheet> {
   Widget _groupChip(int index) {
     final selected = index == _group;
     return Material(
-      color: selected ? BilgiColors.primary : BilgiColors.bg,
+      color: selected ? const Color(0xFFFFC83D) : BilgiColors.bg,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),

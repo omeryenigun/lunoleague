@@ -107,4 +107,20 @@ void main() {
     expect(snapshot.slices['felsefe|Antik Yunan|kolay'], 1);
     expect(snapshot.moveSub('felsefe', 'Antik', 'Antik Yunan'), isFalse);
   });
+
+  test('difficulty buckets match a live count and ignore subcategory keys', () {
+    final snapshot = BilgiCountSnapshot();
+    snapshot.replaceAll(const [null, null], [
+      _part(),
+      _part(difficulty: 'orta', tags: const ['Modern']),
+    ]);
+    expect(
+      bilgiSnapshotDifficultyCountsMatch(snapshot, {'felsefe||kolay': 1, 'felsefe||orta': 1}),
+      isTrue,
+    );
+    expect(
+      bilgiSnapshotDifficultyCountsMatch(snapshot, {'felsefe||kolay': 2, 'felsefe||orta': 1}),
+      isFalse,
+    );
+  });
 }

@@ -182,6 +182,22 @@ class BilgiCountSnapshot {
   }
 }
 
+/// Kategori ve zorluk kovaları canlı onaylı sayımla aynıysa true.
+/// Alt kategori adı kayması bu karşılaştırmaya girmez.
+bool bilgiSnapshotDifficultyCountsMatch(BilgiCountSnapshot stored, Map<String, int> live) {
+  final fromStored = <String, int>{};
+  for (final entry in stored.slices.entries) {
+    final parts = entry.key.split('|');
+    if (parts.length != 3 || parts[1].isNotEmpty || parts[0] == tumuKarmaId) continue;
+    fromStored[entry.key] = entry.value;
+  }
+  if (fromStored.length != live.length) return false;
+  for (final entry in live.entries) {
+    if (fromStored[entry.key] != entry.value) return false;
+  }
+  return true;
+}
+
 Future<void> ensureBilgiCountSnapshot(Connection db) async {
   await db.execute('''
     create table if not exists bilgi_count_snapshot (
@@ -189,9 +205,28 @@ Future<void> ensureBilgiCountSnapshot(Connection db) async {
       body text not null
     )
   ''');
-  final existing = await db.execute('select id from bilgi_count_snapshot where id = 1');
-  if (existing.isNotEmpty) return;
+  final existing = await db.execute('select body from bilgi_count_snapshot where id = 1');
+  if (existing.isNotEmpty) {
+    final stored = BilgiCountSnapshot.decode('${existing.first[0]}');
+    final live = await _approvedDifficultyCounts(db);
+    if (bilgiSnapshotDifficultyCountsMatch(stored, live)) return;
+  }
   await _writeSnapshot(db, await _scanApprovedCounts(db));
+}
+
+Future<Map<String, int>> _approvedDifficultyCounts(Connection db) async {
+  final rows = await db.execute('''
+    select category_id, difficulty, count(*)::int
+    from bilgi_questions
+    where status = 'approved'
+    group by category_id, difficulty
+  ''');
+  final out = <String, int>{};
+  for (final row in rows) {
+    final count = row[2];
+    out['${row[0]}||${row[1]}'] = count is int ? count : int.parse('$count');
+  }
+  return out;
 }
 
 Future<BilgiCountSnapshot> loadBilgiCountSnapshot(Connection db) async {

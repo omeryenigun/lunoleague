@@ -130,6 +130,8 @@ class BilgiController extends ChangeNotifier {
   bool scoreDoubled = false;
   bool adWatching = false;
   bool _endingRound = false;
+  /// Early DEVAM on the last card, before the local finish returns. The reveal stays up so the empty loader cannot show.
+  bool _resultPending = false;
   BilgiRewardLoad? rewardLoad;
   int _rewardEpoch = 0;
   bool _alive = true;
@@ -845,6 +847,7 @@ class BilgiController extends ChangeNotifier {
     revealDifficulty = '';
     revealQuestion = null;
     revealNumber = 1;
+    _resultPending = false;
     scoreDoubled = false;
     newBadgeIds = const [];
     secondsLeft = started.seconds;
@@ -1079,7 +1082,20 @@ class BilgiController extends ChangeNotifier {
       revealQuestion = null;
       lastPick = null;
       picked = false;
+      _resultPending = false;
       notifyListeners();
+      return;
+    }
+    final last = revealNumber >= played.questions.length;
+    if (last && played.finished != true && (result.message ?? '').isNotEmpty) {
+      notice = result.message;
+      picked = false;
+      _resultPending = false;
+      notifyListeners();
+      return;
+    }
+    if (played.finished && _resultPending) {
+      _openResult();
       return;
     }
     notifyListeners();
@@ -1087,23 +1103,73 @@ class BilgiController extends ChangeNotifier {
 
   void continueReveal() {
     if (!revealing) return;
-    revealing = false;
-    revealQuestion = null;
-    if (round?.finished == true) {
-      _timer?.cancel();
-      _clearRoomAfterRound(round!);
-      newBadgeIds = (profile?.badges ?? const []).where((id) => !_badgesBeforePick.contains(id)).toList();
-      stack
-        ..clear()
-        ..add('result');
-      picked = false;
-      notifyListeners();
+    final live = round;
+    if (live != null && live.finished) {
+      _openResult();
       return;
     }
-    secondsLeft = round?.seconds ?? secondsLeft;
+    final last = live != null && revealNumber >= live.questions.length;
+    if (last) {
+      if (picked) {
+        _resultPending = true;
+        return;
+      }
+      unawaited(_retryLastFinish());
+      return;
+    }
+    revealing = false;
+    revealQuestion = null;
+    secondsLeft = live?.seconds ?? secondsLeft;
     picked = false;
     lastPick = null;
     notifyListeners();
+  }
+
+  void _openResult() {
+    final live = round;
+    if (live == null) return;
+    _timer?.cancel();
+    _resultPending = false;
+    _clearRoomAfterRound(live);
+    newBadgeIds = (profile?.badges ?? const []).where((id) => !_badgesBeforePick.contains(id)).toList();
+    revealing = false;
+    revealQuestion = null;
+    picked = false;
+    lastPick = null;
+    stack
+      ..clear()
+      ..add('result');
+    notifyListeners();
+  }
+
+  /// Second DEVAM when the last answer did not finish the round. Wallet delivery does not block this.
+  Future<void> _retryLastFinish() async {
+    if (_endingRound || picked) return;
+    final live = round;
+    if (live == null) return;
+    if (live.finished) {
+      _openResult();
+      return;
+    }
+    _endingRound = true;
+    picked = true;
+    try {
+      final result = await server.finish(live.id);
+      if (!_alive) return;
+      profile = result.profile ?? profile;
+      round = result.round ?? live;
+      final played = round ?? live;
+      if (played.finished != true) {
+        notice = result.message ?? 'Bağlantı kurulamadı.';
+        picked = false;
+        notifyListeners();
+        return;
+      }
+      if (live.modeId == 'gunluk') dailyQuestionUsed = true;
+      _openResult();
+    } finally {
+      _endingRound = false;
+    }
   }
 
   Future<String?> reportReveal(String note) {
