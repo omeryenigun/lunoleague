@@ -20,7 +20,7 @@ Future<({List<Map<String, dynamic>> questions, List<Map<String, dynamic>> spares
 }) async {
   final key = Platform.environment['OPENAI_API_KEY'] ?? '';
   if (key.isEmpty) {
-    return (questions: const [], spares: const [], error: 'Günlük üretim anahtarı yok.');
+    return (questions: <Map<String, dynamic>>[], spares: <Map<String, dynamic>>[], error: 'Günlük üretim anahtarı yok.');
   }
   final model = (Platform.environment['BILGI_DAILY_MODEL'] ?? _dailyModelFallback).trim();
   final avoid = <String>{
@@ -40,7 +40,7 @@ Future<({List<Map<String, dynamic>> questions, List<Map<String, dynamic>> spares
           '$complaint',
     );
     if (raw.error != null) {
-      return (questions: const [], spares: const [], error: raw.error);
+      return (questions: <Map<String, dynamic>>[], spares: <Map<String, dynamic>>[], error: raw.error);
     }
     final parsed = bilgiDailyPaperFromModel(raw.text, day: day, avoid: avoid);
     if (parsed.error != null) {
@@ -49,15 +49,15 @@ Future<({List<Map<String, dynamic>> questions, List<Map<String, dynamic>> spares
     }
     final questions = await _translateRows(parsed.questions);
     if (questions.error != null) {
-      return (questions: const [], spares: const [], error: questions.error);
+      return (questions: <Map<String, dynamic>>[], spares: <Map<String, dynamic>>[], error: questions.error);
     }
     final spares = await _translateRows(parsed.spares);
     if (spares.error != null) {
-      return (questions: const [], spares: const [], error: spares.error);
+      return (questions: <Map<String, dynamic>>[], spares: <Map<String, dynamic>>[], error: spares.error);
     }
     return (questions: questions.rows, spares: spares.rows, error: null);
   }
-  return (questions: const [], spares: const [], error: 'Üretim kurallara uymadı.');
+  return (questions: <Map<String, dynamic>>[], spares: <Map<String, dynamic>>[], error: 'Üretim kurallara uymadı.');
 }
 
 Future<({List<Map<String, dynamic>> rows, String? error})> _translateRows(
@@ -96,7 +96,7 @@ Future<({List<Map<String, dynamic>> rows, String? error})> _translateRows(
   }
 
   await Future.wait([worker(), worker(), worker()]);
-  if (failures.isNotEmpty) return (rows: const [], error: failures.first);
+  if (failures.isNotEmpty) return (rows: <Map<String, dynamic>>[], error: failures.first);
   return (rows: out, error: null);
 }
 
