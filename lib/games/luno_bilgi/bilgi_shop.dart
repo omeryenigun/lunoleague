@@ -1,3 +1,4 @@
+import 'package:kelimelig/games/luno_bilgi/bilgi_l10n.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 
 /// Shown on web and desktop. Play billing runs in the Android app.
@@ -95,29 +96,41 @@ class BilgiShopExchangeCopy {
   final String caption;
 }
 
+String _shopFill(String locale, String key, Map<String, String> values) {
+  var text = bilgiT(locale, key);
+  for (final entry in values.entries) {
+    text = text.replaceAll('{${entry.key}}', entry.value);
+  }
+  return text;
+}
+
 BilgiShopExchangeCopy bilgiShopJokerExchange({
   required String name,
   required int price,
   required int stockAfter,
   required String icon,
+  String locale = 'tr',
 }) {
+  final values = {'price': '$price', 'name': name, 'stock': '$stockAfter'};
   return BilgiShopExchangeCopy(
-    confirm: '$price altın harcanacak.\n$name yüklenecek. Stok $stockAfter.',
+    confirm: _shopFill(locale, 'shop_joker_confirm', values),
     icon: icon,
     amount: '$price',
-    caption: '$price altın → $name, stok $stockAfter',
+    caption: _shopFill(locale, 'shop_joker_caption', values),
   );
 }
 
 BilgiShopExchangeCopy bilgiShopLifeExchange({
   required int price,
   required int livesAfter,
+  String locale = 'tr',
 }) {
+  final values = {'price': '$price', 'lives': '$livesAfter'};
   return BilgiShopExchangeCopy(
-    confirm: '$price altın harcanacak.\nCanın $livesAfter olacak.',
+    confirm: _shopFill(locale, 'shop_life_confirm', values),
     icon: '❤️',
     amount: '$price',
-    caption: '$price altın → Can doldu, $livesAfter',
+    caption: _shopFill(locale, 'shop_life_caption', values),
   );
 }
 

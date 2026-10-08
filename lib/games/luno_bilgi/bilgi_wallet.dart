@@ -4,6 +4,7 @@ import 'package:kelimelig/core/constants/user_messages.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
 import 'package:kelimelig/domain/account/luno_account.dart';
 import 'package:kelimelig/domain/game/game_ids.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_l10n.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_league.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_rules.dart';
@@ -372,9 +373,11 @@ BilgiProfile bilgiFreshProfile({
   required DateTime now,
   required BilgiConfig config,
   String username = '',
+  String locale = 'tr',
 }) {
   final digits = id.replaceAll(RegExp(r'[^0-9]'), '');
-  final guest = 'Misafir${digits.isEmpty ? '1' : digits.substring(max(0, digits.length - 9))}';
+  final prefix = bilgiT(locale, 'guest_prefix');
+  final guest = '$prefix${digits.isEmpty ? '1' : digits.substring(max(0, digits.length - min(9, max(1, 20 - prefix.length))))}';
   final name = username.trim().isEmpty ? guest : username.trim();
   return BilgiProfile(
     id: id,

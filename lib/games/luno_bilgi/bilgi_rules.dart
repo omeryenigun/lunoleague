@@ -1,3 +1,5 @@
+import 'package:kelimelig/games/luno_bilgi/bilgi_l10n.dart';
+
 class BilgiScore {
   const BilgiScore({
     required this.points,
@@ -142,25 +144,27 @@ List<BilgiGoldHelpOption> bilgiGoldHelpOptions({
   required int shopGoldB,
   required bool dailyGoldReady,
   required int dailyGold,
+  String locale = 'tr',
 }) {
+  String gold(int n) => bilgiT(locale, 'shop_gold_n').replaceAll('{n}', '$n');
   final options = <BilgiGoldHelpOption>[
     BilgiGoldHelpOption(
       kind: BilgiGoldHelpKind.ad,
-      title: 'Reklam izle',
-      subtitle: '$rewardedGold altın',
+      title: bilgiT(locale, 'gold_help_ad'),
+      subtitle: gold(rewardedGold),
     ),
     BilgiGoldHelpOption(
       kind: BilgiGoldHelpKind.shop,
-      title: 'Altın satın al',
-      subtitle: '$shopGoldA veya $shopGoldB altın',
+      title: bilgiT(locale, 'gold_help_shop'),
+      subtitle: bilgiT(locale, 'gold_help_shop_sub').replaceAll('{a}', '$shopGoldA').replaceAll('{b}', '$shopGoldB'),
     ),
   ];
   if (dailyGoldReady && dailyGold > 0) {
     options.add(
       BilgiGoldHelpOption(
         kind: BilgiGoldHelpKind.daily,
-        title: 'Günlük ödül',
-        subtitle: '$dailyGold altın',
+        title: bilgiT(locale, 'gold_help_daily'),
+        subtitle: gold(dailyGold),
       ),
     );
   }
@@ -226,8 +230,8 @@ DateTime livesClockAfterRegen({
   return livesAt.add(Duration(minutes: gained * minutesPerLife));
 }
 
-String bilgiNoLivesNotice(int minutes) {
-  return '❤️ Canın bitti! Yenilenmesini bekle veya satın al. ($minutes dk\'da bir can otomatik yüklenir.)';
+String bilgiNoLivesNotice(int minutes, {String locale = 'tr'}) {
+  return bilgiT(locale, 'nolives_notice').replaceAll('{n}', '$minutes');
 }
 
 /// First page after boot. Language comes before intro/home.

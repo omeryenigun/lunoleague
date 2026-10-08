@@ -10,6 +10,7 @@ import 'package:kelimelig/core/l10n/game_locale.dart';
 import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_l10n.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_league.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_room.dart';
@@ -79,18 +80,19 @@ String? bilgiUsernameIssue(String raw) {
 
 /// Stable guest label. Suffix is the profile id's digits, last 9 when the id is longer.
 /// A longer slice (still within 13 digits) is used only when that short name is already taken.
-String bilgiGuestUsername(String id, [Set<String> takenLower = const {}]) {
+String bilgiGuestUsername(String id, [Set<String> takenLower = const {}, String locale = 'tr']) {
   final digits = id.replaceAll(RegExp(r'[^0-9]'), '');
   final body = digits.isEmpty ? '1' : digits;
+  final prefix = bilgiT(locale, 'guest_prefix');
   final shortest = min(9, body.length);
-  final longest = min(13, body.length);
+  final longest = min(13, min(body.length, max(1, 20 - prefix.length)));
   String? first;
   for (var length = shortest; length <= longest; length++) {
-    final name = 'Misafir${body.substring(body.length - length)}';
+    final name = '$prefix${body.substring(body.length - length)}';
     first ??= name;
     if (!takenLower.contains(name.toLowerCase())) return name;
   }
-  return first ?? 'Misafir$body';
+  return first ?? '$prefix$body';
 }
 
 class _RoundFinishPayout {
@@ -247,7 +249,7 @@ class LunoBilgiServer {
     if (!_registered(user) && bilgiPlaceholderUsername(user.username)) {
       final chosen = await _store.getMeta(_usernameChosenKey(user.id));
       if (chosen != '1') {
-        user = user.copyWith(username: await _uniqueGuestUsername(user.id));
+        user = user.copyWith(username: await _uniqueGuestUsername(user.id, user.locale));
       }
     }
     await _save(user);
@@ -280,14 +282,14 @@ class LunoBilgiServer {
 
   String _usernameChosenKey(String id) => 'bilgiUsernameChosen:$id';
 
-  Future<String> _uniqueGuestUsername(String id) async {
+  Future<String> _uniqueGuestUsername(String id, [String locale = 'tr']) async {
     final taken = <String>{};
     for (final row in await _store.values(_users)) {
       if ('${row['id'] ?? ''}' == id) continue;
       final name = '${row['username'] ?? ''}'.trim().toLowerCase();
       if (name.isNotEmpty) taken.add(name);
     }
-    return bilgiGuestUsername(id, taken);
+    return bilgiGuestUsername(id, taken, locale);
   }
 
   Future<bool> _usernameTaken(String name, {required String exceptId}) async {
@@ -1462,7 +1464,14 @@ class LunoBilgiServer {
 
   Future<BilgiProfile> setLocale(String localeId) async {
     final user = await profile();
-    final next = user.copyWith(locale: GameLocale.resolve(localeId).id, localeChosen: true);
+    final id = GameLocale.resolve(localeId).id;
+    var next = user.copyWith(locale: id, localeChosen: true);
+    if (!user.localeChosen) {
+      final renamed = bilgiRetargetGuestName(user.username, id);
+      if (renamed != null && renamed != user.username && !await _usernameTaken(renamed, exceptId: user.id)) {
+        next = next.copyWith(username: renamed);
+      }
+    }
     await _save(next);
     return _pushRemote(next);
   }

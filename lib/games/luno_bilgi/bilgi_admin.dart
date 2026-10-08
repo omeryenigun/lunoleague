@@ -12,6 +12,7 @@ import 'package:kelimelig/domain/game/game_ids.dart';
 import 'package:kelimelig/core/l10n/game_locale.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_contest.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_daily_paper.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_league.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_league_api.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_csv.dart';
@@ -1141,6 +1142,15 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     _applyContest(loaded);
   }
 
+  Future<void> _generateContestDay(String day) async {
+    if (_contestBusy) return;
+    setState(() => _contestBusy = true);
+    final loaded = await BilgiContestApi.adminGenerate(sl<ApiSession>().adminToken ?? '', day);
+    if (!mounted) return;
+    setState(() => _contestBusy = false);
+    _applyContest(loaded);
+  }
+
   Future<void> _buildContestDay(String day, {bool rebuild = false}) async {
     if (_contestBusy) return;
     setState(() => _contestBusy = true);
@@ -1201,7 +1211,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
         ),
         const SizedBox(height: 8),
         const Text(
-          'Soruları oluşan gün yeşil taslaktır. Kilitli gün kırmızıya döner ve değişmez.',
+          'Soruları oluşan gün yeşil taslaktır. Kilitli gün kırmızıya döner ve değişmez. 9 Ekim 2026 ve sonrası AI ile üretilir; o günler boşken bankadan dolmaz.',
           style: TextStyle(color: BilgiColors.muted, fontSize: 12),
         ),
         const SizedBox(height: 16),
@@ -1261,7 +1271,10 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                             ),
                           ),
                           _ghost('Adı kaydet', () => _buildContestDay(day.day)),
-                          _ghost(day.count == 0 ? 'Günü oluştur' : 'Yeniden yaz', () => _buildContestDay(day.day, rebuild: true)),
+                          if (bilgiContestAiDay(day.day))
+                            _ghost(_contestBusy ? 'Üretiliyor' : 'AI ile üret', () => _generateContestDay(day.day))
+                          else
+                            _ghost(day.count == 0 ? 'Günü oluştur' : 'Yeniden yaz', () => _buildContestDay(day.day, rebuild: true)),
                           if (day.count > 0) ...[
                             _ghost('Görüntüle', () => _openContestPaper(day, editing: false)),
                             _ghost('Düzenle', () => _openContestPaper(day, editing: true)),
@@ -6735,7 +6748,12 @@ class _ContestPaperDialogState extends State<_ContestPaperDialog> {
     final current = index == null ? null : _questions[index];
     final next = await showDialog<BilgiQuestion>(
       context: context,
-      builder: (context) => _ContestQuestionDialog(day: widget.day, question: current, index: index ?? _questions.length),
+      builder: (context) => _ContestQuestionDialog(
+        day: widget.day,
+        question: current,
+        index: index ?? _questions.length,
+        editing: widget.editing,
+      ),
     );
     if (next == null || !mounted) return;
     setState(() {
@@ -6815,16 +6833,20 @@ class _ContestPaperDialogState extends State<_ContestPaperDialog> {
                                     fontSize: 13,
                                   ),
                                 ),
-                              if (widget.editing) ...[
-                                const SizedBox(height: 8),
-                                Wrap(
-                                  spacing: 8,
-                                  children: [
-                                    _dialogGhost('Düzenle', () => _edit(i)),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Dil ${1 + _questions[i].translations.length}/10',
+                                style: const TextStyle(color: BilgiColors.muted, fontSize: 12),
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                children: [
+                                  _dialogGhost(widget.editing ? 'Düzenle' : 'Dilleri gör', () => _edit(i)),
+                                  if (widget.editing)
                                     _dialogGhost('Çıkar', () => setState(() => _questions = [..._questions]..removeAt(i))),
-                                  ],
-                                ),
-                              ],
+                                ],
+                              ),
                             ],
                           ),
                         ),
@@ -6866,107 +6888,263 @@ Widget _dialogGhost(String text, VoidCallback onTap) => OutlinedButton(
     );
 
 class _ContestQuestionDialog extends StatefulWidget {
-  const _ContestQuestionDialog({required this.day, required this.index, this.question});
+  const _ContestQuestionDialog({required this.day, required this.index, this.question, this.editing = true});
 
   final String day;
   final int index;
   final BilgiQuestion? question;
+  final bool editing;
 
   @override
   State<_ContestQuestionDialog> createState() => _ContestQuestionDialogState();
 }
 
 class _ContestQuestionDialogState extends State<_ContestQuestionDialog> {
-  late final TextEditingController _text = TextEditingController(text: widget.question?.text ?? '');
-  late final List<TextEditingController> _options = [
-    for (var i = 0; i < 4; i++) TextEditingController(text: widget.question != null && widget.question!.options.length > i ? widget.question!.options[i] : ''),
-  ];
+  final String _locale = 'tr';
+  late String _selected = 'tr';
   late int _correct = widget.question?.correct ?? 0;
   late String _difficulty = widget.question?.difficulty ?? 'kolay';
+  late final Map<String, TextEditingController> _text = {
+    for (final locale in GameLocale.all) locale.id: TextEditingController(text: _storedText(locale.id)),
+  };
+  late final Map<String, List<TextEditingController>> _options = {
+    for (final locale in GameLocale.all)
+      locale.id: [
+        for (var i = 0; i < 4; i++) TextEditingController(text: _storedOption(locale.id, i)),
+      ],
+  };
+  late final Map<String, TextEditingController> _hint = {
+    for (final locale in GameLocale.all) locale.id: TextEditingController(text: _storedHint(locale.id)),
+  };
+  late final Map<String, TextEditingController> _explanation = {
+    for (final locale in GameLocale.all) locale.id: TextEditingController(text: _storedExplanation(locale.id)),
+  };
+  var _busy = false;
   var _error = '';
+
+  String _storedText(String locale) {
+    if (locale == _locale) return widget.question?.text ?? '';
+    return widget.question?.translations[locale]?.text ?? '';
+  }
+
+  String _storedOption(String locale, int index) {
+    final options = locale == _locale ? widget.question?.options : widget.question?.translations[locale]?.options;
+    if (options == null || options.length <= index) return '';
+    return options[index];
+  }
+
+  String _storedHint(String locale) {
+    if (locale == _locale) return widget.question?.hint ?? '';
+    return widget.question?.translations[locale]?.hint ?? '';
+  }
+
+  String _storedExplanation(String locale) {
+    if (locale == _locale) return widget.question?.explanation ?? '';
+    return widget.question?.translations[locale]?.explanation ?? '';
+  }
+
+  bool _filled(String locale) {
+    final text = _text[locale]?.text.trim() ?? '';
+    final options = [for (final field in _options[locale] ?? const <TextEditingController>[]) field.text.trim()];
+    return bilgiLanguageFieldsReady(text, options, _explanation[locale]?.text ?? 'dolu');
+  }
 
   @override
   void dispose() {
-    _text.dispose();
-    for (final field in _options) {
+    for (final field in _text.values) {
+      field.dispose();
+    }
+    for (final fields in _options.values) {
+      for (final field in fields) {
+        field.dispose();
+      }
+    }
+    for (final field in _hint.values) {
+      field.dispose();
+    }
+    for (final field in _explanation.values) {
       field.dispose();
     }
     super.dispose();
   }
 
-  void _submit() {
-    final text = _text.text.trim();
-    final options = [for (final field in _options) field.text.trim()];
-    if (text.isEmpty || options.any((item) => item.isEmpty)) {
-      setState(() => _error = 'Soru ve dört şık dolu olmalı.');
+  Future<void> _retranslate() async {
+    if (_busy || !widget.editing) return;
+    final text = _text[_locale]!.text.trim();
+    final options = [for (final field in _options[_locale]!) field.text.trim()];
+    final explanation = _explanation[_locale]!.text.trim();
+    final hint = _hint[_locale]!.text.trim();
+    if (!bilgiLanguageFieldsReady(text, options, explanation) || hint.isEmpty) {
+      setState(() => _error = 'Türkçe soru, dört şık, ipucu ve açıklama dolu olmalı.');
       return;
     }
-    final current = widget.question;
-    final next = BilgiQuestion(
-      id: current?.id ?? 'gun-${widget.day}-${widget.index}',
-      categoryId: current?.categoryId ?? tumuKarmaId,
+    setState(() {
+      _busy = true;
+      _error = '';
+    });
+    final result = await BilgiQuestionApi.translateQuestion(
+      sl<ApiSession>().adminToken ?? '',
       text: text,
       options: options,
-      correct: _correct.clamp(0, 3),
-      difficulty: _difficulty,
-      explanation: current?.explanation ?? '',
-      hint: current?.hint ?? '',
-      status: current?.status ?? 'approved',
-      tags: current?.tags ?? const [],
-      rejectReason: current?.rejectReason ?? '',
-      translations: current?.translations ?? const {},
-      reviewed: current?.reviewed ?? false,
+      explanation: explanation,
+      hint: hint,
     );
-    Navigator.pop(context, next);
+    if (!mounted) return;
+    if (result.error != null) {
+      setState(() {
+        _busy = false;
+        _error = result.error!;
+      });
+      return;
+    }
+    for (final entry in result.translations.entries) {
+      _text[entry.key]?.text = entry.value.text;
+      _explanation[entry.key]?.text = entry.value.explanation;
+      _hint[entry.key]?.text = entry.value.hint;
+      final fields = _options[entry.key];
+      if (fields == null) continue;
+      for (var i = 0; i < 4; i++) {
+        fields[i].text = i < entry.value.options.length ? entry.value.options[i] : '';
+      }
+    }
+    setState(() => _busy = false);
+  }
+
+  void _submit() {
+    final text = _text[_locale]!.text.trim();
+    final options = [for (final field in _options[_locale]!) field.text.trim()];
+    if (!bilgiLanguageFieldsReady(text, options, _explanation[_locale]!.text)) {
+      setState(() => _error = 'Türkçe soru, dört şık ve açıklama dolu olmalı.');
+      return;
+    }
+    final translations = <String, BilgiTranslation>{};
+    for (final locale in GameLocale.all) {
+      if (locale.id == _locale) continue;
+      final translated = _text[locale.id]!.text.trim();
+      final translatedOptions = [for (final field in _options[locale.id]!) field.text.trim()];
+      if (!bilgiLanguageFieldsReady(translated, translatedOptions, _explanation[locale.id]!.text.trim().isEmpty ? ' ' : _explanation[locale.id]!.text)) {
+        if (translated.isEmpty && translatedOptions.every((item) => item.isEmpty)) continue;
+        setState(() => _error = '${locale.nativeName} eksik. Dört şık da dolu olmalı.');
+        return;
+      }
+      translations[locale.id] = BilgiTranslation(
+        text: translated,
+        options: translatedOptions,
+        explanation: _explanation[locale.id]!.text.trim(),
+        hint: _hint[locale.id]!.text.trim(),
+      );
+    }
+    final current = widget.question;
+    Navigator.pop(
+      context,
+      BilgiQuestion(
+        id: current?.id ?? 'gun-${widget.day}-${widget.index}',
+        categoryId: current?.categoryId ?? tumuKarmaId,
+        text: text,
+        options: options,
+        correct: _correct.clamp(0, 3),
+        difficulty: _difficulty,
+        explanation: _explanation[_locale]!.text.trim(),
+        hint: _hint[_locale]!.text.trim(),
+        status: current?.status ?? 'approved',
+        tags: current?.tags ?? const [],
+        rejectReason: current?.rejectReason ?? '',
+        translations: translations,
+        reviewed: current?.reviewed ?? false,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final locale = _selected;
+    final readOnly = !widget.editing;
     return Dialog(
       backgroundColor: BilgiColors.card,
       child: SizedBox(
-        width: 520,
+        width: 760,
+        height: 720,
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(widget.question == null ? 'Soru ekle' : 'Soruyu düzenle', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 12),
-              TextField(controller: _text, maxLines: 3, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'Soru')),
-              for (var i = 0; i < 4; i++)
-                TextField(
-                  controller: _options[i],
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(labelText: '${['A', 'B', 'C', 'D'][i]} şıkkı'),
-                ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<int>(
-                initialValue: _correct,
-                dropdownColor: BilgiColors.card,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'Doğru şık'),
-                items: const [
-                  DropdownMenuItem(value: 0, child: Text('A')),
-                  DropdownMenuItem(value: 1, child: Text('B')),
-                  DropdownMenuItem(value: 2, child: Text('C')),
-                  DropdownMenuItem(value: 3, child: Text('D')),
-                ],
-                onChanged: (value) => setState(() => _correct = value ?? 0),
+              Text(
+                widget.question == null ? 'Soru ekle' : (readOnly ? 'Diller' : 'Soruyu düzenle'),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
               ),
-              DropdownButtonFormField<String>(
-                initialValue: _difficulty,
-                dropdownColor: BilgiColors.card,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'Zorluk'),
-                items: const [
-                  DropdownMenuItem(value: 'kolay', child: Text('Kolay')),
-                  DropdownMenuItem(value: 'orta', child: Text('Orta')),
-                  DropdownMenuItem(value: 'zor', child: Text('Zor')),
-                  DropdownMenuItem(value: 'efsane', child: Text('Efsane')),
-                ],
-                onChanged: (value) => setState(() => _difficulty = value ?? 'kolay'),
+              if (widget.editing) ...[
+                const SizedBox(height: 8),
+                const Text(
+                  'Kayıt Türkçeyi ve ekrandaki çevirileri yazar. Diğer diller ancak Dilleri yeniden yaz ile değişir.',
+                  style: TextStyle(color: BilgiColors.muted, fontSize: 12),
+                ),
+              ],
+              const SizedBox(height: 12),
+              _BilgiLangTabs(selected: locale, onSelect: (id) => setState(() => _selected = id), filled: _filled),
+              const SizedBox(height: 12),
+              Expanded(
+                child: ListView(
+                  children: [
+                    TextField(
+                      controller: _text[locale],
+                      readOnly: readOnly,
+                      maxLines: 3,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(labelText: 'Soru'),
+                    ),
+                    for (var i = 0; i < 4; i++)
+                      TextField(
+                        controller: _options[locale]![i],
+                        readOnly: readOnly,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(labelText: '${['A', 'B', 'C', 'D'][i]} şıkkı'),
+                      ),
+                    TextField(
+                      controller: _hint[locale],
+                      readOnly: readOnly,
+                      maxLines: 2,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(labelText: 'İpucu'),
+                    ),
+                    TextField(
+                      controller: _explanation[locale],
+                      readOnly: readOnly,
+                      maxLines: 2,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(labelText: 'Açıklama'),
+                    ),
+                    if (locale == _locale) ...[
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<int>(
+                        initialValue: _correct,
+                        dropdownColor: BilgiColors.card,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(labelText: 'Doğru şık'),
+                        items: const [
+                          DropdownMenuItem(value: 0, child: Text('A')),
+                          DropdownMenuItem(value: 1, child: Text('B')),
+                          DropdownMenuItem(value: 2, child: Text('C')),
+                          DropdownMenuItem(value: 3, child: Text('D')),
+                        ],
+                        onChanged: readOnly ? null : (value) => setState(() => _correct = value ?? 0),
+                      ),
+                      DropdownButtonFormField<String>(
+                        initialValue: _difficulty,
+                        dropdownColor: BilgiColors.card,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(labelText: 'Zorluk'),
+                        items: const [
+                          DropdownMenuItem(value: 'kolay', child: Text('Kolay')),
+                          DropdownMenuItem(value: 'orta', child: Text('Orta')),
+                          DropdownMenuItem(value: 'zor', child: Text('Zor')),
+                          DropdownMenuItem(value: 'efsane', child: Text('Efsane')),
+                        ],
+                        onChanged: readOnly ? null : (value) => setState(() => _difficulty = value ?? 'kolay'),
+                      ),
+                    ],
+                  ],
+                ),
               ),
               if (_error.isNotEmpty) ...[
                 const SizedBox(height: 8),
@@ -6974,11 +7152,18 @@ class _ContestQuestionDialogState extends State<_ContestQuestionDialog> {
               ],
               const SizedBox(height: 12),
               Row(
-                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  if (widget.editing)
+                    OutlinedButton(
+                      onPressed: _busy ? null : _retranslate,
+                      child: Text(_busy ? 'Yazılıyor' : 'Dilleri yeniden yaz'),
+                    ),
+                  const Spacer(),
                   TextButton(onPressed: () => Navigator.pop(context), child: const Text('Vazgeç')),
-                  const SizedBox(width: 8),
-                  FilledButton(onPressed: _submit, child: const Text('Soruyu kaydet')),
+                  if (widget.editing) ...[
+                    const SizedBox(width: 8),
+                    FilledButton(onPressed: _busy ? null : _submit, child: const Text('Soruyu kaydet')),
+                  ],
                 ],
               ),
             ],

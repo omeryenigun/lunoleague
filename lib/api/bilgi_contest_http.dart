@@ -1,8 +1,10 @@
 import 'package:kelimelig/api/admin_http.dart';
+import 'package:kelimelig/api/bilgi_daily_ai.dart';
 import 'package:kelimelig/api/bilgi_questions_http.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_contest.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_daily_paper.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_league.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_rules.dart';
@@ -71,6 +73,9 @@ class _ContestPaper {
 Future<_ContestPaper> _openDay(Connection db, KeyValueStore store, String day) async {
   final stored = await store.get(bilgiContestPaperBox, day);
   final ready = _questionsOf(stored);
+  if (bilgiContestAiDay(day)) {
+    return _ContestPaper(title: _titleOf(stored), questions: ready, spares: _sparesOf(stored));
+  }
   final wanted = bilgiDailyQuotas.fold<int>(0, (sum, count) => sum + count);
   if (ready.isNotEmpty && ready.length < wanted && !(await _lockedDays(store)).contains(day)) {
     final exclude = await _monthIds(store, day.substring(0, 7), skip: day);
@@ -285,6 +290,7 @@ Future<Response> _adminBuild(Request request, Connection db, KeyValueStore store
   if (locked.contains(day)) {
     return jsonResponse({'error': 'Bu gün kilitli.'}, status: 409);
   }
+  if (bilgiContestAiDay(day)) return _adminAiDay(store, day, body);
   final stored = await store.get(bilgiContestPaperBox, day);
   final incoming = body['questions'];
   if (incoming is List) {
@@ -323,6 +329,64 @@ Future<Response> _adminBuild(Request request, Connection db, KeyValueStore store
   return jsonResponse(await _monthPayload(store, day.substring(0, 7), bilgiContestMonthDays(day.substring(0, 7))));
 }
 
+Future<Response> _adminAiDay(KeyValueStore store, String day, Map<String, dynamic> body) async {
+  final stored = await store.get(bilgiContestPaperBox, day);
+  final hasTitle = body.containsKey('title');
+  var title = _titleOf(stored);
+  if (hasTitle) {
+    title = '${body['title'] ?? ''}'.trim();
+    if (title.length > 40) return jsonResponse({'error': 'Ad 40 karakteri geçemez.'}, status: 400);
+  }
+  final monthDays = bilgiContestMonthDays(day.substring(0, 7));
+  final incoming = body['questions'];
+  if (incoming is List) {
+    final cleaned = _cleanQuestions(incoming);
+    if (cleaned == null) return jsonResponse({'error': 'Soru eksik veya şıklar dört değil.'}, status: 400);
+    await store.put(bilgiContestPaperBox, day, {
+      'day': day,
+      'title': title,
+      'questions': cleaned,
+      'spares': _sparesOf(stored),
+    });
+    return jsonResponse(await _monthPayload(store, day.substring(0, 7), monthDays));
+  }
+  if (body['generate'] == true) {
+    final generated = await bilgiGenerateDailyPaper(day: day, avoidFacts: await _avoidFacts(store, day));
+    if (generated.error != null) return jsonResponse({'error': generated.error}, status: 502);
+    await store.put(bilgiContestPaperBox, day, {
+      'day': day,
+      'title': title,
+      'questions': generated.questions,
+      'spares': generated.spares,
+    });
+    return jsonResponse(await _monthPayload(store, day.substring(0, 7), monthDays));
+  }
+  await store.put(bilgiContestPaperBox, day, {
+    'day': day,
+    'title': title,
+    'questions': _questionsOf(stored),
+    'spares': _sparesOf(stored),
+  });
+  return jsonResponse(await _monthPayload(store, day.substring(0, 7), monthDays));
+}
+
+Future<List<String>> _avoidFacts(KeyValueStore store, String day) async {
+  final facts = <String>[];
+  final month = day.substring(0, 7);
+  for (final other in bilgiContestMonthDays(month)) {
+    final stored = await store.get(bilgiContestPaperBox, other);
+    for (final row in [..._questionsOf(stored), ..._sparesOf(stored)]) {
+      final text = '${row['text'] ?? ''}'.trim();
+      if (text.isEmpty) continue;
+      final options = row['options'];
+      final correct = bilgiInt(row['correct'], -1);
+      final answer = options is List && correct >= 0 && correct < options.length ? '${options[correct]}'.trim() : '';
+      facts.add(answer.isEmpty ? text : '$text => $answer');
+    }
+  }
+  return facts;
+}
+
 Future<void> _fillMonth(Connection db, KeyValueStore store, List<String> days) async {
   final locked = await _lockedDays(store);
   final used = <String>{};
@@ -332,7 +396,7 @@ Future<void> _fillMonth(Connection db, KeyValueStore store, List<String> days) a
     _takeIds(_sparesOf(stored), used);
   }
   for (final day in days) {
-    if (locked.contains(day)) continue;
+    if (locked.contains(day) || bilgiContestAiDay(day)) continue;
     final stored = await store.get(bilgiContestPaperBox, day);
     if (_questionsOf(stored).isNotEmpty) continue;
     final picked = await _draw(db, used);

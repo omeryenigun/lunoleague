@@ -25,10 +25,6 @@ import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_shop.dart';
 import 'package:kelimelig/injection.dart';
 
-const _countsNotice = '📡 Bağlantı hatası. İnternetini kontrol et.';
-const _adFailNotice = '📡 Bağlantı hatası. İnternetini kontrol et.';
-const _adRetryNotice = '⚠️ Bir şeyler ters gitti. Tekrar dene.';
-
 /// Shown after a completed watch: first while the reward is applied, then with the loaded amount.
 class BilgiRewardLoad {
   const BilgiRewardLoad({
@@ -149,9 +145,9 @@ class BilgiController extends ChangeNotifier {
   String get locale => localePreview ?? profile?.locale ?? 'tr';
   String t(String key) => bilgiT(locale, key);
 
-  String categoryLabel(String id, String fallback) => labels['$locale|category|$id'] ?? fallback;
+  String categoryLabel(String id, String fallback) => bilgiStoredLabel(labels, locale, 'category', id, fallback);
 
-  String subLabel(String categoryId, String name) => labels['$locale|sub|$categoryId|$name'] ?? name;
+  String subLabel(String categoryId, String name) => bilgiStoredLabel(labels, locale, 'sub', '$categoryId|$name', name);
 
   String groupLabel(String name) {
     final stored = labels['$locale|group|$name'];
@@ -405,11 +401,11 @@ class BilgiController extends ChangeNotifier {
     final remote = await BilgiQuestionApi.loadCounts();
     if (remote == null) {
       categories = _publishedForLocale(playable);
-      notice = _countsNotice;
+      notice = t('ad_fail');
       notifyListeners();
       return;
     }
-    if (notice == _countsNotice) notice = null;
+    if (notice == t('ad_fail')) notice = null;
     categoryCounts = {
       for (final category in playable) category.id: remote.categories[category.id] ?? 0,
       tumuKarmaId: remote.categories[tumuKarmaId] ?? 0,
@@ -426,11 +422,11 @@ class BilgiController extends ChangeNotifier {
   Future<void> refreshPool() async {
     final remote = await BilgiQuestionApi.loadCounts();
     if (remote == null) {
-      notice = _countsNotice;
+      notice = t('ad_fail');
       notifyListeners();
       return;
     }
-    if (notice == _countsNotice) notice = null;
+    if (notice == t('ad_fail')) notice = null;
     poolCount = remote.pool(categoryId, subName, difficulty);
     notifyListeners();
   }
@@ -546,13 +542,13 @@ class BilgiController extends ChangeNotifier {
     if (!_alive) return;
     if (paper == null) {
       _clearRoundLoading();
-      notice = 'Bağlantı kurulamadı.';
+      notice = t('err_offline');
       notifyListeners();
       return;
     }
     if (paper.questions.isEmpty) {
       _clearRoundLoading();
-      notice = '❓ Bu kategoride yeterli soru yok.';
+      notice = t('err_few_questions');
       notifyListeners();
       return;
     }
@@ -564,7 +560,7 @@ class BilgiController extends ChangeNotifier {
     }
     if (paper.questions.length < bilgiModeById('yarisma').questions) {
       _clearRoundLoading();
-      notice = '❓ Bu kategoride yeterli soru yok.';
+      notice = t('err_few_questions');
       notifyListeners();
       return;
     }
@@ -619,7 +615,7 @@ class BilgiController extends ChangeNotifier {
     final saved = await BilgiLeagueRunApi.save(live, finished: false);
     if (!_alive || round?.id != live.id) return;
     if (!saved) {
-      notice = 'Bağlantı kurulamadı.';
+      notice = t('err_offline');
       _armPlay();
       notifyListeners();
       return;
@@ -697,7 +693,7 @@ class BilgiController extends ChangeNotifier {
         busy = false;
         if (!_alive) return;
         if (!parked) {
-          notice = 'Bağlantı kurulamadı.';
+          notice = t('err_offline');
           notifyListeners();
           return;
         }
@@ -718,7 +714,7 @@ class BilgiController extends ChangeNotifier {
     if (epoch != _startEpoch) return;
     if (resume == false) {
       _clearRoundLoading();
-      notice = 'Bağlantı kurulamadı.';
+      notice = t('err_offline');
       notifyListeners();
       return;
     }
@@ -726,7 +722,7 @@ class BilgiController extends ChangeNotifier {
     final freshLeague = mode == 'lig' && saved == null;
     if (saved == null && subName.isNotEmpty && !bilgiSubListed(categoryId, subName, difficultySlices)) {
       _clearRoundLoading();
-      notice = '❓ Bu kategoride yeterli soru yok.';
+      notice = t('err_few_questions');
       notifyListeners();
       return;
     }
@@ -783,7 +779,7 @@ class BilgiController extends ChangeNotifier {
     final started = result.round;
     if (started == null) {
       _clearRoundLoading();
-      notice = '⚠️ Bir şeyler ters gitti. Tekrar dene.';
+      notice = t('err_generic');
       notifyListeners();
       return;
     }
@@ -945,7 +941,7 @@ class BilgiController extends ChangeNotifier {
   void _leaveUnplayableAd() {
     _pendingShared = null;
     _adLaunching = false;
-    notice = _adFailNotice;
+    notice = t('ad_fail');
     if (stack.isNotEmpty && stack.last == 'ad') stack.removeLast();
     notifyListeners();
   }
@@ -988,7 +984,7 @@ class BilgiController extends ChangeNotifier {
   }
 
   void _adFailed({bool connection = false}) {
-    notice = kIsWeb || connection ? _adFailNotice : _adRetryNotice;
+    notice = kIsWeb || connection ? t('ad_fail') : t('err_generic');
     notifyListeners();
   }
 
@@ -1248,7 +1244,7 @@ class BilgiController extends ChangeNotifier {
     final live = round;
     if (user == null || live == null) return;
     if (resultDoubleUsed) {
-      notice = '📅 Bugünkü hakkını kullandın.';
+      notice = t('err_quota');
       notifyListeners();
       return;
     }
@@ -1272,7 +1268,7 @@ class BilgiController extends ChangeNotifier {
         profile = result.profile ?? profile;
         if (result.round != null) round = result.round;
         if (result.message != null || result.round == null) {
-          notice = result.message ?? _adRetryNotice;
+          notice = result.message ?? t('err_generic');
           return false;
         }
         scoreDoubled = true;
@@ -1405,7 +1401,7 @@ class BilgiController extends ChangeNotifier {
     _applyGoldSpend(result);
     if (!result.ok || (page != 'shop' && page != 'joker')) return;
     final stock = profile?.jokers[type] ?? 0;
-    notice = '${t('joker_$type')} eklendi. Stok $stock.';
+    notice = t('joker_added').replaceAll('{name}', t('joker_$type')).replaceAll('{n}', '$stock');
     notifyListeners();
   }
 
@@ -1491,7 +1487,7 @@ class BilgiController extends ChangeNotifier {
   Future<void> refill() async {
     final user = profile;
     if (user != null && user.lives >= config.maxLives) {
-      notice = 'Canın zaten dolu.';
+      notice = t('err_lives_full');
       notifyListeners();
       return;
     }
@@ -1502,7 +1498,7 @@ class BilgiController extends ChangeNotifier {
     final result = await server.refillLives();
     _applyGoldSpend(result, closeNoLives: true);
     if (!result.ok || page != 'shop') return;
-    notice = 'Canın doldu.';
+    notice = t('err_lives_filled');
     notifyListeners();
   }
 
@@ -1564,7 +1560,7 @@ class BilgiController extends ChangeNotifier {
 
   String? _adLimitMessage(String kind) {
     final user = profile;
-    if (user == null) return _adRetryNotice;
+    if (user == null) return t('err_generic');
     final hit = switch (kind) {
       'gold' => user.adGoldToday >= config.rewardedGoldLimit,
       'joker' => user.adJokerToday >= config.rewardedJokerLimit,
@@ -1572,7 +1568,7 @@ class BilgiController extends ChangeNotifier {
       _ => false,
     };
     if (!hit) return null;
-    return '📅 Bugünkü hakkını kullandın.';
+    return t('err_quota');
   }
 
   /// Watch the Bilgi rewarded interstitial, then start one gunluk round.
@@ -1637,7 +1633,7 @@ class BilgiController extends ChangeNotifier {
   }) async {
     final waiting = room;
     if (waiting != null && (waiting.status == 'lobby' || waiting.status == 'playing')) {
-      notice = waiting.status == 'playing' ? 'Tur bitmeden yeni oda açılmaz.' : 'Önce açık odayı kapat.';
+      notice = waiting.status == 'playing' ? t('err_room_busy') : t('err_room_close_first');
       notifyListeners();
       return;
     }
@@ -1650,7 +1646,7 @@ class BilgiController extends ChangeNotifier {
       seconds: seconds,
     );
     if (room == null) {
-      notice = 'Oda açılamadı. Bağlantını kontrol et.';
+      notice = t('err_room_open');
       notifyListeners();
       return;
     }
@@ -1692,12 +1688,12 @@ class BilgiController extends ChangeNotifier {
     final me = seatedId;
     if (hooks != null) {
       if (!bilgiViewerHostsRoom(current, me)) {
-        notice = 'Odayı kuran başlatır.';
+        notice = t('err_host_starts');
         notifyListeners();
         return;
       }
       if (current.kind == 'duello' && current.players.length < 2) {
-        notice = 'Rakip katılınca başlatabilirsin.';
+        notice = t('room_wait_rival');
         notifyListeners();
         return;
       }
@@ -1708,7 +1704,7 @@ class BilgiController extends ChangeNotifier {
       final sync = await hooks.start(code: current.code, playerId: me);
       busy = false;
       if (!sync.ok || sync.questions.isEmpty) {
-        notice = sync.message ?? '❓ Bu kategoride yeterli soru yok.';
+        notice = sync.message ?? t('err_few_questions');
         room = sync.room ?? room;
         notifyListeners();
         return;
@@ -1736,7 +1732,7 @@ class BilgiController extends ChangeNotifier {
         ? await hooks.leave(code: current.code, playerId: me)
         : await server.leaveRoom(current.code);
     if (!ok) {
-      notice = 'Oda kapatılamadı. Bağlantını kontrol et.';
+      notice = t('err_room_close');
       _armRoom();
       notifyListeners();
       return;
@@ -1753,7 +1749,7 @@ class BilgiController extends ChangeNotifier {
     _timer?.cancel();
     room = null;
     roomPlayerId = null;
-    notice = 'Oda kapandı.';
+    notice = t('err_room_closed');
     notifyListeners();
   }
 
@@ -1926,7 +1922,7 @@ class BilgiController extends ChangeNotifier {
       notice = error.message;
       notifyListeners();
     } catch (_) {
-      notice = '⚠️ Bir şeyler ters gitti. Tekrar dene.';
+      notice = t('err_generic');
       notifyListeners();
     }
   }
@@ -1937,7 +1933,7 @@ class BilgiController extends ChangeNotifier {
   }
 
   void socialUnavailable() {
-    notice = '⚠️ Bir şeyler ters gitti. Tekrar dene.';
+    notice = t('err_generic');
     notifyListeners();
   }
 

@@ -44,6 +44,65 @@ Future<Response> _translate(Request request, Connection db) async {
   return jsonResponse({'error': 'Tercüme isteği geçersiz.'}, status: 400);
 }
 
+/// Türkçe bir yarışma sorusunu dokuz dile çevirir. Hata metni [error] içindedir.
+Future<({Map<String, dynamic>? translations, String? error})> bilgiTranslateTrivia({
+  required String text,
+  required List<String> options,
+  required String explanation,
+  required String hint,
+}) async {
+  final choices = [for (final item in options) item.trim()];
+  if (!bilgiLanguageFieldsReady(text, choices, explanation)) {
+    return (translations: null, error: 'Türkçe soru, dört şık ve açıklama dolu olmalı.');
+  }
+  if (hint.trim().isEmpty || hint.length > 500) {
+    return (translations: null, error: 'İpucu dolu olmalı.');
+  }
+  final targets = List<String>.from(_targetLocales);
+  final sample = targets
+      .map((id) => '"$id":{"text":"","options":["","","",""],"explanation":"","hint":""}')
+      .join(',');
+  final decoded = await _ask(
+    'Translate this Turkish trivia item into ${targets.join(', ')}. '
+    'Keep the four options in the same order. Do not change which option is correct. '
+    'Every text, option, and explanation must be non-empty. '
+    '${bilgiHintTranslateRule(hint)}'
+    'Return only JSON: {$sample}.',
+    jsonEncode({
+      'text': text.trim(),
+      'options': choices,
+      'explanation': explanation.trim(),
+      'hint': hint.trim(),
+    }),
+  );
+  if (decoded is String) return (translations: null, error: decoded);
+  if (decoded is! Map) return (translations: null, error: 'Tercüme okunamadı.');
+  final out = <String, dynamic>{};
+  for (final locale in targets) {
+    final row = decoded[locale];
+    if (row is! Map) return (translations: null, error: 'Tercüme eksik geldi.');
+    final translated = '${row['text'] ?? ''}'.trim();
+    final note = '${row['explanation'] ?? ''}'.trim();
+    final translatedHint = bilgiClipTranslatedHint('${row['hint'] ?? ''}');
+    final rawOptions = row['options'];
+    if (rawOptions is! List || rawOptions.length != 4) {
+      return (translations: null, error: 'Tercüme eksik geldi.');
+    }
+    final translatedOptions = [for (final item in rawOptions) '$item'.trim()];
+    if (!bilgiLanguageFieldsReady(translated, translatedOptions, note) ||
+        !bilgiTranslatedHintReady(hint, translatedHint)) {
+      return (translations: null, error: 'Tercüme eksik geldi.');
+    }
+    out[locale] = {
+      'text': translated,
+      'options': translatedOptions,
+      'explanation': note,
+      'hint': translatedHint,
+    };
+  }
+  return (translations: out, error: null);
+}
+
 Future<Response> _question(Map<String, dynamic> body) async {
   final text = '${body['text'] ?? ''}'.trim();
   final explanation = '${body['explanation'] ?? ''}'.trim();

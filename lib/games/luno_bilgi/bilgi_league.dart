@@ -1,5 +1,6 @@
 import 'package:kelimelig/core/utils/date_keys.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_l10n.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_rules.dart';
 
@@ -237,11 +238,12 @@ List<String> bilgiSortLeagueCatalog(
   String sort = bilgiLeagueSortAlpha,
   Map<String, int> questionCounts = const {},
   Map<String, int> playerCounts = const {},
+  Map<String, String> names = const {},
 }) {
   final rows = [...ids];
   int byName(String a, String b) {
-    final left = bilgiCategoryById(a)?.name ?? a;
-    final right = bilgiCategoryById(b)?.name ?? b;
+    final left = names[a] ?? bilgiCategoryById(a)?.name ?? a;
+    final right = names[b] ?? bilgiCategoryById(b)?.name ?? b;
     final by = bilgiTurkishCompare(left, right);
     if (by != 0) return by;
     return a.compareTo(b);
@@ -467,13 +469,14 @@ int bilgiMyBoardRank(List<BilgiBoardEntry> rows, String meId) {
   return 0;
 }
 
-/// Points stay on their own line: "Lig Puanınız: 40".
-/// A real place is a second line, "4. Sıradasınız". No place omits that line.
-String bilgiMyRankLabel({required int score, required int rank}) {
+/// Points stay on their own line. A real place is a second line. No place omits that line.
+/// [locale] follows the player profile. Omitted locale stays Turkish for existing callers.
+String bilgiMyRankLabel({required int score, required int rank, String locale = 'tr'}) {
   final points = score < 0 ? 0 : score;
-  final pointsLine = 'Lig Puanınız: $points';
+  final pointsLine = bilgiT(locale, 'league_points').replaceAll('{n}', '$points');
   if (rank <= 0) return pointsLine;
-  return '$pointsLine\n$rank. Sıradasınız';
+  final rankLine = bilgiT(locale, 'league_rank').replaceAll('{n}', '$rank');
+  return '$pointsLine\n$rankLine';
 }
 
 const bilgiSeedNames = <String>[

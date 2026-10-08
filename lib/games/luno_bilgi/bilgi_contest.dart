@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -218,6 +219,21 @@ class BilgiContestApi {
         Uri.parse('${ApiConfig.baseUrl}/v1/admin/bilgi-contest').replace(queryParameters: {'month': month}),
         headers: {'authorization': 'Bearer $token'},
       ),
+    );
+  }
+
+  static Future<BilgiContestAdminResult> adminGenerate(String token, String day) {
+    return _admin(
+      http
+          .post(
+            Uri.parse('${ApiConfig.baseUrl}/v1/admin/bilgi-contest'),
+            headers: {
+              'authorization': 'Bearer $token',
+              'content-type': 'application/json; charset=utf-8',
+            },
+            body: jsonEncode({'day': day, 'generate': true}),
+          )
+          .timeout(const Duration(minutes: 8)),
     );
   }
 

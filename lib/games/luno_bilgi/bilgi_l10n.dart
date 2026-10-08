@@ -1,15 +1,67 @@
 import 'package:kelimelig/core/l10n/game_locale.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_l10n_chrome.dart';
+import 'package:kelimelig/games/luno_bilgi/bilgi_l10n_player.dart';
 
 String bilgiT(String locale, String key) {
   final id = GameLocale.resolve(locale).id;
   return _tables[id]?[key] ??
       _pages[id]?[key] ??
+      bilgiPlayer[id]?[key] ??
       bilgiChrome[id]?[key] ??
       _tables['tr']?[key] ??
       _pages['tr']?[key] ??
+      bilgiPlayer['tr']?[key] ??
       bilgiChrome['tr']?[key] ??
       key;
+}
+
+/// Published catalog label for [locale]. Empty or missing text uses [fallback],
+/// the same path as [categoryLabel] on the player controller.
+String bilgiStoredLabel(Map<String, String> labels, String locale, String scope, String key, String fallback) {
+  final id = GameLocale.resolve(locale).id;
+  final stored = (labels['$id|$scope|$key'] ?? '').trim();
+  return stored.isEmpty ? fallback : stored;
+}
+
+/// Stored rank words stay Turkish. The profile pill shows the player's language.
+String bilgiRankTitle(String locale, String stored) {
+  final key = switch (stored.trim()) {
+    'Çaylak' => 'rank_rookie',
+    'Bilge' => 'rank_wise',
+    _ => null,
+  };
+  if (key == null) return stored;
+  return bilgiT(locale, key);
+}
+
+/// Badge catalog names stay Turkish. The profile shows the published locale name.
+String bilgiBadgeLabel(String locale, String id, String fallback) {
+  final key = 'badge_$id';
+  final text = bilgiT(locale, key);
+  return text == key ? fallback : text;
+}
+
+/// True when [name] is an auto guest label, prefix plus digits, in any supported locale.
+bool bilgiIsAutoGuestName(String name) {
+  final trimmed = name.trim();
+  for (final locale in GameLocale.all) {
+    final prefix = bilgiT(locale.id, 'guest_prefix');
+    if (prefix.isEmpty) continue;
+    if (RegExp('^${RegExp.escape(prefix)}\\d+\$').hasMatch(trimmed)) return true;
+  }
+  return false;
+}
+
+/// New guest label for [locale], keeping the digit suffix. Null when [name] is a chosen username.
+String? bilgiRetargetGuestName(String name, String locale) {
+  if (!bilgiIsAutoGuestName(name)) return null;
+  final digits = name.replaceAll(RegExp(r'\D'), '');
+  if (digits.isEmpty) return null;
+  final prefix = bilgiT(locale, 'guest_prefix');
+  final room = 20 - prefix.length;
+  if (room < 1) return null;
+  final body = digits.length > room ? digits.substring(digits.length - room) : digits;
+  return '$prefix$body';
 }
 
 const _pages = <String, Map<String, String>>{
@@ -48,6 +100,7 @@ const _pages = <String, Map<String, String>>{
     'mode_grup': 'Group',
     'mode_oda': 'Private room',
     'mode_gunluk': 'Question of the day',
+    'mode_yarisma': 'Contest of the day',
     'mode_lig': 'Luno League',
     'page_play': 'Test your knowledge',
     'page_categories': 'Categories',
@@ -73,6 +126,7 @@ const _pages = <String, Map<String, String>>{
     'mode_grup': 'Gruppe',
     'mode_oda': 'Privater Raum',
     'mode_gunluk': 'Frage des Tages',
+    'mode_yarisma': 'Wettbewerb des Tages',
     'mode_lig': 'Luno Liga',
     'page_play': 'Teste dein Wissen',
     'page_categories': 'Kategorien',
@@ -98,6 +152,7 @@ const _pages = <String, Map<String, String>>{
     'mode_grup': 'Grupo',
     'mode_oda': 'Sala privada',
     'mode_gunluk': 'Pregunta del día',
+    'mode_yarisma': 'Concurso del día',
     'mode_lig': 'Liga Luno',
     'page_play': 'Pon a prueba tu saber',
     'page_categories': 'Categorías',
@@ -150,6 +205,9 @@ const _pages = <String, Map<String, String>>{
     'mode_oda': 'Stanza privata',
     'mode_gunluk': 'Domanda del giorno',
     'mode_yarisma': 'Concorso del giorno',
+    'mode_lig': 'Lega Luno',
+    'page_play': 'Metti alla prova',
+    'page_categories': 'Categorie',
     'page_detail': 'Categoria',
     'page_setup': 'Impostazioni partita',
     'page_shop': 'Negozio',
@@ -301,6 +359,13 @@ const _tables = <String, Map<String, String>>{
     'loading': 'Kategoriler yükleniyor...',
     'boot_open': 'Oyun açılıyor...',
     'questions_loading': 'Sorular yükleniyor...',
+    'total_games': 'Toplam Oyun',
+    'correct_ratio': 'Doğru Oranı',
+    'best_score': 'En Yüksek Puan',
+    'login_streak': 'Giriş Serisi',
+    'badges': 'ROZETLER',
+    'days': '{n} gün',
+    'day_one': '{n} gün',
   },
   'en': {
     'home': 'Home',
@@ -333,6 +398,13 @@ const _tables = <String, Map<String, String>>{
     'loading': 'Loading categories...',
     'boot_open': 'Opening the game...',
     'questions_loading': 'Loading questions...',
+    'total_games': 'Games played',
+    'correct_ratio': 'Accuracy',
+    'best_score': 'Best score',
+    'login_streak': 'Login streak',
+    'badges': 'BADGES',
+    'days': '{n} days',
+    'day_one': '{n} day',
   },
   'de': {
     'home': 'Start',
@@ -365,6 +437,13 @@ const _tables = <String, Map<String, String>>{
     'loading': 'Kategorien werden geladen...',
     'boot_open': 'Spiel wird geöffnet...',
     'questions_loading': 'Fragen werden geladen...',
+    'total_games': 'Gespielte Spiele',
+    'correct_ratio': 'Trefferquote',
+    'best_score': 'Bestpunktzahl',
+    'login_streak': 'Login-Serie',
+    'badges': 'ABZEICHEN',
+    'days': '{n} Tage',
+    'day_one': '{n} Tag',
   },
   'es': {
     'home': 'Inicio',
@@ -397,6 +476,13 @@ const _tables = <String, Map<String, String>>{
     'loading': 'Cargando categorías...',
     'boot_open': 'Abriendo el juego...',
     'questions_loading': 'Cargando preguntas...',
+    'total_games': 'Partidas jugadas',
+    'correct_ratio': 'Precisión',
+    'best_score': 'Mejor puntuación',
+    'login_streak': 'Racha de entrada',
+    'badges': 'INSIGNIAS',
+    'days': '{n} días',
+    'day_one': '{n} día',
   },
   'fr': {
     'home': 'Accueil',
@@ -429,6 +515,13 @@ const _tables = <String, Map<String, String>>{
     'loading': 'Chargement des catégories...',
     'boot_open': 'Ouverture du jeu...',
     'questions_loading': 'Chargement des questions...',
+    'total_games': 'Parties jouées',
+    'correct_ratio': 'Précision',
+    'best_score': 'Meilleur score',
+    'login_streak': 'Série de connexions',
+    'badges': 'INSIGNES',
+    'days': '{n} jours',
+    'day_one': '{n} jour',
   },
   'it': {
     'home': 'Home',
@@ -461,6 +554,13 @@ const _tables = <String, Map<String, String>>{
     'loading': 'Caricamento categorie...',
     'boot_open': 'Apertura del gioco...',
     'questions_loading': 'Caricamento domande...',
+    'total_games': 'Partite giocate',
+    'correct_ratio': 'Precisione',
+    'best_score': 'Miglior punteggio',
+    'login_streak': 'Serie di accessi',
+    'badges': 'DISTINTIVI',
+    'days': '{n} giorni',
+    'day_one': '{n} giorno',
   },
   'ru': {
     'home': 'Главная',
@@ -493,6 +593,13 @@ const _tables = <String, Map<String, String>>{
     'loading': 'Категории загружаются...',
     'boot_open': 'Игра открывается...',
     'questions_loading': 'Вопросы загружаются...',
+    'total_games': 'Сыграно игр',
+    'correct_ratio': 'Точность',
+    'best_score': 'Лучший счёт',
+    'login_streak': 'Серия входов',
+    'badges': 'ЗНАЧКИ',
+    'days': '{n} дн.',
+    'day_one': '{n} день',
   },
   'nl': {
     'home': 'Home',
@@ -525,6 +632,13 @@ const _tables = <String, Map<String, String>>{
     'loading': 'Categorieën laden...',
     'boot_open': 'Spel wordt geopend...',
     'questions_loading': 'Vragen laden...',
+    'total_games': 'Gespeelde spellen',
+    'correct_ratio': 'Nauwkeurigheid',
+    'best_score': 'Beste score',
+    'login_streak': 'Inlogreeks',
+    'badges': 'INSIGNES',
+    'days': '{n} dagen',
+    'day_one': '{n} dag',
   },
   'pt': {
     'home': 'Início',
@@ -557,6 +671,13 @@ const _tables = <String, Map<String, String>>{
     'loading': 'A carregar categorias...',
     'boot_open': 'A abrir o jogo...',
     'questions_loading': 'A carregar perguntas...',
+    'total_games': 'Jogos feitos',
+    'correct_ratio': 'Precisão',
+    'best_score': 'Melhor pontuação',
+    'login_streak': 'Série de entradas',
+    'badges': 'DISTINTIVOS',
+    'days': '{n} dias',
+    'day_one': '{n} dia',
   },
   'pl': {
     'home': 'Start',
@@ -589,5 +710,12 @@ const _tables = <String, Map<String, String>>{
     'loading': 'Wczytywanie kategorii...',
     'boot_open': 'Otwieranie gry...',
     'questions_loading': 'Wczytywanie pytań...',
+    'total_games': 'Rozegrane gry',
+    'correct_ratio': 'Celność',
+    'best_score': 'Najlepszy wynik',
+    'login_streak': 'Seria logowań',
+    'badges': 'ODZNAKI',
+    'days': '{n} dni',
+    'day_one': '{n} dzień',
   },
 };
