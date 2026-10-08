@@ -123,12 +123,18 @@ class BilgiContestDay {
     required this.title,
     required this.count,
     required this.locked,
+    this.aiStatus = '',
+    this.aiMessage = '',
+    this.aiLastOkAt = '',
   });
 
   final String day;
   final String title;
   final int count;
   final bool locked;
+  final String aiStatus;
+  final String aiMessage;
+  final String aiLastOkAt;
 }
 
 class BilgiContestMonth {
@@ -151,6 +157,7 @@ class BilgiContestDayPaper {
     required this.title,
     required this.locked,
     required this.questions,
+    this.spares = const [],
     this.error,
   });
 
@@ -158,6 +165,7 @@ class BilgiContestDayPaper {
   final String title;
   final bool locked;
   final List<BilgiQuestion> questions;
+  final List<BilgiQuestion> spares;
   final String? error;
 }
 
@@ -282,11 +290,16 @@ class BilgiContestApi {
         for (final item in (decoded['questions'] as List? ?? const []))
           if (item is Map) BilgiQuestion.fromMap(Map<String, dynamic>.from(item)),
       ];
+      final spares = <BilgiQuestion>[
+        for (final item in (decoded['spares'] as List? ?? const []))
+          if (item is Map) BilgiQuestion.fromMap(Map<String, dynamic>.from(item)),
+      ];
       return BilgiContestDayPaper(
         day: '${decoded['day'] ?? day}',
         title: '${decoded['title'] ?? ''}'.trim(),
         locked: decoded['locked'] == true,
         questions: questions,
+        spares: spares,
       );
     } catch (_) {
       return BilgiContestDayPaper(day: day, title: '', locked: false, questions: const [], error: 'Sorular yüklenemedi.');
@@ -296,8 +309,9 @@ class BilgiContestApi {
   static Future<BilgiContestAdminResult> adminSaveQuestions(
     String token,
     String day,
-    List<BilgiQuestion> questions,
-  ) {
+    List<BilgiQuestion> questions, {
+    List<BilgiQuestion> spares = const [],
+  }) {
     return _admin(
       http.post(
         Uri.parse('${ApiConfig.baseUrl}/v1/admin/bilgi-contest'),
@@ -308,6 +322,7 @@ class BilgiContestApi {
         body: jsonEncode({
           'day': day,
           'questions': [for (final question in questions) question.toMap()],
+          'spares': [for (final question in spares) question.toMap()],
         }),
       ),
     );
@@ -329,6 +344,9 @@ class BilgiContestApi {
               title: '${item['title'] ?? ''}'.trim(),
               count: bilgiInt(item['count'], 0),
               locked: item['locked'] == true,
+              aiStatus: '${item['aiStatus'] ?? ''}',
+              aiMessage: '${item['aiMessage'] ?? ''}',
+              aiLastOkAt: '${item['aiLastOkAt'] ?? ''}',
             ),
       ];
       return BilgiContestAdminResult(

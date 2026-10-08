@@ -13,10 +13,12 @@ String _questionOf(String fact) {
 }
 
 /// Güçlü model Türkçe kağıdı yazar, mevcut çeviri hattı dokuz dili doldurur.
+/// [onPaper] her ara kayıtta çağrılır; hata kağıdı silmez, dönüşteki error durum yazar.
 Future<({List<Map<String, dynamic>> questions, List<Map<String, dynamic>> spares, String? error})>
     bilgiGenerateDailyPaper({
   required String day,
   required List<String> avoidFacts,
+  Future<void> Function(List<Map<String, dynamic>> questions, List<Map<String, dynamic>> spares, String message)? onPaper,
 }) async {
   final key = Platform.environment['OPENAI_API_KEY'] ?? '';
   if (key.isEmpty) {
@@ -28,75 +30,132 @@ Future<({List<Map<String, dynamic>> questions, List<Map<String, dynamic>> spares
       if (bilgiDailyFold(_questionOf(fact)).isNotEmpty) bilgiDailyFold(_questionOf(fact)),
   };
   final shown = avoidFacts.take(240).map((fact) => fact.trim()).where((fact) => fact.isNotEmpty).join('\n');
-  var complaint = '';
-  for (var attempt = 0; attempt < 2; attempt++) {
-    final raw = await _complete(
+  final deadline = DateTime.now().add(const Duration(minutes: 7));
+  final usedModel = model.isEmpty ? _dailyModelFallback : model;
+  var tail = Future<void>.value();
+  Future<void> emit(List<Map<String, dynamic>> questions, List<Map<String, dynamic>> spares, String message) {
+    final sink = onPaper;
+    if (sink == null) return Future<void>.value();
+    tail = tail.then((_) async {
+      try {
+        await sink(
+          [for (final row in questions) Map<String, dynamic>.from(row)],
+          [for (final row in spares) Map<String, dynamic>.from(row)],
+          message,
+        );
+      } catch (_) {}
+    });
+    return tail;
+  }
+
+  final first = await _complete(
+    key: key,
+    model: usedModel,
+    instruction: _instruction,
+    source: 'Gün: $day\nBu olguları tekrarlama. Her satır soru ve doğru cevaptır.\n$shown',
+    timeout: const Duration(seconds: 90),
+  );
+  var parsed = bilgiDailyPaperFromModel(first.text, day: day, avoid: avoid);
+  if (parsed.questions.length < 20 && _room(deadline, const Duration(seconds: 200))) {
+    final previous = first.text ?? '';
+    final repair = await _complete(
       key: key,
-      model: model.isEmpty ? _dailyModelFallback : model,
+      model: usedModel,
       instruction: _instruction,
       source: 'Gün: $day\n'
-          'Bu olguları tekrarlama. Her satır soru ve doğru cevaptır.\n'
-          '$shown\n'
-          '$complaint',
+          'Önceki JSON reddedildi: ${parsed.error}\n'
+          'Aynı kağıdı düzelt. Soru sayısını ve olguları koru. Yalnız düzeltilmiş JSON döndür.\n'
+          '${previous.length > 48000 ? previous.substring(0, 48000) : previous}',
+      timeout: const Duration(seconds: 70),
+      temperature: 0.2,
     );
-    if (raw.error != null) {
-      return (questions: <Map<String, dynamic>>[], spares: <Map<String, dynamic>>[], error: raw.error);
+    if (repair.text != null) {
+      final next = bilgiDailyPaperFromModel(repair.text, day: day, avoid: avoid);
+      if (next.questions.length > parsed.questions.length) parsed = next;
     }
-    final parsed = bilgiDailyPaperFromModel(raw.text, day: day, avoid: avoid);
-    if (parsed.error != null) {
-      complaint = 'Önceki çıktı reddedildi: ${parsed.error} Aynı kurallarla yeni bir kağıt yaz.';
-      continue;
-    }
-    final questions = await _translateRows(parsed.questions);
-    if (questions.error != null) {
-      return (questions: <Map<String, dynamic>>[], spares: <Map<String, dynamic>>[], error: questions.error);
-    }
-    final spares = await _translateRows(parsed.spares);
-    if (spares.error != null) {
-      return (questions: <Map<String, dynamic>>[], spares: <Map<String, dynamic>>[], error: spares.error);
-    }
-    return (questions: questions.rows, spares: spares.rows, error: null);
   }
-  return (questions: <Map<String, dynamic>>[], spares: <Map<String, dynamic>>[], error: 'Üretim kurallara uymadı.');
+  if (parsed.questions.isEmpty) {
+    final reason = first.error ?? parsed.error ?? 'Üretim kurallara uymadı.';
+    return (questions: <Map<String, dynamic>>[], spares: <Map<String, dynamic>>[], error: reason);
+  }
+  await emit(parsed.questions, parsed.spares, 'Türkçe kağıt yazıldı');
+  if (parsed.questions.length < 20) {
+    return (
+      questions: parsed.questions,
+      spares: parsed.spares,
+      error: parsed.error ?? 'Kağıt 20 soru olmalı.',
+    );
+  }
+  if (!_room(deadline, const Duration(seconds: 20))) {
+    return (questions: parsed.questions, spares: parsed.spares, error: null);
+  }
+  final split = parsed.questions.length;
+  final translated = await _translateRows(
+    [...parsed.questions, ...parsed.spares],
+    deadline,
+    onRows: (rows, message) => emit(rows.sublist(0, split), rows.sublist(split), message),
+  );
+  return (
+    questions: translated.rows.sublist(0, split),
+    spares: translated.rows.sublist(split),
+    error: null,
+  );
 }
+
+bool _room(DateTime deadline, Duration need) => deadline.isAfter(DateTime.now().add(need));
 
 Future<({List<Map<String, dynamic>> rows, String? error})> _translateRows(
   List<Map<String, dynamic>> rows,
-) async {
+  DateTime deadline, {
+  Future<void> Function(List<Map<String, dynamic>> rows, String message)? onRows,
+}) async {
   final out = [for (final row in rows) Map<String, dynamic>.from(row)];
-  var cursor = 0;
-  final failures = <String>[];
-  Future<void> worker() async {
-    while (failures.isEmpty) {
-      final index = cursor;
-      if (index >= out.length) return;
-      cursor += 1;
-      final row = out[index];
-      final options = [for (final option in row['options'] as List) '$option'];
-      var translated = await bilgiTranslateTrivia(
-        text: '${row['text']}',
-        options: options,
-        explanation: '${row['explanation']}',
-        hint: '${row['hint']}',
-      );
-      if (translated.error != null) {
-        translated = await bilgiTranslateTrivia(
+  Future<void> publish() async {
+    final sink = onRows;
+    if (sink == null) return;
+    final done = out.where((row) => row['translations'] != null).length;
+    try {
+      await sink([for (final row in out) Map<String, dynamic>.from(row)], 'Çevriliyor $done/${out.length}');
+    } catch (_) {}
+  }
+
+  Future<void> run(List<int> ids) async {
+    var cursor = 0;
+    Future<void> worker() async {
+      while (_room(deadline, const Duration(seconds: 8))) {
+        final place = cursor;
+        if (place >= ids.length) return;
+        cursor += 1;
+        final index = ids[place];
+        final row = out[index];
+        final options = [for (final option in row['options'] as List) '$option'];
+        final translated = await bilgiTranslateTrivia(
           text: '${row['text']}',
           options: options,
           explanation: '${row['explanation']}',
           hint: '${row['hint']}',
+          timeout: const Duration(seconds: 30),
         );
+        if (translated.translations != null) {
+          out[index]['translations'] = translated.translations;
+          await publish();
+        }
       }
-      if (translated.translations == null) {
-        failures.add(translated.error ?? 'Tercüme eksik geldi.');
-        return;
-      }
-      out[index]['translations'] = translated.translations;
     }
+
+    await Future.wait([for (var i = 0; i < 6; i++) worker()]);
   }
 
-  await Future.wait([worker(), worker(), worker()]);
-  if (failures.isNotEmpty) return (rows: <Map<String, dynamic>>[], error: failures.first);
+  await run([for (var i = 0; i < out.length; i++) i]);
+  final failed = [for (var i = 0; i < out.length; i++) if (out[i]['translations'] == null) i];
+  if (failed.isNotEmpty && _room(deadline, const Duration(seconds: 35))) await run(failed);
+  if (out.any((row) => row['translations'] == null)) {
+    final late = !_room(deadline, const Duration(seconds: 1));
+    return (
+      rows: out,
+      error: late ? 'Günlük üretim süreye sığmadı.' : 'Tercüme eksik geldi.',
+    );
+  }
   return (rows: out, error: null);
 }
 
@@ -105,6 +164,9 @@ Future<({String? text, String? error})> _complete({
   required String model,
   required String instruction,
   required String source,
+  Duration timeout = const Duration(seconds: 90),
+  double temperature = 0.5,
+  int maxTokens = 16000,
 }) async {
   try {
     final response = await http
@@ -116,8 +178,8 @@ Future<({String? text, String? error})> _complete({
           },
           body: jsonEncode({
             'model': model,
-            'temperature': 0.5,
-            'max_tokens': 16000,
+            'temperature': temperature,
+            'max_tokens': maxTokens,
             'response_format': {'type': 'json_object'},
             'messages': [
               {'role': 'system', 'content': instruction},
@@ -125,7 +187,7 @@ Future<({String? text, String? error})> _complete({
             ],
           }),
         )
-        .timeout(const Duration(seconds: 180));
+        .timeout(timeout);
     final decoded = jsonDecode(response.body);
     if (response.statusCode < 200 || response.statusCode >= 300 || decoded is! Map) {
       return (text: null, error: 'Günlük üretim yanıt vermedi (${response.statusCode}).');
@@ -148,27 +210,25 @@ Future<({String? text, String? error})> _complete({
 const _instruction = '''
 Luno Bilgi için bir günlük yarışma kağıdı yaz. Yalnız Türkçe. Çeviri yazma. Yalnız JSON döndür.
 
-Amaç sıradan ezber değildir. Her soru ya yeni bir şey öğretir, ya şaşırtır, ya tahmin ettirir, ya da "bunu kaç kişi bilecek" dedirtir. Cevabı öğrenen kişi bunu bir arkadaşına anlatabilmelidir. Başkent, en büyük okyanus, suyun formülü gibi klasik soruları yazma.
+Amaç sıradan ezber değildir. Soru eğlenceli ve espirili olabilir. İşaretlenen cevap yine de gerçek bir olgudur. Cevabı öğrenen kişi bunu bir arkadaşına anlatabilmelidir. Başkent, en büyük okyanus, suyun formülü gibi klasik soruları yazma.
 
-Kağıt 20 soru, oynanış sırasıyla:
-- zorluk sayıları: kolay 6, orta 8, zor 4, efsane 2
-- ilk 3 soru kolay veya orta
-- 20. soru efsane ve günün finali olsun
-- diğer efsane 11. sorudan önce gelmesin
-- aynı konu art arda en fazla 2 soru
-- zorluk dalgalansın; kolayları başa, zorları sona yığma
+Kağıt tam 20 soru. Zorluk sırası birebir şöyle olsun:
+kolay, orta, kolay, orta, orta, zor, orta, kolay, orta, zor, efsane, orta, kolay, zor, orta, kolay, orta, zor, kolay, efsane
+Aynı konu art arda en fazla 2 soru gelsin.
 
-Yedek 11 soru, sıraya girmez:
-- kolay 3, orta 3, zor 3, efsane 2
+Yedek tam 11 soru, sıraya girmez. Zorluk sırası:
+kolay, kolay, kolay, orta, orta, orta, zor, zor, zor, efsane, efsane
 
 Her soru:
 {"text":"","options":["","","",""],"correct":0,"difficulty":"kolay","topic":"","hint":"","explanation":""}
 
 Kurallar:
-- correct 0, 1, 2 veya 3. Her zorluk grubunda doğru şık sayıları en fazla 1 farkla dengeli olsun.
-- Dört şık birbirinden farklı ve inandırıcı olsun. Saçma çeldirici yazma.
-- Tek net cevap. Tanıma göre değişen, tarihsiz rekor, "en çok", günü olmayan güncel sayı ve tartışmalı iddia yazma. Emin değilsen o soruyu yazma.
-- hint, doğru şıkkı anlatan başka bir cümledir. Doğru şıkkın metnini kopyalama. Açıklamanın aynısı olmasın. 4 ile 500 karakter.
+- correct 0, 1, 2 veya 3. Her zorlukta doğru şık A, B, C, D diye sırayla dönsün. Aynı harf bir zorlukta diğerinden en fazla 1 fazla olsun.
+- correct ile işaretlenen şık, o sorunun gerçek ve tek doğru cevabıdır.
+- Diğer üç şık aynı soruya ait gerçek ama yanlış alternatiflerdir. Uydurma, geyik ya da gerçek dışı cümle yazılmaz. "Deniz suyu soğuktur, bu yüzden susatır" gibi bir şık yazılmaz.
+- Dört şık birbirinden farklı olsun.
+- Tek net cevap. Tanıma göre değişen, tarihsiz rekor, "en çok", günü olmayan güncel sayı ve tartışmalı iddia yazma. Emin olunmayan olguyu yazma.
+- hint, doğru şıkkı anlatan başka bir cümledir. Doğru şıkkın kelimeleri ipucunda geçmesin. Açıklamanın aynısı olmasın. 4 ile 500 karakter.
 - explanation tek öğretici cümledir.
 - topic kısa konu adıdır: tarih, bilim, uzay, doğa, insan, sanat, sinema, müzik, spor, yemek, icat, günlük yaşam gibi.
 - Kağıt ve yedek birlikte aynı kişiyi, olayı veya olguyu tekrarlamaz.

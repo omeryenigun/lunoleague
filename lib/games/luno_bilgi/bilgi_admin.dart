@@ -66,6 +66,10 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   DateTime _contestMonth = DateTime(DateTime.now().year, DateTime.now().month);
   List<BilgiContestDay> _contestDays = const [];
   var _contestBusy = false;
+  var _contestPoll = 0;
+  var _contestGeneratingDay = '';
+  DateTime? _contestSince;
+  Timer? _contestTimer;
   final _contestTitles = <String, TextEditingController>{};
   List<BilgiProfile> _users = const [];
   List<BilgiProfile> _leagueUsers = const [];
@@ -221,6 +225,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     _newSub.dispose();
     _subSearch.dispose();
     _bankTimer?.cancel();
+    _contestTimer?.cancel();
     _bankSearch.dispose();
     _mailSubject.dispose();
     _mailHtml.dispose();
@@ -1144,11 +1149,72 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
 
   Future<void> _generateContestDay(String day) async {
     if (_contestBusy) return;
-    setState(() => _contestBusy = true);
+    final ticket = ++_contestPoll;
+    var ticks = 0;
+    setState(() {
+      _contestBusy = true;
+      _contestGeneratingDay = day;
+      _contestSince = DateTime.now();
+    });
+    _contestTimer?.cancel();
+    _contestTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || ticket != _contestPoll) return;
+      ticks += 1;
+      setState(() {});
+      if (ticks % 4 == 0) _refreshContest(ticket);
+    });
     final loaded = await BilgiContestApi.adminGenerate(sl<ApiSession>().adminToken ?? '', day);
-    if (!mounted) return;
-    setState(() => _contestBusy = false);
+    _contestTimer?.cancel();
+    _contestPoll++;
+    if (!mounted || ticket + 1 != _contestPoll) return;
+    setState(() {
+      _contestBusy = false;
+      _contestGeneratingDay = '';
+      _contestSince = null;
+    });
     _applyContest(loaded);
+  }
+
+  Future<void> _refreshContest(int ticket) async {
+    final loaded = await BilgiContestApi.adminLoad(sl<ApiSession>().adminToken ?? '', _contestMonthKey);
+    if (!mounted || ticket != _contestPoll) return;
+    _applyContest(loaded);
+  }
+
+  String _contestElapsedLabel() {
+    final start = _contestSince;
+    if (start == null) return '00:00';
+    final gone = DateTime.now().difference(start);
+    final minutes = gone.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = gone.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  String _contestClock(String iso) {
+    final parsed = DateTime.tryParse(iso);
+    if (parsed == null) return '';
+    final local = parsed.toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(local.day)}.${two(local.month)}.${local.year} ${two(local.hour)}:${two(local.minute)}';
+  }
+
+  List<String> _contestAiLines(BilgiContestDay day) {
+    final lines = <String>[];
+    if (day.aiStatus == 'running') {
+      final detail = day.aiMessage.trim();
+      lines.add(detail.isEmpty || detail == 'Üretiliyor' ? 'Üretiliyor' : 'Üretiliyor · $detail');
+    } else if (day.aiStatus == 'ok') {
+      final clock = _contestClock(day.aiLastOkAt);
+      lines.add(clock.isEmpty ? 'Başarılı' : 'Başarılı · $clock');
+    } else if (day.aiStatus == 'failed') {
+      final detail = day.aiMessage.trim();
+      lines.add(detail.isEmpty ? 'Başarısız' : 'Başarısız · $detail');
+    }
+    if (day.aiStatus != 'ok' && day.aiLastOkAt.isNotEmpty) {
+      final clock = _contestClock(day.aiLastOkAt);
+      if (clock.isNotEmpty) lines.add('Son başarılı yükleme · $clock');
+    }
+    return lines;
   }
 
   Future<void> _buildContestDay(String day, {bool rebuild = false}) async {
@@ -1187,6 +1253,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       builder: (context) => _ContestPaperDialog(
         day: day.day,
         questions: paper.questions,
+        spares: paper.spares,
         editing: editing && !paper.locked,
       ),
     );
@@ -1195,7 +1262,10 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
 
   Widget _dailyContest() {
     final monthLabel = _contestMonthKey;
-    return ListView(
+    final generating = _contestGeneratingDay;
+    return MouseRegion(
+      cursor: generating.isEmpty ? SystemMouseCursors.basic : SystemMouseCursors.progress,
+      child: ListView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       children: [
         Row(
@@ -1206,7 +1276,23 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
             const SizedBox(width: 12),
             _ghost('›', () => _shiftContest(1)),
             const Spacer(),
-            _primary(_contestBusy ? 'Yazılıyor' : 'Ayı oluştur', _contestBusy ? () {} : _buildContestMonth),
+            if (generating.isNotEmpty) ...[
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFDE68A)),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '$generating · ${_contestElapsedLabel()}',
+                style: const TextStyle(color: Color(0xFFFDE68A), fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(width: 16),
+            ],
+            _primary(
+              _contestBusy && generating.isEmpty ? 'Yazılıyor' : 'Ayı oluştur',
+              _contestBusy ? () {} : _buildContestMonth,
+            ),
           ],
         ),
         const SizedBox(height: 8),
@@ -1245,6 +1331,11 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                           const Spacer(),
                       ],
                     ),
+                    for (final line in _contestAiLines(day))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(line, style: const TextStyle(color: Color(0xFFFDE68A), fontSize: 12)),
+                      ),
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 8,
@@ -1272,7 +1363,23 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                           ),
                           _ghost('Adı kaydet', () => _buildContestDay(day.day)),
                           if (bilgiContestAiDay(day.day))
-                            _ghost(_contestBusy ? 'Üretiliyor' : 'AI ile üret', () => _generateContestDay(day.day))
+                            (day.day == generating
+                                ? Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Üretiliyor ${_contestElapsedLabel()}',
+                                        style: const TextStyle(color: Color(0xFFFDE68A), fontWeight: FontWeight.w800),
+                                      ),
+                                    ],
+                                  )
+                                : _ghost('AI ile üret', _contestBusy ? () {} : () => _generateContestDay(day.day)))
                           else
                             _ghost(day.count == 0 ? 'Günü oluştur' : 'Yeniden yaz', () => _buildContestDay(day.day, rebuild: true)),
                           if (day.count > 0) ...[
@@ -1287,6 +1394,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
               ),
             ),
       ],
+    ),
     );
   }
 
@@ -4026,7 +4134,9 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     final local = value.toLocal();
     final day = local.day.toString().padLeft(2, '0');
     final month = local.month.toString().padLeft(2, '0');
-    return '$day.$month.${local.year}';
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '$day.$month.${local.year} $hour:$minute';
   }
 
   String _userStatusKey(BilgiProfile user) {
@@ -4074,17 +4184,6 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     );
   }
 
-  Widget _userFact(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(color: BilgiColors.muted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.4)),
-        const SizedBox(height: 2),
-        Text(value.isEmpty ? '—' : value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-      ],
-    );
-  }
-
   Widget _userList(bool? banned, {bool premium = false}) {
     if (_ledgerUser != null) return _ledgerPage();
     final query = _topSearch.text.trim().toLowerCase();
@@ -4100,9 +4199,30 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
         _userStatus.isNotEmpty ||
         _userPeriod.isNotEmpty ||
         _userPlays.isNotEmpty;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+    const columns = <(String, double)>[
+      ('Kullanıcı', 168),
+      ('E-posta', 200),
+      ('Durum', 96),
+      ('İlk oyun', 130),
+      ('Etkin oyunlar', 210),
+      ('İlk kayıt', 148),
+      ('Son işlem', 148),
+      ('Oyun sayısı', 104),
+      ('Etkin oyun', 96),
+      ('Seviye', 72),
+      ('Altın', 80),
+      ('Seri', 64),
+      ('İşlem', 210),
+    ];
+    final tableWidth = columns.fold<double>(24, (sum, column) => sum + column.$2);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
         if (premium)
           const Padding(
             padding: EdgeInsets.only(bottom: 12),
@@ -4155,111 +4275,142 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                   })),
           ],
         ),
-        const SizedBox(height: 14),
-        Text('${rows.length} kullanıcı', style: const TextStyle(color: BilgiColors.muted, fontSize: 12)),
-        const SizedBox(height: 12),
-        if (rows.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: _cardDeco(),
-            child: Text(empty, style: const TextStyle(color: BilgiColors.muted)),
-          )
-        else
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final columns = constraints.maxWidth >= 1100 ? 3 : constraints.maxWidth >= 720 ? 2 : 1;
-              final width = (constraints.maxWidth - (12 * (columns - 1))) / columns;
-              return Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  for (final user in rows)
-                    SizedBox(width: width, child: _userCard(user, premium: premium)),
-                ],
-              );
-            },
+              const SizedBox(height: 14),
+              Text('${rows.length} kullanıcı', style: const TextStyle(color: BilgiColors.muted, fontSize: 12)),
+              const SizedBox(height: 12),
+            ],
           ),
+        ),
+        Expanded(
+          child: rows.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(20),
+                    decoration: _cardDeco(),
+                    child: Text(empty, style: const TextStyle(color: BilgiColors.muted)),
+                  ),
+                )
+              : Scrollbar(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(
+                      width: tableWidth,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _userHead(columns),
+                          Expanded(
+                            child: ListView.builder(
+                              padding: const EdgeInsets.only(bottom: 24),
+                              itemCount: rows.length,
+                              itemBuilder: (context, index) => _userRow(rows[index], columns, premium: premium),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+        ),
       ],
     );
   }
 
-  Widget _userCard(BilgiProfile user, {required bool premium}) {
-    final first = (user.accountFirstGame ?? '').isEmpty ? '—' : lunoGameLabel(user.accountFirstGame!);
-    final active = user.accountGames.isEmpty ? '—' : user.accountGames.map(lunoGameLabel).join(', ');
+  Widget _userHead(List<(String, double)> columns) {
+    return Container(
+      color: const Color(0xFF16132A),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
+        children: [
+          for (final column in columns) _userCell(column.$1, column.$2, header: true),
+        ],
+      ),
+    );
+  }
+
+  Widget _userRow(BilgiProfile user, List<(String, double)> columns, {required bool premium}) {
+    final first = (user.accountFirstGame ?? '').isEmpty ? '' : lunoGameLabel(user.accountFirstGame!);
+    final active = user.accountGames.isEmpty ? '' : user.accountGames.map(lunoGameLabel).join(', ');
     final status = user.banned ? 'Banlı' : user.guestHere ? 'Misafir' : user.premium ? 'Premium' : 'Aktif';
     final statusColor = user.banned
         ? BilgiColors.error
         : user.guestHere
             ? BilgiColors.warning
             : BilgiColors.secondary;
+    final values = <String>[
+      user.username,
+      user.email,
+      status,
+      first,
+      active,
+      _userDay(_userRegisteredAt(user)),
+      user.lastActivityAt == null ? '' : _userDay(user.lastActivityAt!),
+      '${user.gamesPlayed}',
+      '${user.accountGames.length}',
+      '${user.level}',
+      '${user.gold}',
+      '${user.streak}',
+    ];
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: _cardDeco(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0x14FFFFFF)))),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(user.username, style: const TextStyle(fontWeight: FontWeight.w800)),
-                    if (user.email.isNotEmpty)
-                      Text(user.email, style: const TextStyle(color: BilgiColors.muted, fontSize: 11)),
-                  ],
-                ),
-              ),
-              _badge(status, statusColor),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 16,
-            runSpacing: 12,
-            children: [
-              SizedBox(width: 140, child: _userFact('İlk oyun', first)),
-              SizedBox(width: 180, child: _userFact('Etkin oyunlar', active)),
-              SizedBox(width: 110, child: _userFact('İlk kayıt', _userDay(_userRegisteredAt(user)))),
-              SizedBox(width: 90, child: _userFact('Oyun sayısı', '${user.gamesPlayed}')),
-              SizedBox(width: 90, child: _userFact('Etkin oyun', '${user.accountGames.length}')),
-              SizedBox(width: 70, child: _userFact('Seviye', '${user.level}')),
-              SizedBox(width: 80, child: _userFact('Altın', '${user.gold}')),
-              SizedBox(width: 70, child: _userFact('Seri', '${user.streak}')),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            children: [
-              _ghost('Hareketler', () {
-                setState(() {
-                  _ledgerUser = user;
-                  _ledgerLines = const [];
-                  _ledgerFlow = '';
-                  _ledgerError = '';
-                });
-                _loadLedger();
-              }),
-              if (!premium)
-                _ghost(user.banned ? 'Aç' : 'Banla', () async {
-              final nextBanned = !user.banned;
-              final reason = nextBanned ? 'Askıya alındı' : '';
-              final token = sl<ApiSession>().adminToken ?? '';
-              final error = await BilgiUserApi.setBan(
-                token,
-                user.id,
-                banned: nextBanned,
-                reason: reason,
-              );
-              await _server.setBan(user.id, banned: nextBanned, reason: reason);
-              if (error != null && mounted) setState(() => _note = error);
-              await _load();
-            }),
-            ],
+          for (var i = 0; i < values.length; i++)
+            i == 2
+                ? SizedBox(width: columns[i].$2, child: Align(alignment: Alignment.centerLeft, child: _badge(status, statusColor)))
+                : _userCell(values[i], columns[i].$2, strong: i == 0),
+          SizedBox(
+            width: columns.last.$2,
+            child: Wrap(
+              spacing: 8,
+              children: [
+                _ghost('Hareketler', () {
+                  setState(() {
+                    _ledgerUser = user;
+                    _ledgerLines = const [];
+                    _ledgerFlow = '';
+                    _ledgerError = '';
+                  });
+                  _loadLedger();
+                }),
+                if (!premium)
+                  _ghost(user.banned ? 'Aç' : 'Banla', () async {
+                    final nextBanned = !user.banned;
+                    final reason = nextBanned ? 'Askıya alındı' : '';
+                    final token = sl<ApiSession>().adminToken ?? '';
+                    final error = await BilgiUserApi.setBan(
+                      token,
+                      user.id,
+                      banned: nextBanned,
+                      reason: reason,
+                    );
+                    await _server.setBan(user.id, banned: nextBanned, reason: reason);
+                    if (error != null && mounted) setState(() => _note = error);
+                    await _load();
+                  }),
+              ],
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _userCell(String text, double width, {bool header = false, bool strong = false}) {
+    return SizedBox(
+      width: width,
+      child: Text(
+        text.isEmpty ? (header ? '' : '—') : text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: header ? BilgiColors.muted : Colors.white,
+          fontSize: header ? 11 : 13,
+          fontWeight: header || strong ? FontWeight.w800 : FontWeight.w600,
+        ),
       ),
     );
   }
@@ -6729,10 +6880,16 @@ class _DashedPainter extends CustomPainter {
 }
 
 class _ContestPaperDialog extends StatefulWidget {
-  const _ContestPaperDialog({required this.day, required this.questions, required this.editing});
+  const _ContestPaperDialog({
+    required this.day,
+    required this.questions,
+    required this.spares,
+    required this.editing,
+  });
 
   final String day;
   final List<BilgiQuestion> questions;
+  final List<BilgiQuestion> spares;
   final bool editing;
 
   @override
@@ -6741,27 +6898,45 @@ class _ContestPaperDialog extends StatefulWidget {
 
 class _ContestPaperDialogState extends State<_ContestPaperDialog> {
   late List<BilgiQuestion> _questions = [...widget.questions];
+  late List<BilgiQuestion> _spares = [...widget.spares];
+  var _locale = 'tr';
   var _busy = false;
   var _error = '';
 
-  Future<void> _edit(int? index) async {
-    final current = index == null ? null : _questions[index];
+  bool _localeReady(String id) {
+    if (id == 'tr') return true;
+    bool ready(BilgiQuestion question) {
+      final row = question.translations[id];
+      if (row == null || row.text.trim().isEmpty) return false;
+      return row.options.length == 4 && row.options.every((item) => item.trim().isNotEmpty);
+    }
+
+    return _questions.every(ready) && _spares.every(ready);
+  }
+
+  Future<void> _edit({required bool spare, int? index}) async {
+    final list = spare ? _spares : _questions;
+    final current = index == null ? null : list[index];
     final next = await showDialog<BilgiQuestion>(
       context: context,
       builder: (context) => _ContestQuestionDialog(
         day: widget.day,
         question: current,
-        index: index ?? _questions.length,
+        index: index ?? list.length,
         editing: widget.editing,
       ),
     );
     if (next == null || !mounted) return;
     setState(() {
+      final copy = [...list];
       if (index == null) {
-        _questions = [..._questions, next];
+        copy.add(next);
       } else {
-        final copy = [..._questions];
         copy[index] = next;
+      }
+      if (spare) {
+        _spares = copy;
+      } else {
         _questions = copy;
       }
     });
@@ -6777,6 +6952,7 @@ class _ContestPaperDialogState extends State<_ContestPaperDialog> {
       sl<ApiSession>().adminToken ?? '',
       widget.day,
       _questions,
+      spares: _spares,
     );
     if (!mounted) return;
     if (loaded.error != null) {
@@ -6789,13 +6965,84 @@ class _ContestPaperDialogState extends State<_ContestPaperDialog> {
     Navigator.pop(context, true);
   }
 
+  Widget _section(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8, top: 4),
+      child: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+    );
+  }
+
+  Widget _card(BilgiQuestion question, String label, {required VoidCallback onEdit, VoidCallback? onRemove}) {
+    final translated = _locale == 'tr' ? null : question.translations[_locale];
+    final language = GameLocale.resolve(_locale).nativeName;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: BilgiColors.card, borderRadius: BorderRadius.circular(12)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$label. ${question.difficulty} · ${question.correctLetter}',
+              style: const TextStyle(color: BilgiColors.secondary, fontWeight: FontWeight.w800, fontSize: 12),
+            ),
+            const SizedBox(height: 4),
+            const Text('Türkçe', style: TextStyle(color: BilgiColors.muted, fontSize: 11, fontWeight: FontWeight.w700)),
+            Text(question.text, style: const TextStyle(color: Colors.white)),
+            const SizedBox(height: 6),
+            for (var n = 0; n < question.options.length; n++)
+              Text(
+                '${['A', 'B', 'C', 'D'][n]}. ${question.options[n]}',
+                style: TextStyle(
+                  color: n == question.correct ? const Color(0xFF86EFAC) : BilgiColors.muted,
+                  fontSize: 13,
+                ),
+              ),
+            if (_locale != 'tr') ...[
+              const SizedBox(height: 8),
+              Text(language, style: const TextStyle(color: BilgiColors.muted, fontSize: 11, fontWeight: FontWeight.w700)),
+              if (translated == null || translated.text.trim().isEmpty)
+                const Text('Çeviri yok', style: TextStyle(color: BilgiColors.warning, fontSize: 13))
+              else ...[
+                Text(translated.text, style: const TextStyle(color: Colors.white)),
+                const SizedBox(height: 6),
+                for (var n = 0; n < translated.options.length && n < 4; n++)
+                  Text(
+                    '${['A', 'B', 'C', 'D'][n]}. ${translated.options[n]}',
+                    style: TextStyle(
+                      color: n == question.correct ? const Color(0xFF86EFAC) : BilgiColors.muted,
+                      fontSize: 13,
+                    ),
+                  ),
+              ],
+            ],
+            const SizedBox(height: 6),
+            Text(
+              'Dil ${1 + question.translations.length}/10',
+              style: const TextStyle(color: BilgiColors.muted, fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: [
+                _dialogGhost(widget.editing ? 'Düzenle' : 'Dilleri gör', onEdit),
+                if (onRemove != null) _dialogGhost('Çıkar', onRemove),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: BilgiColors.bg,
       child: SizedBox(
-        width: 720,
-        height: 640,
+        width: 760,
+        height: 720,
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -6806,50 +7053,35 @@ class _ContestPaperDialogState extends State<_ContestPaperDialog> {
                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18),
               ),
               const SizedBox(height: 12),
+              _BilgiLangTabs(selected: _locale, onSelect: (id) => setState(() => _locale = id), filled: _localeReady),
+              const SizedBox(height: 12),
               Expanded(
                 child: ListView(
                   children: [
+                    _section('Kağıt · ${_questions.length}'),
                     for (var i = 0; i < _questions.length; i++)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(color: BilgiColors.card, borderRadius: BorderRadius.circular(12)),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '${i + 1}. ${_questions[i].difficulty} · ${_questions[i].correctLetter}',
-                                style: const TextStyle(color: BilgiColors.secondary, fontWeight: FontWeight.w800, fontSize: 12),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(_questions[i].text, style: const TextStyle(color: Colors.white)),
-                              const SizedBox(height: 6),
-                              for (var n = 0; n < _questions[i].options.length; n++)
-                                Text(
-                                  '${['A', 'B', 'C', 'D'][n]}. ${_questions[i].options[n]}',
-                                  style: TextStyle(
-                                    color: n == _questions[i].correct ? const Color(0xFF86EFAC) : BilgiColors.muted,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'Dil ${1 + _questions[i].translations.length}/10',
-                                style: const TextStyle(color: BilgiColors.muted, fontSize: 12),
-                              ),
-                              const SizedBox(height: 8),
-                              Wrap(
-                                spacing: 8,
-                                children: [
-                                  _dialogGhost(widget.editing ? 'Düzenle' : 'Dilleri gör', () => _edit(i)),
-                                  if (widget.editing)
-                                    _dialogGhost('Çıkar', () => setState(() => _questions = [..._questions]..removeAt(i))),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
+                      _card(
+                        _questions[i],
+                        '${i + 1}',
+                        onEdit: () => _edit(spare: false, index: i),
+                        onRemove: widget.editing
+                            ? () => setState(() => _questions = [..._questions]..removeAt(i))
+                            : null,
+                      ),
+                    _section('Yedekler · ${_spares.length}'),
+                    if (_spares.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 10),
+                        child: Text('Yedek yok', style: TextStyle(color: BilgiColors.muted)),
+                      ),
+                    for (var i = 0; i < _spares.length; i++)
+                      _card(
+                        _spares[i],
+                        'Y${i + 1}',
+                        onEdit: () => _edit(spare: true, index: i),
+                        onRemove: widget.editing
+                            ? () => setState(() => _spares = [..._spares]..removeAt(i))
+                            : null,
                       ),
                   ],
                 ),
@@ -6861,7 +7093,7 @@ class _ContestPaperDialogState extends State<_ContestPaperDialog> {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  if (widget.editing) _dialogGhost('Soru ekle', () => _edit(null)),
+                  if (widget.editing) _dialogGhost('Soru ekle', () => _edit(spare: false)),
                   const Spacer(),
                   TextButton(onPressed: () => Navigator.pop(context), child: const Text('Kapat')),
                   if (widget.editing) ...[

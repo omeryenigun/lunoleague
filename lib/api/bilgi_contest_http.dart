@@ -298,11 +298,20 @@ Future<Response> _adminBuild(Request request, Connection db, KeyValueStore store
     if (cleaned == null) return jsonResponse({'error': 'Soru eksik veya şıklar dört değil.'}, status: 400);
     final exclude = await _monthIds(store, day.substring(0, 7), skip: day);
     _takeIds(cleaned, exclude);
+    final spareRaw = body['spares'];
+    final List<Map<String, dynamic>> spares;
+    if (spareRaw is List) {
+      final cleanedSpares = _cleanQuestions(spareRaw);
+      if (cleanedSpares == null) return jsonResponse({'error': 'Yedek eksik veya şıklar dört değil.'}, status: 400);
+      spares = cleanedSpares;
+    } else {
+      spares = await _drawCounted(db, exclude, bilgiContestSpareCounts);
+    }
     await store.put(bilgiContestPaperBox, day, {
       'day': day,
       'title': _titleOf(stored),
       'questions': cleaned,
-      'spares': await _drawCounted(db, exclude, bilgiContestSpareCounts),
+      'spares': spares,
     });
     return jsonResponse(await _monthPayload(store, day.substring(0, 7), bilgiContestMonthDays(day.substring(0, 7))));
   }
@@ -342,31 +351,93 @@ Future<Response> _adminAiDay(KeyValueStore store, String day, Map<String, dynami
   if (incoming is List) {
     final cleaned = _cleanQuestions(incoming);
     if (cleaned == null) return jsonResponse({'error': 'Soru eksik veya şıklar dört değil.'}, status: 400);
-    await store.put(bilgiContestPaperBox, day, {
-      'day': day,
-      'title': title,
-      'questions': cleaned,
-      'spares': _sparesOf(stored),
-    });
+    final spareRaw = body['spares'];
+    final List<Map<String, dynamic>> spares;
+    if (spareRaw is List) {
+      final cleanedSpares = _cleanQuestions(spareRaw);
+      if (cleanedSpares == null) return jsonResponse({'error': 'Yedek eksik veya şıklar dört değil.'}, status: 400);
+      spares = cleanedSpares;
+    } else {
+      spares = _sparesOf(stored);
+    }
+    await store.put(
+      bilgiContestPaperBox,
+      day,
+      _aiPaper(day: day, title: title, questions: cleaned, spares: spares, previous: stored),
+    );
     return jsonResponse(await _monthPayload(store, day.substring(0, 7), monthDays));
   }
   if (body['generate'] == true) {
-    final generated = await bilgiGenerateDailyPaper(day: day, avoidFacts: await _avoidFacts(store, day));
-    if (generated.error != null) return jsonResponse({'error': generated.error}, status: 502);
-    await store.put(bilgiContestPaperBox, day, {
-      'day': day,
-      'title': title,
-      'questions': generated.questions,
-      'spares': generated.spares,
-    });
+    final avoid = await _avoidFacts(store, day);
+    final started = DateTime.now().toUtc().toIso8601String();
+    final lastOk = '${stored?['aiLastOkAt'] ?? ''}';
+    await store.put(
+      bilgiContestPaperBox,
+      day,
+      _aiPaper(
+        day: day,
+        title: title,
+        questions: <Map<String, dynamic>>[],
+        spares: <Map<String, dynamic>>[],
+        aiStatus: 'running',
+        aiMessage: 'Üretiliyor',
+        aiStartedAt: started,
+        aiFinishedAt: '',
+        aiLastOkAt: lastOk,
+      ),
+    );
+    final generated = await bilgiGenerateDailyPaper(
+      day: day,
+      avoidFacts: avoid,
+      onPaper: (questions, spares, message) async {
+        await store.put(
+          bilgiContestPaperBox,
+          day,
+          _aiPaper(
+            day: day,
+            title: title,
+            questions: questions,
+            spares: spares,
+            aiStatus: 'running',
+            aiMessage: message,
+            aiStartedAt: started,
+            aiFinishedAt: '',
+            aiLastOkAt: lastOk,
+          ),
+        );
+      },
+    );
+    final now = DateTime.now().toUtc().toIso8601String();
+    final ok = generated.error == null;
+    final message = ok ? 'Başarılı' : generated.error!;
+    await store.put(
+      bilgiContestPaperBox,
+      day,
+      _aiPaper(
+        day: day,
+        title: title,
+        questions: generated.questions,
+        spares: generated.spares,
+        aiStatus: ok ? 'ok' : 'failed',
+        aiMessage: message.length > 180 ? message.substring(0, 180) : message,
+        aiStartedAt: started,
+        aiFinishedAt: now,
+        aiLastOkAt: ok ? now : lastOk,
+      ),
+    );
     return jsonResponse(await _monthPayload(store, day.substring(0, 7), monthDays));
   }
-  await store.put(bilgiContestPaperBox, day, {
-    'day': day,
-    'title': title,
-    'questions': _questionsOf(stored),
-    'spares': _sparesOf(stored),
-  });
+  await store.put(
+    bilgiContestPaperBox,
+    day,
+    _aiPaper(
+      day: day,
+      title: title,
+      questions: _questionsOf(stored),
+      spares: _sparesOf(stored),
+      previous: stored,
+    ),
+  );
   return jsonResponse(await _monthPayload(store, day.substring(0, 7), monthDays));
 }
 
@@ -422,6 +493,9 @@ Future<Map<String, dynamic>> _monthPayload(KeyValueStore store, String month, Li
       'title': _titleOf(stored),
       'count': _questionsOf(stored).length,
       'locked': locked.contains(day),
+      'aiStatus': '${stored?['aiStatus'] ?? ''}',
+      'aiMessage': '${stored?['aiMessage'] ?? ''}',
+      'aiLastOkAt': '${stored?['aiLastOkAt'] ?? ''}',
     });
   }
   return {'month': month, 'days': rows};
@@ -445,6 +519,32 @@ Future<Set<String>> _monthIds(KeyValueStore store, String month, {required Strin
     _takeIds(_sparesOf(stored), ids);
   }
   return ids;
+}
+
+Map<String, dynamic> _aiPaper({
+  required String day,
+  required String title,
+  required List<Map<String, dynamic>> questions,
+  required List<Map<String, dynamic>> spares,
+  Map<String, dynamic>? previous,
+  String? aiStatus,
+  String? aiMessage,
+  String? aiStartedAt,
+  String? aiFinishedAt,
+  String? aiLastOkAt,
+}) {
+  String field(String key, String? next) => next ?? '${previous?[key] ?? ''}';
+  return {
+    'day': day,
+    'title': title,
+    'questions': questions,
+    'spares': spares,
+    'aiStatus': field('aiStatus', aiStatus),
+    'aiMessage': field('aiMessage', aiMessage),
+    'aiStartedAt': field('aiStartedAt', aiStartedAt),
+    'aiFinishedAt': field('aiFinishedAt', aiFinishedAt),
+    'aiLastOkAt': field('aiLastOkAt', aiLastOkAt),
+  };
 }
 
 String _titleOf(Map<String, dynamic>? row) {
@@ -474,6 +574,7 @@ Future<Response> _adminDay(KeyValueStore store, String day) async {
     'locked': locked,
     'count': questions.length,
     'questions': questions,
+    'spares': _sparesOf(stored),
   });
 }
 

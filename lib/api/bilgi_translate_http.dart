@@ -50,6 +50,7 @@ Future<({Map<String, dynamic>? translations, String? error})> bilgiTranslateTriv
   required List<String> options,
   required String explanation,
   required String hint,
+  Duration timeout = const Duration(seconds: 60),
 }) async {
   final choices = [for (final item in options) item.trim()];
   if (!bilgiLanguageFieldsReady(text, choices, explanation)) {
@@ -74,6 +75,7 @@ Future<({Map<String, dynamic>? translations, String? error})> bilgiTranslateTriv
       'explanation': explanation.trim(),
       'hint': hint.trim(),
     }),
+    timeout: timeout,
   );
   if (decoded is String) return (translations: null, error: decoded);
   if (decoded is! Map) return (translations: null, error: 'Tercüme okunamadı.');
@@ -198,7 +200,11 @@ Future<Response> _name(Map<String, dynamic> body) async {
 }
 
 /// OpenRouter kapalıyken istek doğrudan OpenAI'ye gider.
-Future<Object?> _ask(String instruction, String source) async {
+Future<Object?> _ask(
+  String instruction,
+  String source, {
+  Duration timeout = const Duration(seconds: 60),
+}) async {
   final openRouterKey = Platform.environment['OPENROUTER_API_KEY'] ?? '';
   Object? primary;
   if (bilgiOpenRouterEnabled && openRouterKey.isNotEmpty) {
@@ -208,6 +214,7 @@ Future<Object?> _ask(String instruction, String source) async {
       model: Platform.environment['OPENROUTER_MODEL'] ?? 'google/gemini-2.5-flash',
       instruction: instruction,
       source: source,
+      timeout: timeout,
       extraHeaders: const {
         'http-referer': 'https://onyapp.app',
         'x-title': 'Luno Bilgi',
@@ -227,6 +234,7 @@ Future<Object?> _ask(String instruction, String source) async {
     instruction: instruction,
     source: source,
     jsonMode: true,
+    timeout: timeout,
   );
 }
 
@@ -238,6 +246,7 @@ Future<Object?> _complete({
   required String source,
   Map<String, String> extraHeaders = const {},
   bool jsonMode = false,
+  Duration timeout = const Duration(seconds: 60),
 }) async {
   try {
     final payload = <String, Object>{
@@ -260,7 +269,7 @@ Future<Object?> _complete({
           },
           body: jsonEncode(payload),
         )
-        .timeout(const Duration(seconds: 60));
+        .timeout(timeout);
     final decoded = jsonDecode(response.body);
     if (response.statusCode < 200 || response.statusCode >= 300 || decoded is! Map) {
       return 'Tercüme servisi yanıt vermedi.';

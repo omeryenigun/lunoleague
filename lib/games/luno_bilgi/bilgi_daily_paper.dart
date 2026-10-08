@@ -11,7 +11,8 @@ const bilgiDailyAiQuotas = <int>[6, 8, 4, 2];
 
 bool bilgiContestAiDay(String day) => day.compareTo(bilgiContestAiFrom) >= 0;
 
-/// Model çıktısını kağıt ve yedek listesine çevirir. Hata varsa listeler boştur.
+/// Model çıktısını kağıt ve yedek listesine çevirir.
+/// Bozuk satır düşer. 20 sağlam soru varsa kağıt kabul edilir; yedek 11'den az olabilir.
 ({List<Map<String, dynamic>> questions, List<Map<String, dynamic>> spares, String? error})
     bilgiDailyPaperFromModel(
   Object? raw, {
@@ -20,20 +21,218 @@ bool bilgiContestAiDay(String day) => day.compareTo(bilgiContestAiFrom) >= 0;
 }) {
   final decoded = raw is String ? bilgiDailyJsonObject(raw) : raw;
   if (decoded is! Map) {
-    return (questions: const [], spares: const [], error: 'Üretim okunamadı.');
+    return (questions: <Map<String, dynamic>>[], spares: <Map<String, dynamic>>[], error: 'Üretim okunamadı.');
   }
   final questions = _rows(decoded['questions']);
   final spares = _rows(decoded['spares']);
   if (questions == null || spares == null) {
-    return (questions: const [], spares: const [], error: 'Üretim okunamadı.');
+    return (questions: <Map<String, dynamic>>[], spares: <Map<String, dynamic>>[], error: 'Üretim okunamadı.');
   }
-  final error = bilgiDailyPaperError(questions: questions, spares: spares, avoid: avoid);
-  if (error != null) return (questions: const [], spares: const [], error: error);
+  final seen = <String>{};
+  final pool = [
+    ..._accepted(questions, seen, avoid),
+    ..._accepted(spares, seen, avoid),
+  ];
+  if (pool.isEmpty) {
+    return (questions: <Map<String, dynamic>>[], spares: <Map<String, dynamic>>[], error: 'Sağlam soru kalmadı.');
+  }
+  final paper = pool.take(20).toList();
+  final extra = pool.skip(paper.length).take(11).toList();
+  final prepared = _repair(paper, extra);
+  if (prepared.questions.length < 20) {
+    return (
+      questions: _stamp(prepared.questions, day, 'p'),
+      spares: _stamp(prepared.spares, day, 'y'),
+      error: 'Kağıt 20 soru olmalı.',
+    );
+  }
   return (
-    questions: _stamp(questions, day, 'p'),
-    spares: _stamp(spares, day, 'y'),
+    questions: _stamp(prepared.questions, day, 'p'),
+    spares: _stamp(prepared.spares, day, 'y'),
     error: null,
   );
+}
+
+List<Map<String, dynamic>> _accepted(List<Map<String, dynamic>> rows, Set<String> seen, Set<String> avoid) {
+  final out = <Map<String, dynamic>>[];
+  for (final row in rows) {
+    final error = _rowError(row, seen, avoid);
+    final hintOnly = error == 'ipucu doğru şıkkı yazıyor.' || error == 'ipucu açıklamanın aynısı.';
+    if (error != null && !hintOnly) continue;
+    if (hintOnly) {
+      final key = bilgiDailyFold('${row['text'] ?? ''}'.trim());
+      if (key.isEmpty || !seen.add(key) || avoid.contains(key)) continue;
+    }
+    out.add(_copyRow(row));
+  }
+  return out;
+}
+
+const _safeHint = 'Doğru seçenek sorunun konusuna doğrudan bağlanır.';
+
+({List<Map<String, dynamic>> questions, List<Map<String, dynamic>> spares}) _repair(
+  List<Map<String, dynamic>> questions,
+  List<Map<String, dynamic>> spares,
+) {
+  final paper = _arrangePaper([for (final row in questions) _copyRow(row)]);
+  final extra = [for (final row in spares) _copyRow(row)];
+  _balance(paper);
+  _balance(extra);
+  _fixHints(paper);
+  _fixHints(extra);
+  return (questions: paper, spares: extra);
+}
+
+Map<String, dynamic> _copyRow(Map<String, dynamic> row) {
+  final copy = Map<String, dynamic>.from(row);
+  final options = row['options'];
+  if (options is List) copy['options'] = [for (final option in options) option];
+  return copy;
+}
+
+List<Map<String, dynamic>> _arrangePaper(List<Map<String, dynamic>> rows) {
+  if (rows.length != 20 || _quota(rows, bilgiDailyAiQuotas, 'Kağıt') != null) return rows;
+  void swap(int a, int b) {
+    if (a == b) return;
+    final item = rows[a];
+    rows[a] = rows[b];
+    rows[b] = item;
+  }
+
+  if (rows[19]['difficulty'] != 'efsane') {
+    final index = rows.lastIndexWhere((row) => row['difficulty'] == 'efsane');
+    if (index >= 0) swap(19, index);
+  }
+  final other = [for (var i = 0; i < 19; i++) i].where((i) => rows[i]['difficulty'] == 'efsane');
+  if (other.isNotEmpty && other.first < 10) {
+    for (var j = 10; j < 19; j++) {
+      if (rows[j]['difficulty'] != 'efsane') {
+        swap(other.first, j);
+        break;
+      }
+    }
+  }
+  for (var i = 0; i < 3; i++) {
+    final difficulty = '${rows[i]['difficulty']}';
+    if (difficulty == 'kolay' || difficulty == 'orta') continue;
+    for (var j = 3; j < 19; j++) {
+      final next = '${rows[j]['difficulty']}';
+      if (next == 'kolay' || next == 'orta') {
+        swap(i, j);
+        break;
+      }
+    }
+  }
+  _breakTopicRuns(rows);
+  return rows;
+}
+
+void _breakTopicRuns(List<Map<String, dynamic>> rows) {
+  bool structurallyOk() {
+    if ('${rows[19]['difficulty']}' != 'efsane') return false;
+    for (var i = 0; i < 3; i++) {
+      final difficulty = '${rows[i]['difficulty']}';
+      if (difficulty != 'kolay' && difficulty != 'orta') return false;
+    }
+    final other = rows.indexWhere((row) => row['difficulty'] == 'efsane');
+    return other >= 10;
+  }
+
+  int runs() {
+    var count = 0;
+    for (var i = 2; i < rows.length; i++) {
+      final topic = bilgiDailyFold(_topic(rows[i]));
+      if (topic.isNotEmpty && topic == bilgiDailyFold(_topic(rows[i - 1])) && topic == bilgiDailyFold(_topic(rows[i - 2]))) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  for (var pass = 0; pass < rows.length; pass++) {
+    final before = runs();
+    if (before == 0) return;
+    var moved = false;
+    for (var i = 2; i < rows.length && !moved; i++) {
+      final topic = bilgiDailyFold(_topic(rows[i]));
+      if (topic.isEmpty || topic != bilgiDailyFold(_topic(rows[i - 1])) || topic != bilgiDailyFold(_topic(rows[i - 2]))) {
+        continue;
+      }
+      for (final slot in [i, i - 1, i - 2]) {
+        if (moved || '${rows[slot]['difficulty']}' == 'efsane') continue;
+        for (var j = 0; j < rows.length; j++) {
+          if ((j - slot).abs() < 2 || bilgiDailyFold(_topic(rows[j])) == topic) continue;
+          if ('${rows[j]['difficulty']}' == 'efsane') continue;
+          final item = rows[slot];
+          rows[slot] = rows[j];
+          rows[j] = item;
+          if (structurallyOk() && runs() < before) {
+            moved = true;
+            break;
+          }
+          rows[j] = rows[slot];
+          rows[slot] = item;
+        }
+      }
+    }
+    if (!moved) return;
+  }
+}
+
+void _balance(List<Map<String, dynamic>> rows) {
+  for (final difficulty in bilgiDifficultyLevels) {
+    final group = [for (final row in rows) if (row['difficulty'] == difficulty) row];
+    for (var guard = 0; guard < group.length * 4; guard++) {
+      final counts = [0, 0, 0, 0];
+      for (final row in group) {
+        final correct = _correct(row['correct']);
+        if (correct < 0 || correct > 3) return;
+        counts[correct] += 1;
+      }
+      var maxSlot = 0;
+      var minSlot = 0;
+      for (var i = 1; i < 4; i++) {
+        if (counts[i] > counts[maxSlot]) maxSlot = i;
+        if (counts[i] < counts[minSlot]) minSlot = i;
+      }
+      if (counts[maxSlot] - counts[minSlot] <= 1) break;
+      Map<String, dynamic>? row;
+      for (final item in group) {
+        if (_correct(item['correct']) == maxSlot) {
+          row = item;
+          break;
+        }
+      }
+      if (row == null) break;
+      final options = row['options'];
+      if (options is! List || options.length != 4) break;
+      final next = [for (final option in options) '$option'];
+      final answer = next.removeAt(maxSlot);
+      next.insert(minSlot, answer);
+      row['options'] = next;
+      row['correct'] = minSlot;
+    }
+  }
+}
+
+void _fixHints(List<Map<String, dynamic>> rows) {
+  for (final row in rows) {
+    final options = row['options'];
+    final correct = _correct(row['correct']);
+    if (options is! List || options.length != 4 || correct < 0 || correct > 3) continue;
+    final answer = bilgiDailyFold('${options[correct]}');
+    final hint = '${row['hint'] ?? ''}'.trim();
+    final explanation = '${row['explanation'] ?? ''}'.trim();
+    final folded = bilgiDailyFold(hint);
+    final leaks = answer.length >= 4 && folded.contains(answer);
+    final same = folded.isNotEmpty && folded == bilgiDailyFold(explanation);
+    final badLength = hint.length < 4 || hint.length > 500;
+    if (!leaks && !same && !badLength) continue;
+    final safe = bilgiDailyFold(_safeHint);
+    if (safe == bilgiDailyFold(explanation)) continue;
+    if (answer.length >= 4 && safe.contains(answer)) continue;
+    row['hint'] = _safeHint;
+  }
 }
 
 String? bilgiDailyPaperError({

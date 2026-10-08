@@ -44,6 +44,28 @@ void main() {
     );
   });
 
+  test('a scrambled paper is repaired before it is rejected', () {
+    final questions = _rows(_paperPlan.reversed.toList(), 'k');
+    for (final row in questions) {
+      row['correct'] = 0;
+      row['hint'] = 'Doğru cevap ${row['options'][0]} diye geçer.';
+    }
+    final parsed = bilgiDailyPaperFromModel(
+      {'questions': questions, 'spares': _rows(_sparePlan, 'y')},
+      day: '2026-10-09',
+    );
+    expect(parsed.error, isNull, reason: parsed.error);
+    expect(parsed.questions.first['difficulty'], isNot('zor'));
+    expect(parsed.questions.first['difficulty'], isNot('efsane'));
+    expect(parsed.questions[19]['difficulty'], 'efsane');
+    final other = parsed.questions.indexWhere((row) => row['difficulty'] == 'efsane');
+    expect(other, greaterThanOrEqualTo(10));
+    for (final row in [...parsed.questions, ...parsed.spares]) {
+      final answer = bilgiDailyFold('${(row['options'] as List)[row['correct']]}');
+      expect(bilgiDailyFold('${row['hint']}').contains(answer), isFalse);
+    }
+  });
+
   test('a fact already used in the month is rejected', () {
     final questions = _rows(_paperPlan, 'k');
     final key = bilgiDailyFold('${questions[4]['text']}');
@@ -55,6 +77,19 @@ void main() {
       ),
       contains('zaten kullanıldı'),
     );
+  });
+
+  test('a repeated fact is dropped and the paper still has 20 questions', () {
+    final questions = _rows(_paperPlan, 'k');
+    final key = bilgiDailyFold('${questions[4]['text']}');
+    final parsed = bilgiDailyPaperFromModel(
+      {'questions': questions, 'spares': _rows(_sparePlan, 'y')},
+      day: '2026-10-10',
+      avoid: {key},
+    );
+    expect(parsed.error, isNull, reason: parsed.error);
+    expect(parsed.questions, hasLength(20));
+    expect(parsed.questions.any((row) => bilgiDailyFold('${row['text']}') == key), isFalse);
   });
 }
 

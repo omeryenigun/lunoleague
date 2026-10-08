@@ -35,9 +35,6 @@ const _quizOptionRowMinHeight = 52.0;
 /// Space between two answer options on the quiz play screen.
 const _quizOptionGap = 8.0;
 
-/// Explanation band on the quiz screen. Always reserved so DEVAM does not move.
-const _quizNoteHeight = 48.0;
-
 /// Shared height for setup difficulty, question-count, and mode chips.
 const _setupChoiceHeight = 40.0;
 
@@ -50,6 +47,28 @@ const _platedTray = Color(0xFF321055);
 const _quizGreen = Color(0xFF16A34A);
 const _quizRed = Color(0xFFDC2626);
 const _quizBlue = Color(0xFF3B82F6);
+
+class _SetupBranchPainter extends CustomPainter {
+  const _SetupBranchPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = _homeGold
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final path = Path()
+      ..moveTo(1, 0)
+      ..lineTo(1, size.height - 1)
+      ..lineTo(size.width, size.height - 1);
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
 
 class BilgiScreen extends StatefulWidget {
   const BilgiScreen({super.key});
@@ -321,6 +340,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
     final ready = _game.rewardReady();
     final reward = _game.rewardLabel(_game.rewardIndex());
     final solo = bilgiModes.where((mode) => mode.group == 'solo').toList();
+    final multi = bilgiModes.where((mode) => mode.id == 'duello' || mode.id == 'oda').toList();
     final listed = _listedCategories;
     final popular = [for (final category in listed) if (category.popular) category];
     final dailyLine = ready
@@ -450,8 +470,8 @@ class _BilgiScreenState extends State<BilgiScreen> {
                                       Expanded(
                                         child: Text(
                                           _display(contestHeading),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
                                           style: _homeGoldTitle(size: 15, height: 1.05),
                                         ),
                                       ),
@@ -473,11 +493,11 @@ class _BilgiScreenState extends State<BilgiScreen> {
                                           child: Padding(
                                             padding: const EdgeInsets.fromLTRB(8, 5, 10, 5),
                                             child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
                                                 const Icon(Icons.people_alt_rounded, size: 14, color: Colors.white),
                                                 const SizedBox(width: 4),
-                                                Text(
+                                          Text(
                                                   joinedLabel,
                                                   maxLines: 1,
                                                   style: _homeInter(size: 11, weight: FontWeight.w900, height: 1),
@@ -503,29 +523,29 @@ class _BilgiScreenState extends State<BilgiScreen> {
                                         decoration: BoxDecoration(
                                           color: _homeGold,
                                           borderRadius: BorderRadius.circular(16),
-                                        ),
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(vertical: 12),
-                                          child: Row(
-                                            mainAxisAlignment: MainAxisAlignment.center,
-                                            children: [
-                                              if (_game.contestPhase != 'open' && _game.contestPhase != 'done') ...[
+                                    ),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          if (_game.contestPhase != 'open' && _game.contestPhase != 'done') ...[
                                                 const Icon(Icons.play_arrow_rounded, color: Color(0xFF3A2500), size: 22),
-                                                const SizedBox(width: 4),
-                                              ],
-                                              Flexible(
-                                                child: Text(
-                                                  switch (_game.contestPhase) {
+                                            const SizedBox(width: 4),
+                                          ],
+                                          Flexible(
+                                            child: Text(
+                                              switch (_game.contestPhase) {
                                                     'open' => _display(_game.t('contest_btn_open')),
                                                     'done' => _display(_game.t('contest_btn_done')),
                                                     _ => _display(_game.t('contest_btn_ready')),
-                                                  },
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
+                                              },
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
                                                   style: _homeInter(size: 16, weight: FontWeight.w900, color: const Color(0xFF3A2500)),
-                                                ),
-                                              ),
-                                            ],
+                                            ),
+                                          ),
+                                        ],
                                           ),
                                         ),
                                       ),
@@ -544,57 +564,18 @@ class _BilgiScreenState extends State<BilgiScreen> {
                       child: _twoColumn(
                         gap: 12,
                         runGap: 10,
+                        [for (final mode in solo) _quickStartCard(mode, _modeLine(mode))],
+                      ),
+                    ),
+                    _sectionTitle(_game.t('multiplayer'), '', null, icon: Icons.groups_rounded),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                      child: _twoColumn(
+                        gap: 12,
+                        runGap: 10,
                         [
-                          for (final mode in solo)
-                            DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: _homeCard,
-                                borderRadius: BorderRadius.circular(18),
-                                border: Border.all(color: _homeGold, width: 2),
-                              ),
-                              child: Material(
-                                color: Colors.transparent,
-                                borderRadius: BorderRadius.circular(18),
-                                clipBehavior: Clip.antiAlias,
-                                child: InkWell(
-                                  onTap: () => _game.selectMode(mode.id),
-                                  child: Padding(
-                                    padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            _quickStartMark(mode.id),
-                                            const Spacer(),
-                                            const Icon(Icons.north_east_rounded, size: 16, color: _homeGold),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 10),
-                                        Text(
-                                          _display(_game.t('mode_${mode.id}')),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: _homeInter(size: 14, weight: FontWeight.w900, height: 1.15),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          _modeLine(mode),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: _homeInter(
-                                            size: 11,
-                                            weight: FontWeight.w700,
-                                            height: 1.15,
-                                            color: const Color(0xFFD4C4E8),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
+                          for (final mode in multi)
+                            _quickStartCard(mode, _game.t('mode_blurb_${mode.id}'), maxLines: 2),
                         ],
                       ),
                     ),
@@ -662,11 +643,11 @@ class _BilgiScreenState extends State<BilgiScreen> {
                                           ),
                                         ],
                                       ),
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
                             );
                           },
                         ),
@@ -718,7 +699,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
                           borderRadius: BorderRadius.circular(18),
                           border: Border.all(color: _homeGold, width: 2),
                         ),
-                          child: Padding(
+                        child: Padding(
                           padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
@@ -916,12 +897,61 @@ class _BilgiScreenState extends State<BilgiScreen> {
     return text;
   }
 
+  Widget _quickStartCard(BilgiMode mode, String line, {int maxLines = 1}) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: _homeCard,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _homeGold, width: 2),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(18),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => _game.selectMode(mode.id),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    _quickStartMark(mode.id),
+                    const Spacer(),
+                    const Icon(Icons.north_east_rounded, size: 16, color: _homeGold),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  _display(_game.t('mode_${mode.id}')),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _homeInter(size: 14, weight: FontWeight.w900, height: 1.15),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  line,
+                  maxLines: maxLines,
+                  overflow: TextOverflow.ellipsis,
+                  style: _homeInter(size: 11, weight: FontWeight.w700, height: 1.15, color: const Color(0xFFD4C4E8)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _quickStartMark(String id) {
     final (color, icon) = switch (id) {
       'hizli' => (const Color(0xFF22C55E), Icons.bolt_rounded),
       'klasik' => (const Color(0xFFA78BFA), Icons.psychology_alt_rounded),
       'maraton' => (const Color(0xFFFB7185), Icons.near_me_rounded),
       'sakin' => (const Color(0xFF38BDF8), Icons.all_inclusive_rounded),
+      'duello' => (const Color(0xFFFF5C93), Icons.sports_mma),
+      'oda' => (const Color(0xFFF59E0B), Icons.meeting_room_rounded),
       _ => (BilgiColors.primaryLight, Icons.play_arrow_rounded),
     };
     return Container(
@@ -972,24 +1002,25 @@ class _BilgiScreenState extends State<BilgiScreen> {
     return out.toString();
   }
 
-  Widget _sectionTitle(String title, String action, VoidCallback onTap, {Color accent = _homeGold}) {
+  Widget _sectionTitle(String title, String action, VoidCallback? onTap, {Color accent = _homeGold, IconData icon = Icons.flash_on_rounded}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
       child: Row(
         children: [
-          Icon(Icons.flash_on_rounded, size: 16, color: accent),
+          Icon(icon, size: 16, color: accent),
           const SizedBox(width: 6),
           Expanded(
             child: Text(_display(title), maxLines: 1, overflow: TextOverflow.ellipsis, style: _homeGoldTitle(size: 15)),
           ),
-          InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-              child: Text(_display(action), style: _homeInter(size: 12, weight: FontWeight.w800, color: _homeGoldText)),
+          if (onTap != null)
+            InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                child: Text(_display(action), style: _homeInter(size: 12, weight: FontWeight.w800, color: _homeGoldText)),
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -1046,11 +1077,11 @@ class _BilgiScreenState extends State<BilgiScreen> {
 
   Widget _modeCard(BilgiMode mode) {
     final badge = switch (mode.id) {
-      'hizli' || 'duello' => _game.t('badge_popular'),
+      'hizli' => _game.t('badge_popular'),
       'gunluk' => _game.t('badge_daily'),
       _ => null,
     };
-    final badgeColor = mode.id == 'hizli' || mode.id == 'duello' ? const Color(0xFFFF5C93) : BilgiColors.secondary;
+    final badgeColor = mode.id == 'hizli' ? const Color(0xFFFF5C93) : BilgiColors.secondary;
     return _playRow(
       title: _game.t('mode_${mode.id}'),
       subtitle: _game.t('mode_blurb_${mode.id}'),
@@ -1077,7 +1108,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: _homeGold, width: 2),
         ),
-        child: Material(
+      child: Material(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(18),
         child: InkWell(
@@ -1124,8 +1155,8 @@ class _BilgiScreenState extends State<BilgiScreen> {
                 ],
               ],
             ),
+            ),
           ),
-        ),
         ),
       ),
     );
@@ -1386,33 +1417,33 @@ class _BilgiScreenState extends State<BilgiScreen> {
             color: _homeBg,
             child: Column(
               children: [
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    children: [
-                      if (_game.notice != null) _note(_game.notice!),
-                      _setupSelection(),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.only(bottom: 12),
+            children: [
+              if (_game.notice != null) _note(_game.notice!),
+              _setupSelection(),
                       _setupHeading(_game.t('difficulty')),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
-                        child: _setupTray(
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+                child: _setupTray(
                           plated: true,
-                          child: Column(
-                            children: [
-                              Row(
-                                children: [
+                  child: Column(
+                    children: [
+                        Row(
+                          children: [
                                   for (final item in diffs.take(4))
-                                    Expanded(
-                                      child: _setupDiffChip(
-                                        color: item.$1,
-                                        label: item.$2,
-                                        active: highlight == item.$3,
+                              Expanded(
+                                child: _setupDiffChip(
+                                  color: item.$1,
+                                  label: item.$2,
+                                  active: highlight == item.$3,
                                         plated: true,
                                         compact: true,
-                                        onTap: () => _game.selectDifficulty(item.$3),
-                                      ),
-                                    ),
-                                ],
+                                  onTap: () => _game.selectDifficulty(item.$3),
+                                ),
+                              ),
+                          ],
                               ),
                               const SizedBox(height: 6),
                               Row(
@@ -1429,60 +1460,60 @@ class _BilgiScreenState extends State<BilgiScreen> {
                                   ),
                                 ],
                               ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      _setupHeading(_game.t('question_count')),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-                        child: _setupTray(
-                          plated: true,
-                          child: Row(
-                            children: [
-                              for (final count in const [10, 20, 50])
-                                Expanded(
-                                  child: _setupCountSeg(
-                                    count: count,
-                                    active: _game.questionChoice == count,
-                                    plated: true,
-                                    onTap: () => _game.selectQuestionChoice(count),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      if (countMismatch != null)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(24, 6, 20, 0),
-                          child: Text(countMismatch, style: _homeInter(size: 11, weight: FontWeight.w700, color: _homeGoldText)),
-                        ),
-                      _setupHeading(_game.t('mode_section')),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-                        child: _setupTray(
-                          plated: true,
-                          child: Row(
-                            children: [
-                              for (final item in modes)
-                                Expanded(
-                                  child: _setupModeSeg(
-                                    emoji: item.$1,
-                                    label: item.$2,
-                                    active: modeId == item.$3,
-                                    plated: true,
-                                    onTap: () => _game.selectPlayMode(item.$3),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 8),
+              ),
+                      _setupHeading(_game.t('question_count')),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                child: _setupTray(
+                          plated: true,
+                  child: Row(
+                    children: [
+                      for (final count in const [10, 20, 50])
+                        Expanded(
+                          child: _setupCountSeg(
+                            count: count,
+                            active: _game.questionChoice == count,
+                                    plated: true,
+                            onTap: () => _game.selectQuestionChoice(count),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              if (countMismatch != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 6, 20, 0),
+                          child: Text(countMismatch, style: _homeInter(size: 11, weight: FontWeight.w700, color: _homeGoldText)),
+                ),
+                      _setupHeading(_game.t('mode_section')),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                child: _setupTray(
+                          plated: true,
+                  child: Row(
+                    children: [
+                      for (final item in modes)
+                        Expanded(
+                          child: _setupModeSeg(
+                            emoji: item.$1,
+                            label: item.$2,
+                            active: modeId == item.$3,
+                                    plated: true,
+                            onTap: () => _game.selectPlayMode(item.$3),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
                 _startButton(
                   _game.busy ? null : _game.start,
                   label: _display(_game.t('start_game')),
@@ -1490,8 +1521,8 @@ class _BilgiScreenState extends State<BilgiScreen> {
                   icon: Icons.play_arrow_rounded,
                   goldBorder: true,
                 ),
-                const SizedBox(height: 10),
-                _adBanner(showNoticeAbove: false),
+        const SizedBox(height: 10),
+        _adBanner(showNoticeAbove: false),
               ],
             ),
           ),
@@ -1521,36 +1552,47 @@ class _BilgiScreenState extends State<BilgiScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _setupPick(catIcon, catName),
-          const SizedBox(height: 10),
-          _setupPick(subIcon, subTitle),
+          const Padding(
+            padding: EdgeInsets.only(left: 31),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: CustomPaint(size: Size(18, 14), painter: _SetupBranchPainter()),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 31),
+            child: _setupPick(subIcon, subTitle, nested: true),
+          ),
         ],
       ),
     );
   }
 
-  Widget _setupPick(String icon, String title, {Color color = _homeCard}) {
+  Widget _setupPick(String icon, String title, {bool nested = false}) {
+    final box = nested ? 32.0 : 40.0;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(28),
+        color: _homeCard,
+        borderRadius: BorderRadius.circular(nested ? 22 : 28),
         border: Border.all(color: _homeGold, width: 2),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: EdgeInsets.symmetric(horizontal: nested ? 10 : 12, vertical: nested ? 4 : 6),
         child: Row(
           children: [
             Container(
-              width: 40,
-              height: 40,
+              width: box,
+              height: box,
               alignment: Alignment.center,
-              decoration: BoxDecoration(color: const Color(0xFFFF5C45), borderRadius: BorderRadius.circular(14)),
-              child: Text(icon, style: const TextStyle(fontSize: 22, height: 1)),
+              decoration: BoxDecoration(color: const Color(0xFFFF5C45), borderRadius: BorderRadius.circular(nested ? 11 : 14)),
+              child: Text(icon, style: TextStyle(fontSize: nested ? 18 : 22, height: 1)),
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: nested ? 10 : 12),
             Expanded(
-              child: Text(title, style: _homeInter(size: 16, weight: FontWeight.w800)),
+              child: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: _homeInter(size: nested ? 14 : 16, weight: FontWeight.w800)),
             ),
           ],
         ),
@@ -1618,7 +1660,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
                     color: active ? _homeGold : const Color.fromRGBO(255, 255, 255, 0.08),
                     borderRadius: BorderRadius.circular(radius),
                     border: Border.all(color: active ? _homeGold : const Color(0x66FFC83D)),
-                  ),
+            ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -1635,11 +1677,11 @@ class _BilgiScreenState extends State<BilgiScreen> {
                           child: Text(label, maxLines: 1, softWrap: false, style: labelStyle),
                         )
                       : Text(
-                          label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                           style: labelStyle,
-                        ),
+                  ),
                 ),
               ],
             ),
@@ -1659,12 +1701,12 @@ class _BilgiScreenState extends State<BilgiScreen> {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: plated ? 3 : 0),
       child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
           borderRadius: BorderRadius.circular(radius),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
             height: plated ? _setupChoiceHeight : null,
             alignment: plated ? Alignment.center : null,
             padding: EdgeInsets.symmetric(horizontal: 6, vertical: plated ? 0 : 8),
@@ -1674,16 +1716,16 @@ class _BilgiScreenState extends State<BilgiScreen> {
                     color: active ? _homeGold : const Color.fromRGBO(255, 255, 255, 0.08),
                     borderRadius: BorderRadius.circular(radius),
                     border: Border.all(color: active ? _homeGold : const Color(0x66FFC83D)),
-                  ),
-            child: Text(
-              '$count',
-              textAlign: TextAlign.center,
+          ),
+          child: Text(
+            '$count',
+            textAlign: TextAlign.center,
               style: plated
                   ? _homeInter(size: 16, weight: FontWeight.w800, color: Colors.white)
                   : TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: active ? Colors.white : BilgiColors.muted,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              color: active ? Colors.white : BilgiColors.muted,
                     ),
             ),
           ),
@@ -1703,12 +1745,12 @@ class _BilgiScreenState extends State<BilgiScreen> {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: plated ? 3 : 0),
       child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
           borderRadius: BorderRadius.circular(radius),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
             height: plated ? _setupChoiceHeight : null,
             alignment: plated ? Alignment.center : null,
             padding: EdgeInsets.symmetric(horizontal: 4, vertical: plated ? 0 : 10),
@@ -1718,27 +1760,27 @@ class _BilgiScreenState extends State<BilgiScreen> {
                     color: active ? _homeGold : const Color.fromRGBO(255, 255, 255, 0.08),
                     borderRadius: BorderRadius.circular(radius),
                     border: Border.all(color: active ? _homeGold : const Color(0x66FFC83D)),
-                  ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
                 Text(emoji, style: const TextStyle(fontSize: 13)),
-                const SizedBox(width: 4),
-                Flexible(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                     style: plated
                         ? _homeInter(size: 11, weight: FontWeight.w800, color: Colors.white)
                         : TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: active ? Colors.white : BilgiColors.muted,
-                          ),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: active ? Colors.white : BilgiColors.muted,
                   ),
                 ),
-              ],
+              ),
+            ],
             ),
           ),
         ),
@@ -1901,33 +1943,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
               ),
             ),
           ),
-          if (round.standings.length > 1)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Column(
-                children: [
-                  for (final seat in round.standings)
-                    Text(
-                      '${seat['name']} • ${seat['score'] ?? '0'}',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: seat['id'] == round.userId ? BilgiColors.secondary : BilgiColors.muted,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                ],
-              ),
-            )
-          else if (round.opponentName.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                '${_game.t('rival')}: ${round.opponentName}${round.opponentScore >= 0 ? ' • ${round.opponentScore}' : ''}',
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: BilgiColors.muted, fontSize: 12),
-              ),
-            ),
+          _playerStrip(round),
           if (round.paused) ...[
             const SizedBox(height: 8),
             _note(_fill('quiz_paused', {'n': '${_game.pauseLeft}'})),
@@ -1936,54 +1952,27 @@ class _BilgiScreenState extends State<BilgiScreen> {
             const SizedBox(height: 8),
             _note(_hintLine(shown, round.hint)),
           ],
-          const SizedBox(height: 18),
+          const SizedBox(height: 10),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _QuizQuestionCard(
-                        key: ValueKey(reportQuestion?.id ?? text),
-                        text: text,
-                        reportHint: _game.t('report_hint'),
-                        reportSend: _game.t('report_send'),
-                        reportSending: _game.t('load_status_sending'),
-                        onReport: reportQuestion == null ? null : _game.reportReveal,
-                      ),
-                      for (var i = 0; i < options.length; i++) ...[
-                        const SizedBox(height: _quizOptionGap),
-                        _quizOption(
-                          letters[i],
-                          options[i],
-                          hidden: !revealing && round.hidden.contains(i),
-                          correct: revealing && i == _game.revealCorrect,
-                          wrong: revealing && i == _game.lastPick && i != _game.revealCorrect,
-                          onTap: revealing || round.hidden.contains(i) || _game.picked ? null : () => _game.pick(i),
-                        ),
-                      ],
-                    ],
+            child: _quizBoard(
+              question: _QuizQuestionCard(
+                key: ValueKey(reportQuestion?.id ?? text),
+                text: text,
+                reportHint: _game.t('report_hint'),
+                reportSend: _game.t('report_send'),
+                reportSending: _game.t('load_status_sending'),
+                onReport: reportQuestion == null ? null : _game.reportReveal,
+              ),
+              options: [
+                for (var i = 0; i < options.length; i++)
+                  _quizOption(
+                    letters[i],
+                    options[i],
+                    hidden: !revealing && round.hidden.contains(i),
+                    correct: revealing && i == _game.revealCorrect,
+                    wrong: revealing && i == _game.lastPick && i != _game.revealCorrect,
+                    onTap: revealing || round.hidden.contains(i) || _game.picked ? null : () => _game.pick(i),
                   ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  height: _quizNoteHeight,
-                  child: hasQuizNote
-                      ? ListView(
-                          primary: false,
-                          physics: const ClampingScrollPhysics(),
-                          padding: EdgeInsets.zero,
-                          children: [_didYouKnow(quizNote)],
-                        )
-                      : const SizedBox.shrink(),
-                ),
-                const SizedBox(height: 10),
-                _quizContinue(
-                  label: _display(_game.t('continue_btn')),
-                  onTap: revealing ? _game.continueReveal : null,
-                ),
               ],
             ),
           ),
@@ -1991,41 +1980,52 @@ class _BilgiScreenState extends State<BilgiScreen> {
             const SizedBox(height: _quizOptionGap),
             Padding(
               padding: const EdgeInsets.only(bottom: 4),
-              child: Row(
-                children: [
-                  for (final item in const [
-                    ('half', '✂️'),
-                    ('double', '👥'),
-                    ('time', '⏸️'),
-                    ('change', '🔄'),
-                    ('hint', '💡'),
-                  ])
+            child: Row(
+              children: [
+                for (final item in const [
+                  ('half', '✂️'),
+                  ('double', '👥'),
+                  ('time', '⏸️'),
+                  ('change', '🔄'),
+                  ('hint', '💡'),
+                ])
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 3),
                         child: _jokerButton(
-                          item.$2,
-                          _game.t('joker_${item.$1}'),
-                          _game.profile?.jokers[item.$1] ?? 0,
-                          round.jokersUsed >= round.jokerMax || (item.$1 == 'hint' && (shown?.hint.trim().isEmpty ?? true))
-                              ? null
-                              : () => setState(() {
-                                    _jokerPrompt = item.$1;
-                                    _jokerPromptIndex = round.index;
-                                  }),
-                          dim: item.$1 == 'hint' && (shown?.hint.trim().isEmpty ?? true),
+                    item.$2,
+                    _game.t('joker_${item.$1}'),
+                    _game.profile?.jokers[item.$1] ?? 0,
+                    round.jokersUsed >= round.jokerMax || (item.$1 == 'hint' && (shown?.hint.trim().isEmpty ?? true))
+                        ? null
+                        : () => setState(() {
+                              _jokerPrompt = item.$1;
+                              _jokerPromptIndex = round.index;
+                            }),
+                    dim: item.$1 == 'hint' && (shown?.hint.trim().isEmpty ?? true),
                         ),
                       ),
-                    ),
-                ],
-              ),
+                  ),
+              ],
             ),
+          ),
           ],
           if (_game.notice != null)
             Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(_game.notice!, style: const TextStyle(color: BilgiColors.warning, fontWeight: FontWeight.w700)),
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                _game.notice!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: BilgiColors.warning, fontWeight: FontWeight.w700),
+              ),
             ),
+          const SizedBox(height: 8),
+          _quizContinue(
+            label: _display(_game.t('continue_btn')),
+            onTap: revealing ? _game.continueReveal : null,
+            onInfo: hasQuizNote ? () => _openExplanation(quizNote) : null,
+          ),
         ],
           ),
         ),
@@ -2045,59 +2045,211 @@ class _BilgiScreenState extends State<BilgiScreen> {
     );
   }
 
-  Widget _quizContinue({required String label, required VoidCallback? onTap}) {
-    final enabled = onTap != null;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: enabled ? _homeGold : _homeCard,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: enabled ? _homeGold : const Color(0x99FFC83D), width: 2),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(18),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: _quizOptionRowMinHeight),
-            child: Center(
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: _homeInter(
-                  size: 16,
-                  weight: FontWeight.w900,
-                  color: enabled ? const Color(0xFF3A2200) : Colors.white,
+  Widget _playerStrip(BilgiRound round) {
+    final seats = round.standings;
+    if (seats.length > 1) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: SizedBox(
+          height: 28,
+          child: seats.length == 2
+              ? Row(
+                  children: [
+                    for (var i = 0; i < seats.length; i++) ...[
+                      if (i > 0) const SizedBox(width: 8),
+                      Expanded(
+                        child: _seatChip(seats[i], mine: seats[i]['id'] == round.userId, onTap: () => _openStandings(seats, round.userId)),
+                      ),
+                    ],
+                  ],
+                )
+              : ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: seats.length,
+                  separatorBuilder: (context, index) => const SizedBox(width: 8),
+                  itemBuilder: (_, i) => _seatChip(
+                    seats[i],
+                    mine: seats[i]['id'] == round.userId,
+                    maxWidth: 168,
+                    onTap: () => _openStandings(seats, round.userId),
+                  ),
                 ),
-              ),
-            ),
+        ),
+      );
+    }
+    if (round.opponentName.isEmpty) return const SizedBox.shrink();
+    final score = round.opponentScore >= 0 ? ' • ${round.opponentScore}' : '';
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Text(
+        '${_game.t('rival')}: ${round.opponentName}$score',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.center,
+        style: const TextStyle(color: BilgiColors.muted, fontSize: 12),
+      ),
+    );
+  }
+
+  Widget _seatChip(Map<String, String> seat, {required bool mine, double? maxWidth, VoidCallback? onTap}) {
+    return Material(
+      color: _homeCard,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          width: maxWidth,
+          height: 28,
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: mine ? BilgiColors.secondary : _homeGold, width: 1.5),
+          ),
+          child: Text(
+            '${seat['name']} • ${seat['score'] ?? '0'}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: _homeInter(size: 12, weight: FontWeight.w700, color: mine ? BilgiColors.secondary : const Color(0xFFD4C4E8)),
           ),
         ),
       ),
     );
   }
 
-  Widget _didYouKnow(String body) {
-    const ink = Color(0xFF14532D);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: const Color(0xFFBBF7D0),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  void _openStandings(List<Map<String, String>> seats, String userId) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: _homeBg,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(_game.t('room_players'), textAlign: TextAlign.center, style: _homeGoldTitle(size: 16)),
+                const SizedBox(height: 10),
+                for (final seat in seats)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: _seatChip(seat, mine: seat['id'] == userId),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _quizBoard({required Widget question, required List<Widget> options}) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final scaler = MediaQuery.textScalerOf(context).scale(1);
+        final optionHeight = (14 * 1.3 * 2 + 20) * math.max(1.0, scaler) + 4;
+        final optionBlock = options.length * optionHeight + math.max(0, options.length - 1) * _quizOptionGap + 10;
+        final optionList = <Widget>[
+          for (var i = 0; i < options.length; i++) ...[
+            if (i > 0) const SizedBox(height: _quizOptionGap),
+            options[i],
+          ],
+        ];
+        if (constraints.maxHeight - optionBlock >= 64) {
+          return ClipRect(
+            child: Column(
+            children: [
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, box) {
+                    return SingleChildScrollView(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(minHeight: box.maxHeight),
+                        child: Center(child: question),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 10),
+              ...optionList,
+            ],
+            ),
+          );
+        }
+        return ListView(
+          padding: EdgeInsets.zero,
           children: [
-            const Icon(Icons.check_rounded, color: ink, size: 16),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                body,
-                style: _homeInter(size: 10, weight: FontWeight.w600, height: 1.2, color: ink),
+            question,
+            const SizedBox(height: 10),
+            ...optionList,
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _quizContinue({required String label, required VoidCallback? onTap, VoidCallback? onInfo}) {
+    final enabled = onTap != null;
+    return Row(
+      children: [
+        Expanded(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: enabled ? _homeGold : _homeCard,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: enabled ? _homeGold : const Color(0x99FFC83D), width: 2),
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onTap,
+                borderRadius: BorderRadius.circular(18),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: _quizOptionRowMinHeight),
+                  child: Center(
+                    child: Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      style: _homeInter(
+                        size: 16,
+                        weight: FontWeight.w900,
+                        color: enabled ? const Color(0xFF3A2200) : Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
-          ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 40,
+          height: _quizOptionRowMinHeight,
+          child: onInfo == null
+              ? null
+              : IconButton(
+                  padding: EdgeInsets.zero,
+                  onPressed: onInfo,
+                  icon: const Icon(Icons.info_outline_rounded, color: _homeGold, size: 26),
+                ),
+        ),
+      ],
+    );
+  }
+
+  void _openExplanation(String body) {
+    showDialog<void>(
+      context: context,
+      barrierColor: const Color(0xCC0F0E1A),
+      builder: (context) => _QuizPopup(
+        child: Text(
+          body,
+          textAlign: TextAlign.center,
+          style: _homeInter(size: 16, weight: FontWeight.w700, height: 1.4),
         ),
       ),
     );
@@ -2312,7 +2464,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
                     child: Material(
                       color: _game.boardScope == item.$2 ? _homeGold : _platedDim,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(20),
                         side: const BorderSide(color: _homeGold, width: 2),
                       ),
                       child: InkWell(
@@ -2691,7 +2843,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
     return Material(
       color: on ? _homeGold : _platedDim,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(20),
         side: const BorderSide(color: _homeGold, width: 2),
       ),
       child: InkWell(
@@ -2754,7 +2906,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
         child: Material(
           color: on ? _homeGold : _platedDim,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(20),
             side: const BorderSide(color: _homeGold, width: 2),
           ),
           child: InkWell(
@@ -4613,25 +4765,25 @@ class _BilgiScreenState extends State<BilgiScreen> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
         child: _card(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
               Text(connection ? '📡' : '⚠️', style: const TextStyle(fontSize: 64)),
               const SizedBox(height: 12),
-              Text(
+            Text(
                 connection ? _game.t('err_connection') : _game.t('err_title'),
-                textAlign: TextAlign.center,
+              textAlign: TextAlign.center,
                 style: _homeInter(size: 22, weight: FontWeight.w900),
-              ),
+            ),
               const SizedBox(height: 10),
-              Text(
+            Text(
                 connection ? _game.t('err_connection_body') : notice,
-                textAlign: TextAlign.center,
+              textAlign: TextAlign.center,
                 style: _homeInter(size: 14, weight: FontWeight.w700, color: BilgiColors.muted, height: 1.4),
-              ),
+            ),
               const SizedBox(height: 16),
               _startButton(_game.retry, label: _game.t('retry'), horizontalPadding: 0),
-            ],
+          ],
           ),
         ),
       ),
@@ -4765,12 +4917,12 @@ class _BilgiScreenState extends State<BilgiScreen> {
                                   size: 16,
                                   weight: FontWeight.w900,
                                   color: ready ? const Color(0xFF3A2200) : Colors.white,
-                                ),
                               ),
                             ),
                           ),
                         ),
                       ),
+                    ),
                     ),
                     TextButton(onPressed: _rewardBurst ? null : _game.back, child: Text(_game.t('close'))),
                   ],
@@ -4867,19 +5019,19 @@ class _BilgiScreenState extends State<BilgiScreen> {
     ];
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Expanded(
+                    child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
                 Center(child: _BilgiLogo(size: 112, semanticLabel: _game.t('game_name'))),
                 const SizedBox(height: 8),
-                Text(
-                  _game.t('game_name'),
-                  textAlign: TextAlign.center,
+                        Text(
+                          _game.t('game_name'),
+                          textAlign: TextAlign.center,
                   style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, height: 1.1),
                 ),
                 const SizedBox(height: 4),
@@ -4895,38 +5047,38 @@ class _BilgiScreenState extends State<BilgiScreen> {
                   style: const TextStyle(fontSize: 13, color: BilgiColors.muted, height: 1.2),
                 ),
                 const SizedBox(height: 16),
-                for (var i = 0; i < steps.length; i++) ...[
+                        for (var i = 0; i < steps.length; i++) ...[
                   if (i > 0) const SizedBox(height: 10),
-                  _introStep(steps[i].$1, steps[i].$2, steps[i].$3),
-                ],
-              ],
-            ),
-          ),
+                          _introStep(steps[i].$1, steps[i].$2, steps[i].$3),
+                        ],
+                      ],
+                    ),
+                  ),
           const SizedBox(height: 12),
-          DecoratedBox(
-            decoration: BoxDecoration(
+                DecoratedBox(
+                  decoration: BoxDecoration(
               color: const Color(0xFF22C55E),
               borderRadius: BorderRadius.circular(28),
               border: Border.all(color: _homeGold, width: 2.5),
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: _game.finishIntro,
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _game.finishIntro,
                 borderRadius: BorderRadius.circular(28),
-                child: Padding(
+                      child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   child: Text(
                     _game.t('intro_start'),
                     textAlign: TextAlign.center,
                     style: _homeInter(size: 16, weight: FontWeight.w900),
                   ),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
+              ],
           ),
-        ],
-      ),
     );
   }
 
@@ -4949,7 +5101,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
               decoration: const BoxDecoration(
                 shape: BoxShape.circle,
                 color: _homeGold,
-              ),
+                ),
               child: Text(number, style: _homeInter(size: 16, weight: FontWeight.w900, color: const Color(0xFF3A2200))),
             ),
             const SizedBox(width: 16),
@@ -4974,19 +5126,19 @@ class _BilgiScreenState extends State<BilgiScreen> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
         child: _card(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
               const Text('🔧', style: TextStyle(fontSize: 64)),
               const SizedBox(height: 12),
               Text(_game.t('maint_title'), textAlign: TextAlign.center, style: _homeInter(size: 22, weight: FontWeight.w900)),
               const SizedBox(height: 10),
-              Text(
+            Text(
                 _game.t('maint_body'),
-                textAlign: TextAlign.center,
+              textAlign: TextAlign.center,
                 style: _homeInter(size: 14, weight: FontWeight.w700, color: BilgiColors.muted, height: 1.4),
-              ),
-            ],
+            ),
+          ],
           ),
         ),
       ),
@@ -5056,28 +5208,28 @@ class _BilgiScreenState extends State<BilgiScreen> {
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: _homeGold, width: 2),
         ),
-        child: Material(
+      child: Material(
           color: Colors.transparent,
           borderRadius: BorderRadius.circular(18),
-          child: InkWell(
-            onTap: onTap,
+        child: InkWell(
+          onTap: onTap,
             borderRadius: BorderRadius.circular(18),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Row(
-                children: [
-                  Text(icon, style: const TextStyle(fontSize: 20)),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              children: [
+                Text(icon, style: const TextStyle(fontSize: 20)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                         Text(title, style: _homeInter(size: 15, weight: FontWeight.w800)),
                         Text(subtitle, style: _homeInter(size: 12, weight: FontWeight.w700, color: BilgiColors.muted)),
-                      ],
-                    ),
+                    ],
                   ),
-                ],
+                ),
+              ],
               ),
             ),
           ),
@@ -5465,18 +5617,18 @@ class _BilgiScreenState extends State<BilgiScreen> {
                         Expanded(
                           child: SizedBox(
                             height: 48,
-                            child: TextButton(
-                              onPressed: () => setState(() {
-                                _jokerPrompt = null;
-                                _jokerPromptIndex = null;
-                              }),
-                              style: TextButton.styleFrom(
+                          child: TextButton(
+                            onPressed: () => setState(() {
+                              _jokerPrompt = null;
+                              _jokerPromptIndex = null;
+                            }),
+                            style: TextButton.styleFrom(
                                 foregroundColor: const Color(0xFFD4C4E8),
                                 padding: const EdgeInsets.symmetric(vertical: 12),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                              ),
-                              child: Text(
-                                _game.t('joker_cancel'),
+                            ),
+                            child: Text(
+                              _game.t('joker_cancel'),
                                 style: _homeInter(size: 15, weight: FontWeight.w700, color: const Color(0xFFD4C4E8)),
                               ),
                             ),
@@ -5486,20 +5638,20 @@ class _BilgiScreenState extends State<BilgiScreen> {
                         Expanded(
                           child: SizedBox(
                             height: 48,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
                                 color: _homeGold,
                                 borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  onTap: _applyPromptedJoker,
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: _applyPromptedJoker,
                                   borderRadius: BorderRadius.circular(14),
                                   child: Center(
-                                    child: Text(
-                                      _game.t('joker_confirm'),
-                                      textAlign: TextAlign.center,
+                                  child: Text(
+                                    _game.t('joker_confirm'),
+                                    textAlign: TextAlign.center,
                                       style: _homeInter(size: 15, weight: FontWeight.w900, color: const Color(0xFF3A2200)),
                                     ),
                                   ),
@@ -5550,43 +5702,43 @@ class _BilgiScreenState extends State<BilgiScreen> {
         borderRadius: BorderRadius.circular(16),
         child: SizedBox(
           height: 78,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Container(
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
                 width: double.infinity,
                 height: 70,
                 padding: const EdgeInsets.fromLTRB(2, 6, 2, 12),
-                decoration: BoxDecoration(
+              decoration: BoxDecoration(
                   color: _homeCard,
-                  borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: _homeGold, width: 2),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(emoji, style: const TextStyle(fontSize: 18, height: 1)),
-                    const SizedBox(height: 3),
-                    Text(
-                      label,
-                      maxLines: 2,
-                      textAlign: TextAlign.center,
-                      overflow: TextOverflow.ellipsis,
-                      style: _homeInter(size: 8, weight: FontWeight.w800, color: Colors.white, height: 1.05),
-                    ),
-                  ],
-                ),
               ),
-              Positioned(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(emoji, style: const TextStyle(fontSize: 18, height: 1)),
+                  const SizedBox(height: 3),
+                  Text(
+                    label,
+                    maxLines: 2,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                      style: _homeInter(size: 8, weight: FontWeight.w800, color: Colors.white, height: 1.05),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
                 left: 0,
                 right: 0,
                 bottom: 0,
                 child: Center(child: _JokerConsumeBadge(stock: stock)),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
+    ),
     );
   }
 
@@ -6000,7 +6152,7 @@ class _FormCardState extends State<_FormCard> {
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: _homeGold, width: 2),
         ),
-        child: Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(widget.title, style: GoogleFonts.nunito(fontWeight: FontWeight.w900, fontSize: 16, color: _homeGoldText)),
@@ -6009,7 +6161,7 @@ class _FormCardState extends State<_FormCard> {
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: TextField(
-                controller: _fields[i],
+              controller: _fields[i],
                 keyboardType: widget.numeric.contains(i) ? TextInputType.number : null,
                 obscureText: widget.secret.contains(i),
                 style: GoogleFonts.nunito(color: Colors.white, fontWeight: FontWeight.w700),
@@ -6117,44 +6269,46 @@ class _BilgiQuizOptionState extends State<_BilgiQuizOption> with SingleTickerPro
     }
     final row = Material(
       color: fill,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: border, width: borderWidth),
-      ),
-      child: InkWell(
-        onTap: widget.hidden ? null : widget.onTap,
-        borderRadius: BorderRadius.circular(16),
+        ),
+        child: InkWell(
+          onTap: widget.hidden ? null : widget.onTap,
+          borderRadius: BorderRadius.circular(16),
         child: Container(
           constraints: const BoxConstraints(minHeight: 14 * 1.3 * 2 + 20),
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(color: chip, borderRadius: BorderRadius.circular(10)),
+            child: Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(color: chip, borderRadius: BorderRadius.circular(10)),
                 child: Text(
                   widget.letter,
                   style: GoogleFonts.nunito(fontWeight: FontWeight.w800, color: letterColor),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  widget.hidden ? '—' : widget.text,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    widget.hidden ? '—' : widget.text,
                   textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.nunito(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
                     height: 1.3,
                     color: textColor,
+                    ),
                   ),
                 ),
-              ),
               const SizedBox(width: 44),
-            ],
+              ],
           ),
         ),
       ),
@@ -6283,7 +6437,8 @@ class _JokerSpendBurstState extends State<_JokerSpendBurst> with SingleTickerPro
   }
 }
 
-class _QuizQuestionCard extends StatefulWidget {
+
+class _QuizQuestionCard extends StatelessWidget {
   const _QuizQuestionCard({
     super.key,
     required this.text,
@@ -6300,12 +6455,114 @@ class _QuizQuestionCard extends StatefulWidget {
   final String reportSending;
 
   @override
-  State<_QuizQuestionCard> createState() => _QuizQuestionCardState();
+  Widget build(BuildContext context) {
+    final report = onReport != null;
+    return Stack(
+      children: [
+        Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(minHeight: 15 * 1.3 * 3 + 28),
+          padding: EdgeInsets.fromLTRB(16, 14, report ? 40 : 16, 14),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: _homeCard,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: _homeGold, width: 2),
+          ),
+          child: Text(
+            text,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w800, height: 1.3, color: Colors.white),
+          ),
+        ),
+        if (report)
+          Positioned(
+            right: 2,
+            bottom: 2,
+            child: IconButton(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.all(6),
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              onPressed: () {
+                final send = onReport;
+                if (send == null) return;
+                showDialog<void>(
+                  context: context,
+                  barrierColor: const Color(0xCC0F0E1A),
+                  builder: (context) => _ReportDialog(
+                    onReport: send,
+                    hint: reportHint,
+                    sendLabel: reportSend,
+                    sendingLabel: reportSending,
+                  ),
+                );
+              },
+              icon: const Icon(Icons.outlined_flag_rounded, color: _homeGold, size: 20),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
-class _QuizQuestionCardState extends State<_QuizQuestionCard> {
+class _QuizPopup extends StatelessWidget {
+  const _QuizPopup({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final height = MediaQuery.sizeOf(context).height;
+    return Dialog(
+      backgroundColor: _homeCard,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: _homeGold, width: 2),
+      ),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: 420, maxHeight: height * 0.7),
+        child: Stack(
+          children: [
+            SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(18, 48, 18, 18),
+              child: child,
+            ),
+            Positioned(
+              top: 4,
+              right: 4,
+              child: IconButton(
+                visualDensity: VisualDensity.compact,
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close_rounded, color: _homeGold, size: 22),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ReportDialog extends StatefulWidget {
+  const _ReportDialog({
+    required this.onReport,
+    required this.hint,
+    required this.sendLabel,
+    required this.sendingLabel,
+  });
+
+  final Future<String?> Function(String note) onReport;
+  final String hint;
+  final String sendLabel;
+  final String sendingLabel;
+
+  @override
+  State<_ReportDialog> createState() => _ReportDialogState();
+}
+
+class _ReportDialogState extends State<_ReportDialog> {
   final _note = TextEditingController();
-  var _open = false;
   var _busy = false;
   var _message = '';
   var _sent = false;
@@ -6317,8 +6574,7 @@ class _QuizQuestionCardState extends State<_QuizQuestionCard> {
   }
 
   Future<void> _send() async {
-    final onReport = widget.onReport;
-    if (onReport == null || _busy) return;
+    if (_busy || _sent) return;
     final error = bilgiReportNoteError(_note.text);
     if (error != null) {
       setState(() => _message = error);
@@ -6328,15 +6584,14 @@ class _QuizQuestionCardState extends State<_QuizQuestionCard> {
       _busy = true;
       _message = '';
     });
-    final result = await onReport(_note.text);
+    final result = await widget.onReport(_note.text);
     if (!mounted) return;
     setState(() {
       _busy = false;
       if (result == null) {
-        _open = false;
         _sent = true;
-        _note.clear();
         _message = 'Bildiriminiz iletildi';
+        _note.clear();
       } else {
         _message = result;
       }
@@ -6345,123 +6600,75 @@ class _QuizQuestionCardState extends State<_QuizQuestionCard> {
 
   @override
   Widget build(BuildContext context) {
-    final report = widget.onReport != null;
     const fieldBorder = OutlineInputBorder(
       borderRadius: BorderRadius.all(Radius.circular(12)),
       borderSide: BorderSide(color: _homeGold, width: 1.5),
     );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Stack(
-          children: [
-            Container(
-              width: double.infinity,
-              constraints: const BoxConstraints(minHeight: 15 * 1.3 * 3 + 28),
-              padding: EdgeInsets.fromLTRB(16, 14, report ? 40 : 16, 14),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: _homeCard,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: _homeGold, width: 2),
-              ),
-              child: Text(
-                widget.text,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w800, height: 1.3, color: Colors.white),
-              ),
-            ),
-            if (report)
-              Positioned(
-                right: 2,
-                bottom: 2,
-                child: IconButton(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.all(6),
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                  onPressed: _busy
-                      ? null
-                      : () => setState(() {
-                            _open = !_open;
-                            if (_open) {
-                              _sent = false;
-                              _message = '';
-                            }
-                          }),
-                  icon: Icon(
-                    _open ? Icons.close_rounded : Icons.outlined_flag_rounded,
-                    color: _homeGold,
-                    size: 20,
+    return _QuizPopup(
+      child: _sent
+          ? Text(
+              _message,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.nunito(color: _homeGoldText, fontSize: 16, fontWeight: FontWeight.w800, height: 1.35),
+            )
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: _note,
+                  enabled: !_busy,
+                  minLines: 3,
+                  maxLines: 5,
+                  keyboardType: TextInputType.multiline,
+                  textInputAction: TextInputAction.newline,
+                  cursorColor: _homeGold,
+                  style: GoogleFonts.nunito(color: Colors.white, fontSize: 15, height: 1.35, fontWeight: FontWeight.w700),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    filled: true,
+                    fillColor: const Color(0xFF2A1048),
+                    hintText: widget.hint,
+                    hintStyle: const TextStyle(color: BilgiColors.muted, fontSize: 15, height: 1.35),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    border: fieldBorder,
+                    enabledBorder: fieldBorder,
+                    focusedBorder: fieldBorder,
+                    disabledBorder: fieldBorder,
                   ),
                 ),
-              ),
-          ],
-        ),
-        if (_sent && !_open && _message.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(
-            _message,
-            textAlign: TextAlign.center,
-            style: GoogleFonts.nunito(color: _homeGoldText, fontSize: 13, fontWeight: FontWeight.w800),
-          ),
-        ],
-        if (_open) ...[
-          const SizedBox(height: 8),
-          TextField(
-            controller: _note,
-            autofocus: true,
-            enabled: !_busy,
-            minLines: 2,
-            maxLines: 3,
-            keyboardType: TextInputType.multiline,
-            textInputAction: TextInputAction.newline,
-            cursorColor: _homeGold,
-            style: GoogleFonts.nunito(color: Colors.white, fontSize: 13, height: 1.35, fontWeight: FontWeight.w700),
-            decoration: InputDecoration(
-              isDense: true,
-              filled: true,
-              fillColor: const Color(0xFF2A1048),
-              hintText: widget.reportHint,
-              hintStyle: const TextStyle(color: BilgiColors.muted, fontSize: 13, height: 1.35),
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              border: fieldBorder,
-              enabledBorder: fieldBorder,
-              focusedBorder: fieldBorder,
-              disabledBorder: fieldBorder,
-            ),
-          ),
-          if (_message.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              _message,
-              style: GoogleFonts.nunito(color: BilgiColors.warning, fontSize: 12, fontWeight: FontWeight.w700, height: 1.2),
-            ),
-          ],
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 44,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: _busy ? const Color(0xFF8A7340) : _homeGold,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: _busy ? null : _send,
-                  borderRadius: BorderRadius.circular(14),
-                  child: Center(
-                    child: Text(
-                      _busy ? widget.reportSending : widget.reportSend,
-                      style: GoogleFonts.nunito(color: const Color(0xFF3A2200), fontSize: 14, fontWeight: FontWeight.w900),
+                if (_message.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _message,
+                    style: GoogleFonts.nunito(color: BilgiColors.warning, fontSize: 13, fontWeight: FontWeight.w700, height: 1.3),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 44,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: _busy ? const Color(0xFF8A7340) : _homeGold,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: _busy ? null : _send,
+                        borderRadius: BorderRadius.circular(14),
+                        child: Center(
+                          child: Text(
+                            _busy ? widget.sendingLabel : widget.sendLabel,
+                            style: GoogleFonts.nunito(color: const Color(0xFF3A2200), fontSize: 15, fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ),
-          ),
-        ],
-      ],
     );
   }
 }
@@ -6495,9 +6702,9 @@ Future<bool> showBilgiShopSpendPrompt(
                 style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700, height: 1.4),
               ),
               const SizedBox(height: 18),
-              Row(
-                children: [
-                  Expanded(
+        Row(
+          children: [
+            Expanded(
                     child: SizedBox(
                       height: 48,
                       child: TextButton(
@@ -6538,13 +6745,13 @@ Future<bool> showBilgiShopSpendPrompt(
                         ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ],
+            ),
+          ],
+        ),
+      ],
           ),
         ),
-      );
+    );
     },
   );
   return answer == true;

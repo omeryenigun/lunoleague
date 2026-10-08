@@ -32,10 +32,30 @@ Future<Response> _list(Request request, Connection db, KeyValueStore store) asyn
   final listed = annotateBilgiAccounts(players, accounts);
   listed.sort((a, b) => b.createdAt.compareTo(a.createdAt));
   players.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  final activity = await _lastActivity(db);
   return jsonResponse({
-    'users': [for (final user in listed) user.toPublicMap()],
-    'players': [for (final user in players) user.toPublicMap()],
+    'users': [for (final user in listed) _withActivity(user, activity)],
+    'players': [for (final user in players) _withActivity(user, activity)],
   });
+}
+
+Future<Map<String, DateTime>> _lastActivity(Connection db) async {
+  final rows = await db.execute(
+    'select user_id, max(created_at) from bilgi_wallet_ledger group by user_id',
+  );
+  final out = <String, DateTime>{};
+  for (final row in rows) {
+    final at = row[1];
+    if (at is DateTime) out['${row[0]}'] = at.toUtc();
+  }
+  return out;
+}
+
+Map<String, dynamic> _withActivity(BilgiProfile user, Map<String, DateTime> activity) {
+  final map = user.toPublicMap();
+  final at = activity[user.id];
+  if (at != null) map['lastActivityAt'] = at.toIso8601String();
+  return map;
 }
 
 Future<Response> _setBan(
