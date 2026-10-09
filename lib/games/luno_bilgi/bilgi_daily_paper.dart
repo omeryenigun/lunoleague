@@ -81,7 +81,7 @@ List<Map<String, dynamic>> _accepted(List<Map<String, dynamic>> rows, Set<String
   final out = <Map<String, dynamic>>[];
   for (final row in rows) {
     final error = _rowError(row, seen, avoid);
-    final hintOnly = error == 'ipucu doğru şıkkı yazıyor.' || error == 'ipucu açıklamanın aynısı.';
+    final hintOnly = bilgiDailyHintSoftError(error);
     if (error != null && !hintOnly) continue;
     if (hintOnly) {
       final key = bilgiDailyFold('${row['text'] ?? ''}'.trim());
@@ -270,10 +270,16 @@ String? bilgiDailyOrderError(List<Map<String, dynamic>> rows) {
   return null;
 }
 
+/// İpucu kalite uyarıları; CSV aktarımını durdurmaz.
+bool bilgiDailyHintSoftError(String? error) =>
+    error == 'ipucu doğru şıkkı yazıyor.' || error == 'ipucu açıklamanın aynısı.';
+
 String? bilgiDailyPaperError({
   required List<Map<String, dynamic>> questions,
   required List<Map<String, dynamic>> spares,
   Set<String> avoid = const {},
+  bool softHints = false,
+  List<String>? notes,
 }) {
   if (questions.length != 20) return 'Kağıt 20 soru olmalı.';
   if (spares.length != 11) return 'Yedek 11 soru olmalı.';
@@ -281,12 +287,24 @@ String? bilgiDailyPaperError({
   final paperTopics = <String>[];
   for (var i = 0; i < questions.length; i++) {
     final error = _rowError(questions[i], seen, avoid);
-    if (error != null) return 'Kağıt ${i + 1}: $error';
+    if (error != null) {
+      if (softHints && bilgiDailyHintSoftError(error)) {
+        notes?.add('Kağıt ${i + 1}: $error');
+      } else {
+        return 'Kağıt ${i + 1}: $error';
+      }
+    }
     paperTopics.add(_topic(questions[i]));
   }
   for (var i = 0; i < spares.length; i++) {
     final error = _rowError(spares[i], seen, avoid);
-    if (error != null) return 'Yedek ${i + 1}: $error';
+    if (error != null) {
+      if (softHints && bilgiDailyHintSoftError(error)) {
+        notes?.add('Yedek ${i + 1}: $error');
+      } else {
+        return 'Yedek ${i + 1}: $error';
+      }
+    }
   }
   final quotaError = _quota(questions, bilgiDailyAiQuotas, 'Kağıt');
   if (quotaError != null) return quotaError;

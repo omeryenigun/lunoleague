@@ -1159,11 +1159,13 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   }
 
   Future<void> _openContestCsv(String day) async {
-    final saved = await showDialog<bool>(
+    final result = await showDialog<String>(
       context: context,
       builder: (context) => _ContestCsvDialog(day: day),
     );
-    if (saved == true && mounted) await _loadContest();
+    if (result == null || !mounted) return;
+    await _loadContest();
+    if (result.isNotEmpty && mounted) setState(() => _note = result);
   }
 
   Future<void> _clearContestDay(String day) async {
@@ -7278,9 +7280,10 @@ class _ContestCsvDialogState extends State<_ContestCsvDialog> {
       setState(() => _error = parsed.error!);
       return;
     }
+    final soft = parsed.notes.isEmpty ? '' : 'Not: ${parsed.notes.join(' · ')}';
     setState(() {
       _busy = true;
-      _error = '';
+      _error = soft;
     });
     final loaded = await BilgiContestApi.adminSaveQuestions(
       sl<ApiSession>().adminToken ?? '',
@@ -7296,7 +7299,7 @@ class _ContestCsvDialogState extends State<_ContestCsvDialog> {
       });
       return;
     }
-    Navigator.pop(context, true);
+    Navigator.pop(context, soft);
   }
 
   @override

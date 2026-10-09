@@ -142,24 +142,31 @@ const bilgiDailyCsvRecipe = <String>[
   'Kolay 6 asıl için örnek harf: A A B B C D. Orta 8 asıl: her harf iki kez. Zor 4 asıl: her harf bir kez. Efsane 2 asıl: iki farklı harf.',
   'Yedek kolay, orta ve zor 3 soruda üç farklı harf. Yedek efsane iki farklı harf.',
   'konu kısa bir addır (İnsan, Doğa, Tarih). Aynı konu art arda en fazla 2 soru gelir.',
-  'aciklama boş olamaz. ipucu 4 ile 500 karakterdir, doğru şıkkın kelimesini ve açıklamanın aynısını yazmaz.',
+  'aciklama boş olamaz. ipucu 4 ile 500 karakterdir. İpucunun doğru şıkkı veya açıklamanın aynısını yazması kaydı durdurmaz; not olarak görünür.',
   'Virgül içeren hücreyi tırnak içine al. Tırnak karakteri için "" yaz.',
   'Aynı soru metni bu dosyada ve ayın başka gününde tekrarlanamaz. Kilitli güne yazılmaz.',
   'Hata satırı Kağıt 4 ise 4. asıl sorudur. Yedek 2 ise 2. yedek satırdır.',
 ];
 
 class BilgiDailyCsvPaper {
-  const BilgiDailyCsvPaper({this.questions = const [], this.spares = const [], this.error});
+  const BilgiDailyCsvPaper({
+    this.questions = const [],
+    this.spares = const [],
+    this.error,
+    this.notes = const [],
+  });
 
   final List<BilgiQuestion> questions;
   final List<BilgiQuestion> spares;
   final String? error;
+  final List<String> notes;
 }
 
 BilgiDailyCsvPaper parseBilgiDailyCsv(String raw, {required String day}) {
   final text = raw.replaceFirst('\uFEFF', '');
   final mains = <Map<String, dynamic>>[];
   final extras = <Map<String, dynamic>>[];
+  final notes = <String>[];
   final lines = text.split(RegExp(r'\r?\n'));
   var data = 0;
   for (var i = 0; i < lines.length; i++) {
@@ -192,12 +199,13 @@ BilgiDailyCsvPaper parseBilgiDailyCsv(String raw, {required String day}) {
   }
   final order = bilgiDailyOrderError(mains);
   if (order != null) return BilgiDailyCsvPaper(error: order);
-  final paper = bilgiDailyPaperError(questions: mains, spares: extras);
+  final paper = bilgiDailyPaperError(questions: mains, spares: extras, softHints: true, notes: notes);
   if (paper != null) return BilgiDailyCsvPaper(error: paper);
   final compact = day.replaceAll('-', '');
   return BilgiDailyCsvPaper(
     questions: [for (var i = 0; i < mains.length; i++) _dailyQuestion(mains[i], 'gun${compact}p${(i + 1).toString().padLeft(2, '0')}')],
     spares: [for (var i = 0; i < extras.length; i++) _dailyQuestion(extras[i], 'gun${compact}y${(i + 1).toString().padLeft(2, '0')}')],
+    notes: notes,
   );
 }
 
@@ -226,14 +234,10 @@ BilgiDailyCsvPaper parseBilgiDailyCsv(String raw, {required String day}) {
   final explanation = parts[9].trim();
   final hint = parts[10].trim();
   if (explanation.isEmpty) return (row: null, error: 'Satır $line: açıklama boş.');
-  if (hint.length < 4 || hint.length > 500) return (row: null, error: 'Satır $line: ipucu 4 ile 500 karakter olmalı.');
-  if (bilgiDailyFold(hint) == bilgiDailyFold(explanation)) {
-    return (row: null, error: 'Satır $line: ipucu açıklamanın aynısı.');
+  if (hint.length < 4 || hint.length > 500) {
+    return (row: null, error: 'Satır $line: ipucu 4 ile 500 karakter olmalı.');
   }
-  final answer = foldedOptions[correct];
-  if (answer.length >= 4 && bilgiDailyFold(hint).contains(answer)) {
-    return (row: null, error: 'Satır $line: ipucu doğru şıkkı yazıyor.');
-  }
+  // İpucu kalite uyarıları (doğru şık / açıklama kopyası) softHints ile not olur; burada kesilmez.
   return (
     row: {
       'text': text,

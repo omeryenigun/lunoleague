@@ -19,6 +19,16 @@ void main() {
     expect(parseBilgiDailyCsv(bilgiCsvTemplate, day: '2026-10-10').error, contains('tur'));
     expect(parseBilgiDailyCsv('$bilgiDailyCsvTemplate', day: '2026-10-10').error, contains('20'));
   });
+
+  test('a leaked hint is a note and does not block the csv', () {
+    final lines = _sheet().split('\n');
+    lines[1] =
+        'asil,Soru asil 1 hangi olguyu anlatır?,Alfa 1,Beta 1,Gama 1,Delta 1,A,Insan,kolay,Aciklama asil 1 nedeni soyler.,Alfa 1 cevabi burada.';
+    final parsed = parseBilgiDailyCsv(lines.join('\n'), day: '2026-10-11');
+    expect(parsed.error, isNull, reason: parsed.error);
+    expect(parsed.questions, hasLength(20));
+    expect(parsed.notes.join(' '), contains('ipucu doğru şıkkı'));
+  });
 }
 
 String _sheet() {
