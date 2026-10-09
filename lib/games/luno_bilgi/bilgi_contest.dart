@@ -230,21 +230,6 @@ class BilgiContestApi {
     );
   }
 
-  static Future<BilgiContestAdminResult> adminGenerate(String token, String day) {
-    return _admin(
-      http
-          .post(
-            Uri.parse('${ApiConfig.baseUrl}/v1/admin/bilgi-contest'),
-            headers: {
-              'authorization': 'Bearer $token',
-              'content-type': 'application/json; charset=utf-8',
-            },
-            body: jsonEncode({'day': day, 'generate': true}),
-          )
-          .timeout(const Duration(minutes: 8)),
-    );
-  }
-
   static Future<BilgiContestAdminResult> adminSave(
     String token, {
     String month = '',
@@ -304,6 +289,19 @@ class BilgiContestApi {
     } catch (_) {
       return BilgiContestDayPaper(day: day, title: '', locked: false, questions: const [], error: 'Sorular yüklenemedi.');
     }
+  }
+
+  static Future<BilgiContestAdminResult> adminClearDay(String token, String day) {
+    return _admin(
+      http.post(
+        Uri.parse('${ApiConfig.baseUrl}/v1/admin/bilgi-contest'),
+        headers: {
+          'authorization': 'Bearer $token',
+          'content-type': 'application/json; charset=utf-8',
+        },
+        body: jsonEncode({'day': day, 'clear': true}),
+      ),
+    );
   }
 
   static Future<BilgiContestAdminResult> adminSaveQuestions(

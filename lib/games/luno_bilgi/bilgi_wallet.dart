@@ -86,6 +86,85 @@ class BilgiLedgerLine {
   }
 }
 
+/// Fields kept on a finished round. Absent keys stay absent so older rows are not filled with zeros.
+Map<String, Object?> bilgiFinishDetail(
+  Map<String, dynamic> body, {
+  required String modeId,
+  required String categoryId,
+  required int score,
+  required double multiplier,
+  required int correct,
+}) {
+  String text(String key) => '${body[key] ?? ''}'.trim();
+  int? whole(String key) => body.containsKey(key) ? bilgiInt(body[key], 0) : null;
+  final opponent = text('opponentName');
+  return {
+    'modeId': modeId,
+    'categoryId': categoryId,
+    'score': score,
+    'multiplier': multiplier,
+    'correct': correct,
+    if (text('difficulty').isNotEmpty) 'difficulty': text('difficulty'),
+    if (text('subcategory').isNotEmpty) 'subcategory': text('subcategory'),
+    if (text('entryAd').isNotEmpty) 'entryAd': text('entryAd'),
+    if (text('roomCode').isNotEmpty) 'roomCode': text('roomCode'),
+    if (opponent.isNotEmpty) 'opponentName': opponent,
+    if (opponent.isNotEmpty && body.containsKey('opponentScore')) 'opponentScore': bilgiInt(body['opponentScore'], 0),
+    if (whole('wrong') != null) 'wrong': whole('wrong'),
+    if (whole('questions') != null) 'questions': whole('questions'),
+    if (whole('jokersUsed') != null) 'jokersUsed': whole('jokersUsed'),
+    if (whole('timeBonus') != null) 'timeBonus': whole('timeBonus'),
+    if (whole('streak') != null) 'streak': whole('streak'),
+    if (whole('lifeCost') != null) 'lifeCost': whole('lifeCost'),
+    if (whole('seconds') != null) 'seconds': whole('seconds'),
+  };
+}
+
+/// One finished game for the admin list. [jokers] is the ledger count when the round did not store its own.
+Map<String, dynamic> bilgiAdminGame({
+  required String userId,
+  required String username,
+  required String ref,
+  required DateTime at,
+  required Map<String, Object?> detail,
+  required int gold,
+  required int xp,
+  required int diamonds,
+  required bool doubled,
+  required int jokers,
+}) {
+  int? optional(String key) => detail.containsKey(key) ? bilgiInt(detail[key], 0) : null;
+  final used = optional('jokersUsed');
+  return {
+    'id': ref,
+    'userId': userId,
+    'username': username,
+    'at': at.toUtc().toIso8601String(),
+    'modeId': '${detail['modeId'] ?? ''}',
+    'categoryId': '${detail['categoryId'] ?? ''}',
+    'subcategory': '${detail['subcategory'] ?? ''}',
+    'difficulty': '${detail['difficulty'] ?? ''}',
+    'score': bilgiInt(detail['score'], 0),
+    'correct': bilgiInt(detail['correct'], 0),
+    'wrong': optional('wrong'),
+    'questions': optional('questions'),
+    'multiplier': detail['multiplier'] ?? 1,
+    'gold': gold,
+    'xp': xp,
+    'diamonds': diamonds,
+    'jokers': used ?? jokers,
+    'entryAd': '${detail['entryAd'] ?? ''}',
+    'doubled': doubled,
+    'opponentName': '${detail['opponentName'] ?? ''}',
+    'opponentScore': optional('opponentScore'),
+    'roomCode': '${detail['roomCode'] ?? ''}',
+    'timeBonus': optional('timeBonus'),
+    'streak': optional('streak'),
+    'lifeCost': optional('lifeCost'),
+    'seconds': optional('seconds'),
+  };
+}
+
 class BilgiWalletReply {
   const BilgiWalletReply({this.profile, this.error, this.livesReported = true});
 
@@ -713,6 +792,15 @@ class BilgiWalletBook {
         : bilgiAddScore(user, points: score, categoryId: categoryId, now: _clock());
     final duelWins = user.duelWins +
         ((modeId == 'duello' && opponentName.isNotEmpty && opponentScore >= 0 && score >= opponentScore) ? 1 : 0);
+    final detail = bilgiFinishDetail(
+      body,
+      modeId: modeId,
+      categoryId: categoryId,
+      score: score,
+      multiplier: multiplier,
+      correct: correct,
+    );
+    final at = _clock();
     final next = bilgiWithBadges(scored.copyWith(
       gold: scored.gold + gold,
       xp: level.xp,
@@ -724,21 +812,27 @@ class BilgiWalletBook {
       duelWins: duelWins,
       title: level.level >= 10 ? 'Bilge' : user.title,
     ));
-    await ledger.append(bilgiLedgerDiff(
-      before: user,
-      after: next,
-      reason: 'round_finish',
-      ref: ref,
-      detail: {
-        'modeId': modeId,
-        'categoryId': categoryId,
-        'score': score,
-        'multiplier': multiplier,
-        'correct': correct,
-        if ('${body['difficulty'] ?? ''}'.isNotEmpty) 'difficulty': '${body['difficulty']}',
-      },
-      at: _clock(),
-    ));
+    await ledger.append([
+      ...bilgiLedgerDiff(
+        before: user,
+        after: next,
+        reason: 'round_finish',
+        ref: ref,
+        detail: detail,
+        at: at,
+      ),
+      BilgiLedgerLine(
+        id: bilgiLedgerId('round'),
+        userId: user.id,
+        createdAt: at,
+        asset: 'round',
+        amount: 0,
+        balanceAfter: 0,
+        reason: 'round_finish',
+        ref: ref,
+        detail: detail,
+      ),
+    ]);
     await _mark(user.id, 'round_finish', ref);
     await _put(next);
     return BilgiWalletReply(profile: next);

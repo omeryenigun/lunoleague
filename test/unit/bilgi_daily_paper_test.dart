@@ -93,28 +93,7 @@ void main() {
   });
 }
 
-const _paperPlan = [
-  'kolay',
-  'orta',
-  'kolay',
-  'orta',
-  'orta',
-  'zor',
-  'orta',
-  'kolay',
-  'orta',
-  'zor',
-  'efsane',
-  'orta',
-  'kolay',
-  'zor',
-  'orta',
-  'kolay',
-  'orta',
-  'zor',
-  'kolay',
-  'efsane',
-];
+const _paperPlan = bilgiDailyPlayOrder;
 
 const _sparePlan = ['kolay', 'kolay', 'kolay', 'orta', 'orta', 'orta', 'zor', 'zor', 'zor', 'efsane', 'efsane'];
 

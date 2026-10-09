@@ -1043,6 +1043,7 @@ class BilgiRound {
     this.spare,
     List<BilgiQuestion>? spares,
     this.standings = const [],
+    this.entryAd = '',
     DateTime? startedAt,
   })  : spares = spares ?? <BilgiQuestion>[],
         startedAt = startedAt ?? DateTime.now();
@@ -1082,6 +1083,9 @@ class BilgiRound {
   List<Map<String, String>> standings;
   final DateTime startedAt;
 
+  /// How the pre-game ad gate was passed: watched, cleared, plus, ad_free, daily_free, free, none.
+  final String entryAd;
+
   BilgiQuestion? get current => index >= 0 && index < questions.length ? questions[index] : null;
 
   Map<String, dynamic> toMap() => {
@@ -1116,6 +1120,7 @@ class BilgiRound {
         'waiting': waiting,
         'hint': hint,
         'startedAt': startedAt.toIso8601String(),
+        if (entryAd.isNotEmpty) 'entryAd': entryAd,
         if (spare != null) 'spare': spare!.toMap(),
         if (spares.isNotEmpty) 'spares': [for (final question in spares) question.toMap()],
         'standings': standings,

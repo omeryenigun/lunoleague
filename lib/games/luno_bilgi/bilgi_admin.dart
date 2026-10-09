@@ -66,10 +66,6 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   DateTime _contestMonth = DateTime(DateTime.now().year, DateTime.now().month);
   List<BilgiContestDay> _contestDays = const [];
   var _contestBusy = false;
-  var _contestPoll = 0;
-  var _contestGeneratingDay = '';
-  DateTime? _contestSince;
-  Timer? _contestTimer;
   final _contestTitles = <String, TextEditingController>{};
   List<BilgiProfile> _users = const [];
   List<BilgiProfile> _leagueUsers = const [];
@@ -160,6 +156,18 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
   var _ledgerError = '';
   final _ledgerFrom = TextEditingController();
   final _ledgerTo = TextEditingController();
+  List<Map<String, dynamic>> _played = const [];
+  var _playedError = '';
+  var _playedBusy = false;
+  var _playedReady = false;
+  var _playMode = '';
+  var _playCat = '';
+  var _playSub = '';
+  var _playDiff = '';
+  var _playAd = '';
+  final _playFrom = TextEditingController();
+  final _playTo = TextEditingController();
+  final _playQuery = TextEditingController();
 
   LunoBilgiServer get _server => sl<LunoBilgiServer>();
 
@@ -225,7 +233,6 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     _newSub.dispose();
     _subSearch.dispose();
     _bankTimer?.cancel();
-    _contestTimer?.cancel();
     _bankSearch.dispose();
     _mailSubject.dispose();
     _mailHtml.dispose();
@@ -236,6 +243,9 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     }
     _ledgerFrom.dispose();
     _ledgerTo.dispose();
+    _playFrom.dispose();
+    _playTo.dispose();
+    _playQuery.dispose();
     super.dispose();
   }
 
@@ -608,7 +618,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       22 => '7 günlük ödül takvimi',
       23 => 'Reklam stratejisi ve limitleri',
       24 => '${_events.where((e) => e['status'] == 'active').length} aktif • ${_events.where((e) => e['status'] == 'pending').length} bekleyen',
-      25 => 'Detaylı analiz ve raporlar',
+      25 => 'Biten oyunlar',
       26 => 'Uygulama geneli yapılandırma',
       _ => 'Luno Bilgi yönetim',
     };
@@ -739,6 +749,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
             if (i == 5) _loadPending();
             if (i == 6) _loadRejected();
             if (i == 17) _loadContest();
+            if (i == 25) _loadPlayed();
           },
           hoverColor: const Color(0x146C3CE9),
           child: Container(
@@ -1147,74 +1158,37 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     _applyContest(loaded);
   }
 
-  Future<void> _generateContestDay(String day) async {
+  Future<void> _openContestCsv(String day) async {
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => _ContestCsvDialog(day: day),
+    );
+    if (saved == true && mounted) await _loadContest();
+  }
+
+  Future<void> _clearContestDay(String day) async {
     if (_contestBusy) return;
-    final ticket = ++_contestPoll;
-    var ticks = 0;
-    setState(() {
-      _contestBusy = true;
-      _contestGeneratingDay = day;
-      _contestSince = DateTime.now();
-    });
-    _contestTimer?.cancel();
-    _contestTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted || ticket != _contestPoll) return;
-      ticks += 1;
-      setState(() {});
-      if (ticks % 4 == 0) _refreshContest(ticket);
-    });
-    final loaded = await BilgiContestApi.adminGenerate(sl<ApiSession>().adminToken ?? '', day);
-    _contestTimer?.cancel();
-    _contestPoll++;
-    if (!mounted || ticket + 1 != _contestPoll) return;
-    setState(() {
-      _contestBusy = false;
-      _contestGeneratingDay = '';
-      _contestSince = null;
-    });
+    final agreed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: BilgiColors.card,
+        title: const Text('Günü temizle', style: TextStyle(color: Colors.white)),
+        content: const Text(
+          'Bu günün soruları silinecek. Emin misin?',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Vazgeç')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Sil')),
+        ],
+      ),
+    );
+    if (agreed != true || !mounted) return;
+    setState(() => _contestBusy = true);
+    final loaded = await BilgiContestApi.adminClearDay(sl<ApiSession>().adminToken ?? '', day);
+    if (!mounted) return;
+    setState(() => _contestBusy = false);
     _applyContest(loaded);
-  }
-
-  Future<void> _refreshContest(int ticket) async {
-    final loaded = await BilgiContestApi.adminLoad(sl<ApiSession>().adminToken ?? '', _contestMonthKey);
-    if (!mounted || ticket != _contestPoll) return;
-    _applyContest(loaded);
-  }
-
-  String _contestElapsedLabel() {
-    final start = _contestSince;
-    if (start == null) return '00:00';
-    final gone = DateTime.now().difference(start);
-    final minutes = gone.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final seconds = gone.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
-  }
-
-  String _contestClock(String iso) {
-    final parsed = DateTime.tryParse(iso);
-    if (parsed == null) return '';
-    final local = parsed.toLocal();
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${two(local.day)}.${two(local.month)}.${local.year} ${two(local.hour)}:${two(local.minute)}';
-  }
-
-  List<String> _contestAiLines(BilgiContestDay day) {
-    final lines = <String>[];
-    if (day.aiStatus == 'running') {
-      final detail = day.aiMessage.trim();
-      lines.add(detail.isEmpty || detail == 'Üretiliyor' ? 'Üretiliyor' : 'Üretiliyor · $detail');
-    } else if (day.aiStatus == 'ok') {
-      final clock = _contestClock(day.aiLastOkAt);
-      lines.add(clock.isEmpty ? 'Başarılı' : 'Başarılı · $clock');
-    } else if (day.aiStatus == 'failed') {
-      final detail = day.aiMessage.trim();
-      lines.add(detail.isEmpty ? 'Başarısız' : 'Başarısız · $detail');
-    }
-    if (day.aiStatus != 'ok' && day.aiLastOkAt.isNotEmpty) {
-      final clock = _contestClock(day.aiLastOkAt);
-      if (clock.isNotEmpty) lines.add('Son başarılı yükleme · $clock');
-    }
-    return lines;
   }
 
   Future<void> _buildContestDay(String day, {bool rebuild = false}) async {
@@ -1260,12 +1234,172 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     if (saved == true) await _loadContest();
   }
 
+  /// CSV ile yüklenen günlük kağıdı dokuz dile çevirir; dolu dilleri atlar.
+  Future<void> _translateContestDay(String day) async {
+    if (_contestBusy) return;
+    setState(() {
+      _contestBusy = true;
+      _note = '$day çeviri için yükleniyor...';
+    });
+    final token = sl<ApiSession>().adminToken ?? '';
+    final paper = await BilgiContestApi.adminPaper(token, day);
+    if (!mounted) return;
+    if (paper.error != null) {
+      setState(() {
+        _contestBusy = false;
+        _note = paper.error!;
+      });
+      return;
+    }
+    if (paper.locked) {
+      setState(() {
+        _contestBusy = false;
+        _note = 'Bu gün kilitli.';
+      });
+      return;
+    }
+    final questions = [for (final item in paper.questions) item];
+    final spares = [for (final item in paper.spares) item];
+    final queue = <({bool spare, int index, BilgiQuestion seed})>[
+      for (var i = 0; i < questions.length; i++) (spare: false, index: i, seed: questions[i]),
+      for (var i = 0; i < spares.length; i++) (spare: true, index: i, seed: spares[i]),
+    ];
+    if (queue.isEmpty) {
+      setState(() {
+        _contestBusy = false;
+        _note = 'Çevrilecek soru yok.';
+      });
+      return;
+    }
+
+    final targets = bilgiExtraLocales(null);
+    final total = queue.length;
+    var cursor = 0;
+    var active = 0;
+    var translated = 0;
+    var skipped = 0;
+    var failed = 0;
+    DateTime? lastStart;
+    var scheduling = false;
+    final idle = Completer<void>();
+
+    void mark(String text) {
+      if (!mounted) return;
+      setState(() => _note = text);
+    }
+
+    void settle() {
+      if (active == 0 && (cursor >= total || !mounted)) {
+        if (!idle.isCompleted) idle.complete();
+        return;
+      }
+      if (mounted && active > 0) {
+        mark('$day çevriliyor... ${translated + skipped + failed}/$total · $active açık');
+      }
+    }
+
+    Future<void> runOne(({bool spare, int index, BilgiQuestion seed}) item) async {
+      final seed = item.seed;
+      if (bilgiQuestionLanguagesReady(seed)) {
+        skipped++;
+        return;
+      }
+      if (seed.hint.trim().isEmpty) {
+        failed++;
+        return;
+      }
+      final result = await BilgiQuestionApi.translateQuestion(
+        token,
+        text: seed.text,
+        options: seed.options,
+        explanation: seed.explanation,
+        hint: seed.hint,
+        locales: targets,
+      );
+      if (result.error != null || result.translations.isEmpty) {
+        failed++;
+        return;
+      }
+      final written = seed.copyWith(translations: {...seed.translations, ...result.translations});
+      if (item.spare) {
+        spares[item.index] = written;
+      } else {
+        questions[item.index] = written;
+      }
+      translated++;
+    }
+
+    void schedule() {
+      if (scheduling) return;
+      scheduling = true;
+      unawaited(() async {
+        try {
+          while (mounted && cursor < total && active < _translateLanes) {
+            if (lastStart != null) {
+              final wait = _translateGap - DateTime.now().difference(lastStart!);
+              if (wait > Duration.zero) {
+                await Future<void>.delayed(wait);
+                continue;
+              }
+            }
+            if (!mounted || cursor >= total || active >= _translateLanes) break;
+            final item = queue[cursor];
+            cursor++;
+            active++;
+            lastStart = DateTime.now();
+            mark('$day çevriliyor... ${translated + skipped + failed}/$total · $active açık');
+            unawaited(() async {
+              await runOne(item);
+              active--;
+              settle();
+              schedule();
+            }());
+          }
+        } finally {
+          scheduling = false;
+          if (mounted && cursor < total && active < _translateLanes) {
+            schedule();
+          } else {
+            settle();
+          }
+        }
+      }());
+    }
+
+    mark('$day çevriliyor... 0/$total · 0 açık');
+    try {
+      schedule();
+      await idle.future;
+      if (!mounted) return;
+      if (translated == 0 && failed == 0) {
+        setState(() {
+          _contestBusy = false;
+          _note = '$day zaten tüm dillerde hazır. $skipped atlandı.';
+        });
+        return;
+      }
+      mark('$day kaydediliyor...');
+      final loaded = await BilgiContestApi.adminSaveQuestions(token, day, questions, spares: spares);
+      if (!mounted) return;
+      setState(() => _contestBusy = false);
+      _applyContest(loaded);
+      if (loaded.error != null) {
+        setState(() => _note = loaded.error!);
+        return;
+      }
+      setState(() {
+        _note = '$day: $translated soru çevrildi. $skipped atlandı. $failed başarısız.';
+      });
+    } finally {
+      if (mounted && _contestBusy) {
+        setState(() => _contestBusy = false);
+      }
+    }
+  }
+
   Widget _dailyContest() {
     final monthLabel = _contestMonthKey;
-    final generating = _contestGeneratingDay;
-    return MouseRegion(
-      cursor: generating.isEmpty ? SystemMouseCursors.basic : SystemMouseCursors.progress,
-      child: ListView(
+    return ListView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       children: [
         Row(
@@ -1276,28 +1410,15 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
             const SizedBox(width: 12),
             _ghost('›', () => _shiftContest(1)),
             const Spacer(),
-            if (generating.isNotEmpty) ...[
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFDE68A)),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '$generating · ${_contestElapsedLabel()}',
-                style: const TextStyle(color: Color(0xFFFDE68A), fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(width: 16),
-            ],
             _primary(
-              _contestBusy && generating.isEmpty ? 'Yazılıyor' : 'Ayı oluştur',
+              _contestBusy ? 'Yazılıyor' : 'Ayı oluştur',
               _contestBusy ? () {} : _buildContestMonth,
             ),
           ],
         ),
         const SizedBox(height: 8),
         const Text(
-          'Soruları oluşan gün yeşil taslaktır. Kilitli gün kırmızıya döner ve değişmez. 9 Ekim 2026 ve sonrası AI ile üretilir; o günler boşken bankadan dolmaz.',
+          'Soruları oluşan gün yeşil taslaktır. Kilitli gün kırmızıya döner ve değişmez. 9 Ekim 2026 ve sonrası CSV ile yüklenir; o günler boşken bankadan dolmaz. CSV sonrası Çevir ile dokuz dili bir tuşta doldur.',
           style: TextStyle(color: BilgiColors.muted, fontSize: 12),
         ),
         const SizedBox(height: 16),
@@ -1331,11 +1452,6 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                           const Spacer(),
                       ],
                     ),
-                    for (final line in _contestAiLines(day))
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(line, style: const TextStyle(color: Color(0xFFFDE68A), fontSize: 12)),
-                      ),
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 8,
@@ -1363,29 +1479,15 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                           ),
                           _ghost('Adı kaydet', () => _buildContestDay(day.day)),
                           if (bilgiContestAiDay(day.day))
-                            (day.day == generating
-                                ? Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const SizedBox(
-                                        width: 14,
-                                        height: 14,
-                                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Üretiliyor ${_contestElapsedLabel()}',
-                                        style: const TextStyle(color: Color(0xFFFDE68A), fontWeight: FontWeight.w800),
-                                      ),
-                                    ],
-                                  )
-                                : _ghost('AI ile üret', _contestBusy ? () {} : () => _generateContestDay(day.day)))
+                            _ghost('CSV yükle', _contestBusy ? () {} : () => _openContestCsv(day.day))
                           else
                             _ghost(day.count == 0 ? 'Günü oluştur' : 'Yeniden yaz', () => _buildContestDay(day.day, rebuild: true)),
                           if (day.count > 0) ...[
                             _ghost('Görüntüle', () => _openContestPaper(day, editing: false)),
                             _ghost('Düzenle', () => _openContestPaper(day, editing: true)),
+                            _ghost('Çevir', _contestBusy ? () {} : () => _translateContestDay(day.day)),
                           ],
+                          _ghost('Sil', _contestBusy ? () {} : () => _clearContestDay(day.day)),
                         ],
                       ],
                     ),
@@ -1394,7 +1496,6 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
               ),
             ),
       ],
-    ),
     );
   }
 
@@ -4911,14 +5012,128 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     );
   }
 
+  Future<void> _loadPlayed() async {
+    if (_playedBusy) return;
+    setState(() => _playedBusy = true);
+    final result = await BilgiUserApi.games(
+      sl<ApiSession>().adminToken ?? '',
+      from: _playFrom.text.trim(),
+      to: _playTo.text.trim(),
+    );
+    if (!mounted) return;
+    setState(() {
+      _playedBusy = false;
+      _playedReady = true;
+      _played = result.games;
+      _playedError = result.error ?? '';
+      if (_playMode.isNotEmpty && result.games.every((row) => row['modeId'] != _playMode)) _playMode = '';
+      if (_playCat.isNotEmpty && result.games.every((row) => row['categoryId'] != _playCat)) _playCat = '';
+      if (_playSub.isNotEmpty && result.games.every((row) => row['subcategory'] != _playSub)) _playSub = '';
+      if (_playDiff.isNotEmpty && result.games.every((row) => row['difficulty'] != _playDiff)) _playDiff = '';
+      if (_playAd == 'double' && result.games.every((row) => row['doubled'] != true)) _playAd = '';
+      if (_playAd.isNotEmpty && _playAd != 'double' && result.games.every((row) => row['entryAd'] != _playAd)) _playAd = '';
+    });
+  }
+
+  List<Map<String, dynamic>> _playedVisible() {
+    final query = _playQuery.text.trim().toLowerCase();
+    return [
+      for (final game in _played)
+        if (_playedMatches(game, query)) game,
+    ];
+  }
+
+  bool _playedMatches(Map<String, dynamic> game, String query) {
+    if (_playMode.isNotEmpty && game['modeId'] != _playMode) return false;
+    if (_playCat.isNotEmpty && game['categoryId'] != _playCat) return false;
+    if (_playSub.isNotEmpty && game['subcategory'] != _playSub) return false;
+    if (_playDiff.isNotEmpty && game['difficulty'] != _playDiff) return false;
+    final ad = '${game['entryAd'] ?? ''}';
+    if (_playAd == 'double' && game['doubled'] != true) return false;
+    if (_playAd.isNotEmpty && _playAd != 'double' && ad != _playAd) return false;
+    if (query.isEmpty) return true;
+    final name = _playedName(game).toLowerCase();
+    return name.contains(query) || '${game['userId']}'.toLowerCase().contains(query);
+  }
+
+  String _playedName(Map<String, dynamic> game) {
+    final stored = '${game['username'] ?? ''}'.trim();
+    if (stored.isNotEmpty) return stored;
+    final id = '${game['userId'] ?? ''}';
+    for (final user in [..._leagueUsers, ..._users]) {
+      if (user.id == id && user.username.trim().isNotEmpty) return user.username.trim();
+    }
+    return id.isEmpty ? '—' : id;
+  }
+
+  String _playedMode(String id) {
+    if (id.isEmpty) return '—';
+    final mode = bilgiModes.where((item) => item.id == id).firstOrNull;
+    if (mode == null) return id;
+    return '${mode.emoji} ${mode.name}';
+  }
+
+  String _playedDifficulty(String id) {
+    return switch (id) {
+      '' => '—',
+      'karisik' => 'Karışık',
+      'hepsi' => 'Hepsi',
+      _ => _diffName(id).isEmpty ? id : _diffName(id),
+    };
+  }
+
+  String _playedAd(String code) {
+    return switch (code) {
+      'watched' => 'İzlendi',
+      'cleared' => 'Geçildi',
+      'plus' => 'Plus',
+      'ad_free' => 'Reklamsız hak',
+      'daily_free' => 'Günlük ücretsiz',
+      'free' => 'Ücretsiz',
+      'none' => 'Yok',
+      _ => '—',
+    };
+  }
+
+  String _playedDash(Object? value) {
+    if (value == null) return '—';
+    final text = '$value'.trim();
+    return text.isEmpty ? '—' : text;
+  }
+
   Widget _stats() {
+    final visible = _playedReady && _playedError.isEmpty ? _playedVisible() : const <Map<String, dynamic>>[];
     var correct = 0;
     var asked = 0;
-    for (final game in _games) {
-      correct += game['correct'] as int? ?? 0;
-      final questions = game['questions'];
-      if (questions is List) asked += questions.length;
+    if (_playedReady && _playedError.isEmpty) {
+      for (final game in visible) {
+        final hits = game['correct'] as int? ?? int.tryParse('${game['correct']}') ?? 0;
+        correct += hits;
+        final questions = game['questions'];
+        final wrong = game['wrong'];
+        if (questions is int && questions > 0) {
+          asked += questions;
+        } else if (wrong is int) {
+          asked += hits + wrong;
+        }
+      }
+    } else {
+      for (final game in _games) {
+        correct += game['correct'] as int? ?? 0;
+        final questions = game['questions'];
+        if (questions is List) asked += questions.length;
+      }
     }
+    final gameCount = _playedReady && _playedError.isEmpty ? visible.length : _games.length;
+    final modes = <String>{for (final game in _played) if ('${game['modeId'] ?? ''}'.isNotEmpty) '${game['modeId']}'}.toList()..sort();
+    final cats = <String>{for (final game in _played) if ('${game['categoryId'] ?? ''}'.isNotEmpty) '${game['categoryId']}'}.toList()..sort();
+    final subs = <String>{
+      for (final game in _played)
+        if ('${game['subcategory'] ?? ''}'.isNotEmpty && (_playCat.isEmpty || game['categoryId'] == _playCat)) '${game['subcategory']}',
+    }.toList()..sort();
+    final diffs = <String>{for (final game in _played) if ('${game['difficulty'] ?? ''}'.isNotEmpty) '${game['difficulty']}'}.toList()..sort();
+    final ads = <String>{for (final game in _played) if ('${game['entryAd'] ?? ''}'.isNotEmpty) '${game['entryAd']}'}.toList()..sort();
+    if (_played.any((game) => game['doubled'] == true)) ads.add('double');
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       children: [
@@ -4927,12 +5142,141 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
           runSpacing: 12,
           children: [
             _metric('👥', '${_users.length}', 'Kullanıcı'),
-            _metric('🎮', '${_games.length}', 'Oyun'),
+            _metric('🎮', '$gameCount', 'Oyun'),
             _metric('✅', asked == 0 ? '—' : '${(correct / asked * 100).toStringAsFixed(0)}%', 'Doğru oranı'),
             _metric('💰', '—', 'Gelir'),
           ],
         ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          crossAxisAlignment: WrapCrossAlignment.end,
+          children: [
+            _userFilter('Kim', TextField(
+              controller: _playQuery,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+              decoration: const InputDecoration(hintText: 'Ad veya kimlik', isDense: true),
+              onChanged: (_) => setState(() {}),
+            )),
+            _userFilter('Başlangıç', TextField(
+              controller: _playFrom,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+              decoration: const InputDecoration(hintText: 'GG.AA.YYYY', isDense: true),
+            )),
+            _userFilter('Bitiş', TextField(
+              controller: _playTo,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+              decoration: const InputDecoration(hintText: 'GG.AA.YYYY', isDense: true),
+            )),
+            _userFilter('Oyun türü', _select(_playMode, [('', 'Tümü'), for (final id in modes) (id, _playedMode(id))], (value) => setState(() => _playMode = value))),
+            _userFilter('Kategori', _select(_playCat, [('', 'Tümü'), for (final id in cats) (id, _catLabel(id))], (value) {
+              setState(() {
+                _playCat = value;
+                _playSub = '';
+              });
+            })),
+            _userFilter('Alt kategori', _select(_playSub, [('', 'Tümü'), for (final name in subs) (name, name)], (value) => setState(() => _playSub = value))),
+            _userFilter('Zorluk', _select(_playDiff, [('', 'Tümü'), for (final id in diffs) (id, _playedDifficulty(id))], (value) => setState(() => _playDiff = value))),
+            _userFilter('Reklam', _select(_playAd, [('', 'Tümü'), for (final id in ads) (id, id == 'double' ? '2x reklam' : _playedAd(id))], (value) => setState(() => _playAd = value))),
+            _primary(_playedBusy ? 'Yükleniyor' : 'Göster', _playedBusy ? () {} : _loadPlayed),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          _playedReady ? '${visible.length} oyun${_played.length == 1000 ? ' • son 1000 kayıt' : ''}' : 'Oyunlar yükleniyor',
+          style: const TextStyle(color: BilgiColors.muted, fontSize: 12),
+        ),
+        if (_playedError.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(_playedError, style: const TextStyle(color: BilgiColors.error)),
+        ],
+        const SizedBox(height: 12),
+        _playedGrid(visible),
       ],
+    );
+  }
+
+  Widget _playedGrid(List<Map<String, dynamic>> rows) {
+    const head = TextStyle(color: BilgiColors.muted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.4);
+    const cell = TextStyle(fontSize: 12, fontWeight: FontWeight.w600);
+    Widget col(String text, double width, {TextStyle? style}) {
+      return SizedBox(
+        width: width,
+        child: Text(text, maxLines: 2, overflow: TextOverflow.ellipsis, style: style ?? cell),
+      );
+    }
+
+    String when(Map<String, dynamic>? game) {
+      if (game == null) return 'Tarih';
+      final at = DateTime.tryParse('${game['at'] ?? ''}');
+      if (at == null) return '—';
+      return _ledgerWhen(at);
+    }
+
+    Widget line(Map<String, dynamic>? game) {
+      final category = game == null ? 'Kategori' : ('${game['categoryId'] ?? ''}'.isEmpty ? '—' : _catLabel('${game['categoryId']}'));
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: game == null ? const Color(0xFF121022) : null,
+          border: const Border(bottom: BorderSide(color: Color(0x08FFFFFF))),
+        ),
+        child: Row(
+          children: [
+            col(when(game), 132, style: game == null ? head : cell),
+            col(game == null ? 'Kim' : _playedName(game), 140, style: game == null ? head : cell),
+            col(game == null ? 'Oyun türü' : _playedMode('${game['modeId'] ?? ''}'), 130, style: game == null ? head : cell),
+            col(category, 150, style: game == null ? head : cell),
+            col(game == null ? 'Alt kategori' : _playedDash(game['subcategory']), 140, style: game == null ? head : cell),
+            col(game == null ? 'Zorluk' : _playedDifficulty('${game['difficulty'] ?? ''}'), 88, style: game == null ? head : cell),
+            col(game == null ? 'Doğru' : _playedDash(game['correct']), 56, style: game == null ? head : cell),
+            col(game == null ? 'Yanlış' : _playedDash(game['wrong']), 64, style: game == null ? head : cell),
+            col(game == null ? 'Soru' : _playedDash(game['questions']), 56, style: game == null ? head : cell),
+            col(game == null ? 'Skor' : _playedDash(game['score']), 64, style: game == null ? head : cell),
+            col(game == null ? 'Çarpan' : _playedDash(game['multiplier']), 64, style: game == null ? head : cell),
+            col(game == null ? 'Altın' : _playedDash(game['gold']), 64, style: game == null ? head : cell),
+            col(game == null ? 'XP' : _playedDash(game['xp']), 56, style: game == null ? head : cell),
+            col(game == null ? 'Elmas' : _playedDash(game['diamonds']), 64, style: game == null ? head : cell),
+            col(game == null ? 'Joker' : _playedDash(game['jokers']), 56, style: game == null ? head : cell),
+            col(game == null ? 'Süre' : _playedDash(game['seconds']), 56, style: game == null ? head : cell),
+            col(game == null ? 'Can' : _playedDash(game['lifeCost']), 48, style: game == null ? head : cell),
+            col(game == null ? 'Seri' : _playedDash(game['streak']), 48, style: game == null ? head : cell),
+            col(game == null ? 'Süre bonusu' : _playedDash(game['timeBonus']), 88, style: game == null ? head : cell),
+            col(game == null ? 'Giriş reklamı' : _playedAd('${game['entryAd'] ?? ''}'), 120, style: game == null ? head : cell),
+            col(game == null ? '2x reklam' : (game['doubled'] == true ? 'Evet' : 'Hayır'), 80, style: game == null ? head : cell),
+            col(game == null ? 'Rakip' : _playedDash(game['opponentName']), 120, style: game == null ? head : cell),
+            col(game == null ? 'Rakip skor' : _playedDash(game['opponentScore']), 80, style: game == null ? head : cell),
+            col(game == null ? 'Oda' : _playedDash(game['roomCode']), 80, style: game == null ? head : cell),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      decoration: _cardDeco(),
+      clipBehavior: Clip.antiAlias,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            line(null),
+            if (!_playedReady)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('Liste açılınca oyunlar yüklenir.', style: TextStyle(color: BilgiColors.muted, fontSize: 12)),
+              )
+            else if (rows.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(_playedError.isEmpty ? 'Bu süzgeçte oyun yok.' : 'Liste alınamadı.', style: const TextStyle(color: BilgiColors.muted, fontSize: 12)),
+              )
+            else
+              for (final game in rows) line(game),
+          ],
+        ),
+      ),
     );
   }
 
@@ -6879,6 +7223,173 @@ class _DashedPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+class _ContestCsvDialog extends StatefulWidget {
+  const _ContestCsvDialog({required this.day});
+
+  final String day;
+
+  @override
+  State<_ContestCsvDialog> createState() => _ContestCsvDialogState();
+}
+
+class _ContestCsvDialogState extends State<_ContestCsvDialog> {
+  final _text = TextEditingController();
+  var _name = '';
+  var _error = '';
+  var _busy = false;
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pick() async {
+    final file = await pickCsvFile();
+    if (!mounted || file == null) return;
+    if (file.notCsv) {
+      setState(() => _error = 'Yalnızca CSV yüklenebilir.');
+      return;
+    }
+    if (file.tooBig) {
+      setState(() => _error = 'Dosya 10 MB sınırını aşıyor.');
+      return;
+    }
+    setState(() {
+      _name = file.name;
+      _text.text = file.text;
+      _error = '';
+    });
+  }
+
+  Future<void> _save() async {
+    if (_busy) return;
+    final raw = _text.text;
+    if (raw.trim().isEmpty) {
+      setState(() => _error = 'CSV metni boş.');
+      return;
+    }
+    if (raw.length > 10 * 1024 * 1024) {
+      setState(() => _error = 'Metin 10 MB sınırını aşıyor.');
+      return;
+    }
+    final parsed = parseBilgiDailyCsv(raw, day: widget.day);
+    if (parsed.error != null) {
+      setState(() => _error = parsed.error!);
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = '';
+    });
+    final loaded = await BilgiContestApi.adminSaveQuestions(
+      sl<ApiSession>().adminToken ?? '',
+      widget.day,
+      parsed.questions,
+      spares: parsed.spares,
+    );
+    if (!mounted) return;
+    if (loaded.error != null) {
+      setState(() {
+        _busy = false;
+        _error = loaded.error!;
+      });
+      return;
+    }
+    Navigator.pop(context, true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final height = MediaQuery.sizeOf(context).height;
+    return Dialog(
+      backgroundColor: BilgiColors.bg,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: 760, maxHeight: height - 48),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('${widget.day} CSV yükle', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
+              const SizedBox(height: 12),
+              Expanded(
+                child: ListView(
+                  children: [
+                    const Text('CSV REÇETESİ', style: TextStyle(color: BilgiColors.muted, fontSize: 12, fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final name in bilgiDailyCsvColumns)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(color: BilgiColors.card, borderRadius: BorderRadius.circular(8)),
+                            child: Text(name, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    for (final line in bilgiDailyCsvRecipe)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(line, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.35)),
+                      ),
+                    const SizedBox(height: 8),
+                    const Text('Örnek asıl', style: TextStyle(color: BilgiColors.muted, fontSize: 12)),
+                    const SizedBox(height: 4),
+                    const Text(bilgiDailyCsvExample, style: TextStyle(color: BilgiColors.secondary, fontSize: 12)),
+                    const SizedBox(height: 8),
+                    const Text('Örnek yedek', style: TextStyle(color: BilgiColors.muted, fontSize: 12)),
+                    const SizedBox(height: 4),
+                    const Text(bilgiDailyCsvSpareExample, style: TextStyle(color: BilgiColors.secondary, fontSize: 12)),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _text,
+                      minLines: 8,
+                      maxLines: 14,
+                      style: const TextStyle(color: Colors.white, fontSize: 13, fontFamily: 'monospace'),
+                      decoration: const InputDecoration(
+                        hintText: 'tur,soru,a,b,c,d,dogru,konu,zorluk,aciklama,ipucu',
+                        hintStyle: TextStyle(color: BilgiColors.muted, fontSize: 12),
+                      ),
+                    ),
+                    if (_name.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(_name, style: const TextStyle(color: BilgiColors.secondary, fontSize: 12, fontWeight: FontWeight.w700)),
+                    ],
+                  ],
+                ),
+              ),
+              if (_error.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(_error, style: const TextStyle(color: BilgiColors.warning)),
+              ],
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.end,
+                children: [
+                  OutlinedButton(onPressed: _busy ? null : _pick, child: const Text('Dosya seç')),
+                  OutlinedButton(
+                    onPressed: _busy ? null : () => downloadTextFile('gunluk_kagit.csv', bilgiDailyCsvTemplate),
+                    child: const Text('Şablonu indir'),
+                  ),
+                  TextButton(onPressed: _busy ? null : () => Navigator.pop(context), child: const Text('Kapat')),
+                  FilledButton(onPressed: _busy ? null : _save, child: Text(_busy ? 'Yazılıyor' : 'Kaydet')),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ContestPaperDialog extends StatefulWidget {
   const _ContestPaperDialog({
     required this.day,
@@ -6972,9 +7483,36 @@ class _ContestPaperDialogState extends State<_ContestPaperDialog> {
     );
   }
 
-  Widget _card(BilgiQuestion question, String label, {required VoidCallback onEdit, VoidCallback? onRemove}) {
+  void _setExplanation(bool spare, int index, String value) {
+    final list = [...(spare ? _spares : _questions)];
+    final current = list[index];
+    if (_locale == 'tr') {
+      list[index] = current.copyWith(explanation: value);
+    } else {
+      final row = current.translations[_locale];
+      list[index] = current.copyWith(
+        translations: {
+          ...current.translations,
+          _locale: BilgiTranslation(
+            text: row?.text ?? '',
+            options: row?.options ?? const ['', '', '', ''],
+            explanation: value,
+            hint: row?.hint ?? '',
+          ),
+        },
+      );
+    }
+    if (spare) {
+      _spares = list;
+    } else {
+      _questions = list;
+    }
+  }
+
+  Widget _card(BilgiQuestion question, String label, {required bool spare, required int index, required VoidCallback onEdit, VoidCallback? onRemove}) {
     final translated = _locale == 'tr' ? null : question.translations[_locale];
     final language = GameLocale.resolve(_locale).nativeName;
+    final explanation = _locale == 'tr' ? question.explanation : (translated?.explanation ?? '');
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Container(
@@ -7017,6 +7555,31 @@ class _ContestPaperDialogState extends State<_ContestPaperDialog> {
                   ),
               ],
             ],
+            const SizedBox(height: 8),
+            Text(
+              _locale == 'tr' ? 'Açıklama' : 'Açıklama · $language',
+              style: const TextStyle(color: BilgiColors.muted, fontSize: 11, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            if (widget.editing)
+              TextFormField(
+                key: ValueKey('${question.id}|$_locale|expl'),
+                initialValue: explanation,
+                minLines: 2,
+                maxLines: 4,
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  hintText: 'Açıklama',
+                  hintStyle: TextStyle(color: BilgiColors.muted, fontSize: 13),
+                ),
+                onChanged: (value) => _setExplanation(spare, index, value),
+              )
+            else
+              Text(
+                explanation.trim().isEmpty ? 'Açıklama yok' : explanation,
+                style: TextStyle(color: explanation.trim().isEmpty ? BilgiColors.warning : Colors.white, fontSize: 13),
+              ),
             const SizedBox(height: 6),
             Text(
               'Dil ${1 + question.translations.length}/10',
@@ -7063,6 +7626,8 @@ class _ContestPaperDialogState extends State<_ContestPaperDialog> {
                       _card(
                         _questions[i],
                         '${i + 1}',
+                        spare: false,
+                        index: i,
                         onEdit: () => _edit(spare: false, index: i),
                         onRemove: widget.editing
                             ? () => setState(() => _questions = [..._questions]..removeAt(i))
@@ -7078,6 +7643,8 @@ class _ContestPaperDialogState extends State<_ContestPaperDialog> {
                       _card(
                         _spares[i],
                         'Y${i + 1}',
+                        spare: true,
+                        index: i,
                         onEdit: () => _edit(spare: true, index: i),
                         onRemove: widget.editing
                             ? () => setState(() => _spares = [..._spares]..removeAt(i))
@@ -7333,18 +7900,19 @@ class _ContestQuestionDialogState extends State<_ContestQuestionDialog> {
                         decoration: InputDecoration(labelText: '${['A', 'B', 'C', 'D'][i]} şıkkı'),
                       ),
                     TextField(
+                      controller: _explanation[locale],
+                      readOnly: readOnly,
+                      minLines: 2,
+                      maxLines: 4,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(labelText: 'Açıklama'),
+                    ),
+                    TextField(
                       controller: _hint[locale],
                       readOnly: readOnly,
                       maxLines: 2,
                       style: const TextStyle(color: Colors.white),
                       decoration: const InputDecoration(labelText: 'İpucu'),
-                    ),
-                    TextField(
-                      controller: _explanation[locale],
-                      readOnly: readOnly,
-                      maxLines: 2,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(labelText: 'Açıklama'),
                     ),
                     if (locale == _locale) ...[
                       const SizedBox(height: 8),

@@ -1,5 +1,4 @@
 import 'package:kelimelig/api/admin_http.dart';
-import 'package:kelimelig/api/bilgi_daily_ai.dart';
 import 'package:kelimelig/api/bilgi_questions_http.dart';
 import 'package:kelimelig/data/local/key_value_store.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
@@ -363,99 +362,54 @@ Future<Response> _adminAiDay(KeyValueStore store, String day, Map<String, dynami
     await store.put(
       bilgiContestPaperBox,
       day,
-      _aiPaper(day: day, title: title, questions: cleaned, spares: spares, previous: stored),
+      _blankPaper(day: day, title: title, questions: cleaned, spares: spares),
+    );
+    return jsonResponse(await _monthPayload(store, day.substring(0, 7), monthDays));
+  }
+  if (body['clear'] == true) {
+    if ((await _lockedDays(store)).contains(day)) {
+      return jsonResponse({'error': 'Bu gün kilitli.'}, status: 409);
+    }
+    await store.put(
+      bilgiContestPaperBox,
+      day,
+      _blankPaper(day: day, title: title),
     );
     return jsonResponse(await _monthPayload(store, day.substring(0, 7), monthDays));
   }
   if (body['generate'] == true) {
-    final avoid = await _avoidFacts(store, day);
-    final started = DateTime.now().toUtc().toIso8601String();
-    final lastOk = '${stored?['aiLastOkAt'] ?? ''}';
-    await store.put(
-      bilgiContestPaperBox,
-      day,
-      _aiPaper(
-        day: day,
-        title: title,
-        questions: <Map<String, dynamic>>[],
-        spares: <Map<String, dynamic>>[],
-        aiStatus: 'running',
-        aiMessage: 'Üretiliyor',
-        aiStartedAt: started,
-        aiFinishedAt: '',
-        aiLastOkAt: lastOk,
-      ),
-    );
-    final generated = await bilgiGenerateDailyPaper(
-      day: day,
-      avoidFacts: avoid,
-      onPaper: (questions, spares, message) async {
-        await store.put(
-          bilgiContestPaperBox,
-          day,
-          _aiPaper(
-            day: day,
-            title: title,
-            questions: questions,
-            spares: spares,
-            aiStatus: 'running',
-            aiMessage: message,
-            aiStartedAt: started,
-            aiFinishedAt: '',
-            aiLastOkAt: lastOk,
-          ),
-        );
-      },
-    );
-    final now = DateTime.now().toUtc().toIso8601String();
-    final ok = generated.error == null;
-    final message = ok ? 'Başarılı' : generated.error!;
-    await store.put(
-      bilgiContestPaperBox,
-      day,
-      _aiPaper(
-        day: day,
-        title: title,
-        questions: generated.questions,
-        spares: generated.spares,
-        aiStatus: ok ? 'ok' : 'failed',
-        aiMessage: message.length > 180 ? message.substring(0, 180) : message,
-        aiStartedAt: started,
-        aiFinishedAt: now,
-        aiLastOkAt: ok ? now : lastOk,
-      ),
-    );
-    return jsonResponse(await _monthPayload(store, day.substring(0, 7), monthDays));
+    return jsonResponse({'error': 'Bu gün yalnızca CSV ile yüklenir.'}, status: 400);
   }
   await store.put(
     bilgiContestPaperBox,
     day,
-    _aiPaper(
+    _blankPaper(
       day: day,
       title: title,
       questions: _questionsOf(stored),
       spares: _sparesOf(stored),
-      previous: stored,
     ),
   );
   return jsonResponse(await _monthPayload(store, day.substring(0, 7), monthDays));
 }
 
-Future<List<String>> _avoidFacts(KeyValueStore store, String day) async {
-  final facts = <String>[];
-  final month = day.substring(0, 7);
-  for (final other in bilgiContestMonthDays(month)) {
-    final stored = await store.get(bilgiContestPaperBox, other);
-    for (final row in [..._questionsOf(stored), ..._sparesOf(stored)]) {
-      final text = '${row['text'] ?? ''}'.trim();
-      if (text.isEmpty) continue;
-      final options = row['options'];
-      final correct = bilgiInt(row['correct'], -1);
-      final answer = options is List && correct >= 0 && correct < options.length ? '${options[correct]}'.trim() : '';
-      facts.add(answer.isEmpty ? text : '$text => $answer');
-    }
-  }
-  return facts;
+Map<String, dynamic> _blankPaper({
+  required String day,
+  required String title,
+  List<Map<String, dynamic>> questions = const [],
+  List<Map<String, dynamic>> spares = const [],
+}) {
+  return {
+    'day': day,
+    'title': title,
+    'questions': questions,
+    'spares': spares,
+    'aiStatus': '',
+    'aiMessage': '',
+    'aiStartedAt': '',
+    'aiFinishedAt': '',
+    'aiLastOkAt': '',
+  };
 }
 
 Future<void> _fillMonth(Connection db, KeyValueStore store, List<String> days) async {
@@ -521,32 +475,6 @@ Future<Set<String>> _monthIds(KeyValueStore store, String month, {required Strin
   return ids;
 }
 
-Map<String, dynamic> _aiPaper({
-  required String day,
-  required String title,
-  required List<Map<String, dynamic>> questions,
-  required List<Map<String, dynamic>> spares,
-  Map<String, dynamic>? previous,
-  String? aiStatus,
-  String? aiMessage,
-  String? aiStartedAt,
-  String? aiFinishedAt,
-  String? aiLastOkAt,
-}) {
-  String field(String key, String? next) => next ?? '${previous?[key] ?? ''}';
-  return {
-    'day': day,
-    'title': title,
-    'questions': questions,
-    'spares': spares,
-    'aiStatus': field('aiStatus', aiStatus),
-    'aiMessage': field('aiMessage', aiMessage),
-    'aiStartedAt': field('aiStartedAt', aiStartedAt),
-    'aiFinishedAt': field('aiFinishedAt', aiFinishedAt),
-    'aiLastOkAt': field('aiLastOkAt', aiLastOkAt),
-  };
-}
-
 String _titleOf(Map<String, dynamic>? row) {
   final title = '${row?['title'] ?? ''}'.trim();
   return title.length > 40 ? title.substring(0, 40) : title;
@@ -601,6 +529,7 @@ List<Map<String, dynamic>>? _cleanQuestions(List<dynamic> raw) {
     map['difficulty'] = difficulty;
     map['categoryId'] = '${map['categoryId'] ?? tumuKarmaId}'.trim();
     map['explanation'] = '${map['explanation'] ?? ''}'.trim();
+    map['hint'] = '${map['hint'] ?? ''}'.trim();
     out.add(map);
   }
   return out;

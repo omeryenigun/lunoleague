@@ -77,7 +77,68 @@ void main() {
     });
     expect(finished.profile?.gold, again.profile?.gold);
     expect(ledger.lines.where((line) => line.reason == 'round_finish' && line.asset == 'gold'), hasLength(1));
+    expect(ledger.lines.where((line) => line.reason == 'round_finish' && line.asset == 'round'), hasLength(1));
     expect(ledger.lines.where((line) => line.reason == 'life_spend' && line.asset == 'life').single.amount, -1);
+  });
+
+  test('a finished round keeps category, subcategory and ad, and a zero score is still listed', () async {
+    final ledger = MemoryBilgiLedger();
+    final book = BilgiWalletBook(
+      MemoryKeyValueStore(),
+      ledger,
+      clock: () => DateTime.utc(2026, 10, 9, 12),
+    );
+    await book.apply({'op': 'sync', 'userId': 'ada'});
+    await book.apply({
+      'op': 'finish',
+      'userId': 'ada',
+      'roundId': 'round-2',
+      'score': 0,
+      'multiplier': 1.5,
+      'modeId': 'hizli',
+      'correct': 0,
+      'categoryId': 'bilim',
+      'subcategory': 'Fizik',
+      'difficulty': 'orta',
+      'entryAd': 'watched',
+      'wrong': 10,
+      'questions': 10,
+      'jokersUsed': 1,
+    });
+    final stored = ledger.lines.where((line) => line.asset == 'round').single.detail;
+    expect(stored['subcategory'], 'Fizik');
+    expect(stored['entryAd'], 'watched');
+    expect(stored.containsKey('opponentName'), isFalse);
+    final row = bilgiAdminGame(
+      userId: 'ada',
+      username: 'Ada',
+      ref: 'round-2',
+      at: DateTime.utc(2026, 10, 9, 12),
+      detail: stored,
+      gold: 0,
+      xp: 0,
+      diamonds: 0,
+      doubled: false,
+      jokers: 4,
+    );
+    expect(row['subcategory'], 'Fizik');
+    expect(row['jokers'], 1);
+    expect(row['wrong'], 10);
+    final older = bilgiAdminGame(
+      userId: 'ada',
+      username: '',
+      ref: 'old',
+      at: DateTime.utc(2026, 10, 1),
+      detail: const {'modeId': 'klasik', 'categoryId': 'genel', 'score': 20, 'correct': 2},
+      gold: 2,
+      xp: 10,
+      diamonds: 0,
+      doubled: true,
+      jokers: 0,
+    );
+    expect(older['wrong'], isNull);
+    expect(older['jokers'], 0);
+    expect(older['doubled'], isTrue);
   });
 
   test('a phone upload cannot replace server gold', () {

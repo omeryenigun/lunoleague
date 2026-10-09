@@ -65,6 +65,8 @@ class BilgiController extends ChangeNotifier {
   bool pendingShopGold = false;
   String categoryId = tumuKarmaId;
   String modeId = 'hizli';
+  /// `duello` or `oda` while those flows use the standard category and setup screens.
+  String inviteKind = '';
   String difficulty = 'hepsi';
   String subName = '';
   int questionChoice = 10;
@@ -336,12 +338,23 @@ class BilgiController extends ChangeNotifier {
     }
     _timer?.cancel();
     _syncBeat = 0;
+    final leaving = page;
     if (stack.length > 1) stack.removeLast();
+    if (leaving == 'categories') inviteKind = '';
     notice = null;
     notifyListeners();
   }
 
+  void beginInvite(String kind) {
+    inviteKind = kind == 'oda' ? 'oda' : 'duello';
+    modeId = 'hizli';
+    categoryId = tumuKarmaId;
+    subName = '';
+    open('categories');
+  }
+
   void tab(String id) {
+    inviteKind = '';
     _timer?.cancel();
     _syncBeat = 0;
     stack
@@ -467,6 +480,7 @@ class BilgiController extends ChangeNotifier {
 
   Future<void> playCategoryLeague(String id) async {
     if (id.isEmpty || id == tumuKarmaId || id == 'karma') return;
+    inviteKind = '';
     categoryId = id;
     subName = '';
     await start(forcedMode: 'lig');
@@ -674,7 +688,7 @@ class BilgiController extends ChangeNotifier {
     back();
   }
 
-  Future<void> start({bool adCleared = false, int? count, int? seconds, String? forcedMode}) async {
+  Future<void> start({bool adCleared = false, bool adWatched = false, int? count, int? seconds, String? forcedMode}) async {
     if (busy) return;
     final mode = forcedMode ?? modeId;
     final pending = round;
@@ -737,6 +751,7 @@ class BilgiController extends ChangeNotifier {
       questionCount: freshLeague ? bilgiModeById('lig').questions : (count ?? questionChoice),
       seconds: seconds,
       adCleared: saved != null || adCleared,
+      adWatched: saved == null && adWatched,
       fixedQuestions: saved?.questions,
       fixedSpare: saved?.spare,
       chargeLife: saved == null,
@@ -965,10 +980,10 @@ class BilgiController extends ChangeNotifier {
     final pending = _pendingShared;
     if (pending != null) {
       _pendingShared = null;
-      await _startShared(pending, adCleared: true);
+      await _startShared(pending, adCleared: true, adWatched: true);
       return;
     }
-    await start(adCleared: true);
+    await start(adCleared: true, adWatched: true);
   }
 
   Future<bool> _playAd() async {
@@ -1623,6 +1638,20 @@ class BilgiController extends ChangeNotifier {
     back();
   }
 
+  Future<void> createInvite() async {
+    final kind = inviteKind;
+    if ((kind != 'duello' && kind != 'oda') || busy) return;
+    final playMode = const {'hizli', 'klasik', 'sakin'}.contains(modeId) ? modeId : 'hizli';
+    await makeRoom(
+      kind,
+      categoryId: categoryId,
+      subcategory: categoryId == tumuKarmaId ? '' : subName,
+      difficulty: _playDifficulty(difficulty) ? difficulty : 'kolay',
+      questionCount: questionChoice,
+      seconds: bilgiModeById(playMode).seconds,
+    );
+  }
+
   Future<void> makeRoom(
     String kind, {
     required String categoryId,
@@ -1653,7 +1682,18 @@ class BilgiController extends ChangeNotifier {
     roomPlayerId = room!.hostId.isNotEmpty ? room!.hostId : (await server.profile()).id;
     modeId = kind == 'duello' ? 'duello' : 'oda';
     open(kind == 'duello' ? 'duel' : 'room');
+    inviteKind = '';
+    _showLobby(kind == 'duello' ? 'duel' : 'room');
     _armRoom();
+  }
+
+  void _showLobby(String destination) {
+    while (stack.length > 1 && page != destination && page != 'home' && page != 'play') {
+      stack.removeLast();
+    }
+    if (page != destination) stack.add(destination);
+    notice = null;
+    notifyListeners();
   }
 
   Future<void> enterRoom(String code, {String? guestName}) async {
@@ -1816,7 +1856,7 @@ class BilgiController extends ChangeNotifier {
     }
   }
 
-  Future<void> _startShared(BilgiRoomSync sync, {bool adCleared = false}) async {
+  Future<void> _startShared(BilgiRoomSync sync, {bool adCleared = false, bool adWatched = false}) async {
     final current = sync.room;
     if (current == null || busy) return;
     busy = true;
@@ -1845,6 +1885,7 @@ class BilgiController extends ChangeNotifier {
           : (sync.spare == null ? const <BilgiQuestion>[] : [sync.spare!]),
       roomCode: current.code,
       adCleared: adCleared,
+      adWatched: adWatched,
     );
     busy = false;
     profile = result.profile ?? profile;

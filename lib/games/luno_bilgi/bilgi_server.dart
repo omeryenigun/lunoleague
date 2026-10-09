@@ -498,7 +498,28 @@ class LunoBilgiServer {
       'opponentName': round.opponentName,
       'opponentScore': round.opponentScore,
       'difficulty': round.difficulty,
+      'subcategory': round.subcategory,
+      'wrong': round.wrong,
+      'questions': round.questions.length,
+      'jokersUsed': round.jokersUsed,
+      'timeBonus': round.timeBonus,
+      'streak': round.streak,
+      'lifeCost': round.lifeCost,
+      'seconds': round.seconds,
+      'roomCode': round.roomCode,
+      'entryAd': round.entryAd,
     };
+  }
+
+  /// Pre-game gate recorded on the round. [needsAd] is checked before counters move.
+  String _entryAd(BilgiProfile user, BilgiConfig cfg, {required bool invite, required bool adWatched}) {
+    if (invite) return 'none';
+    if (!needsAd(user, cfg)) {
+      if (bilgiPlusActive(user, _clock())) return 'plus';
+      if (user.adFreeLeft > 0) return 'ad_free';
+      return 'daily_free';
+    }
+    return adWatched ? 'watched' : 'cleared';
   }
 
   _RoundFinishPayout _finishPayout(Map<String, dynamic> body) {
@@ -790,6 +811,7 @@ class LunoBilgiServer {
     int? questionCount,
     int? seconds,
     bool adCleared = false,
+    bool adWatched = false,
     List<BilgiQuestion>? fixedQuestions,
     BilgiQuestion? fixedSpare,
     List<BilgiQuestion> fixedSpares = const [],
@@ -828,6 +850,7 @@ class LunoBilgiServer {
     if (!invite && needsAd(user, cfg) && !adCleared) {
       return BilgiResult(message: 'ad', profile: user);
     }
+    final entryAd = _entryAd(user, cfg, invite: invite, adWatched: adWatched);
     final visible = resolveBilgiCategories(openedCatalog ?? await catalog(), playableOnly: true).where((category) => category.publishesIn(user.locale));
     if (categoryId != tumuKarmaId && visible.every((category) => category.id != categoryId)) {
       return const BilgiResult(message: 'Bu kategori şu an oyunda değil.');
@@ -904,6 +927,7 @@ class LunoBilgiServer {
       spare: spare,
       spares: spares,
       startedAt: _clock(),
+      entryAd: entryAd,
       index: startIndex.clamp(0, pool.length),
       score: startScore,
       correct: startCorrect,

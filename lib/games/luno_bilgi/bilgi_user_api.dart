@@ -125,6 +125,41 @@ class BilgiUserApi {
     }
   }
 
+  static Future<({List<Map<String, dynamic>> games, String? error})> games(
+    String token, {
+    String from = '',
+    String to = '',
+  }) async {
+    if (token.isEmpty) return (games: const <Map<String, dynamic>>[], error: 'Yönetici oturumu gerekli.');
+    try {
+      final query = <String, String>{
+        if (from.isNotEmpty) 'from': from,
+        if (to.isNotEmpty) 'to': to,
+      };
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/v1/admin/bilgi-games').replace(queryParameters: query.isEmpty ? null : query),
+        headers: {'authorization': 'Bearer $token'},
+      );
+      if (response.statusCode == 401) return (games: const <Map<String, dynamic>>[], error: 'Oturum geçersiz.');
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return (games: const <Map<String, dynamic>>[], error: 'Oyun listesi alınamadı.');
+      }
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map || decoded['games'] is! List) {
+        return (games: const <Map<String, dynamic>>[], error: 'Oyun listesi alınamadı.');
+      }
+      return (
+        games: [
+          for (final item in decoded['games'] as List)
+            if (item is Map) Map<String, dynamic>.from(item),
+        ],
+        error: null,
+      );
+    } catch (_) {
+      return (games: const <Map<String, dynamic>>[], error: 'Oyun listesi alınamadı.');
+    }
+  }
+
   /// Pushes a registered Bilgi account and returns the saved public profile.
   static Future<Map<String, dynamic>?> upsert(BilgiProfile user) async {
     try {

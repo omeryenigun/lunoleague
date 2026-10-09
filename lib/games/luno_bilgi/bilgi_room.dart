@@ -2,7 +2,7 @@ import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_rules.dart';
 
 /// Host picks one of these question counts for a duel or private room.
-const bilgiInviteCounts = [5, 10, 20];
+const bilgiInviteCounts = [5, 10, 20, 50];
 
 /// Host picks one of these per-question timers, in seconds.
 const bilgiInviteSeconds = [10, 15, 20];

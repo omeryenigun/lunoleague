@@ -344,7 +344,7 @@ class BilgiBottomNav extends StatelessWidget {
       child: Row(
         children: [
           _Nav('home', '🏠', home, current, onSelect),
-          _Nav('play', '🎮', play, current, onSelect),
+          _Nav('play', '🧠', play, current, onSelect),
           _Nav('league', '🏆', league, current, onSelect),
           _Nav('profile', '👤', profile, current, onSelect),
           _Nav('shop', '🛒', shop, current, onSelect),

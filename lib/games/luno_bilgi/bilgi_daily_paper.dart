@@ -3,11 +3,35 @@ import 'dart:convert';
 import 'package:kelimelig/games/luno_bilgi/bilgi_catalog.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_rules.dart';
 
-/// Günlük kağıt bu günden itibaren AI ile kurulur. Öncesi bankadan yazılır.
+/// Günlük kağıt bu günden itibaren CSV ile kurulur. Öncesi bankadan yazılır.
 const bilgiContestAiFrom = '2026-10-09';
 
 /// Kağıt: 6 kolay, 8 orta, 4 zor, 2 efsane.
 const bilgiDailyAiQuotas = <int>[6, 8, 4, 2];
+
+/// Oynanan sıra. İlk üç kolay veya orta, 20. soru efsane, ikinci efsane ilk yarıda değil.
+const bilgiDailyPlayOrder = <String>[
+  'kolay',
+  'orta',
+  'kolay',
+  'orta',
+  'orta',
+  'zor',
+  'orta',
+  'kolay',
+  'orta',
+  'zor',
+  'efsane',
+  'orta',
+  'kolay',
+  'zor',
+  'orta',
+  'kolay',
+  'orta',
+  'zor',
+  'kolay',
+  'efsane',
+];
 
 bool bilgiContestAiDay(String day) => day.compareTo(bilgiContestAiFrom) >= 0;
 
@@ -233,6 +257,17 @@ void _fixHints(List<Map<String, dynamic>> rows) {
     if (answer.length >= 4 && safe.contains(answer)) continue;
     row['hint'] = _safeHint;
   }
+}
+
+String? bilgiDailyOrderError(List<Map<String, dynamic>> rows) {
+  if (rows.length != bilgiDailyPlayOrder.length) return 'Kağıt sırası bozuk.';
+  for (var i = 0; i < rows.length; i++) {
+    final difficulty = '${rows[i]['difficulty'] ?? ''}'.trim();
+    if (difficulty != bilgiDailyPlayOrder[i]) {
+      return 'Kağıt ${i + 1}: zorluk ${bilgiDailyPlayOrder[i]} olmalı.';
+    }
+  }
+  return null;
 }
 
 String? bilgiDailyPaperError({

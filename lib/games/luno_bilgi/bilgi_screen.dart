@@ -5,6 +5,7 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:kelimelig/core/l10n/game_locale.dart';
@@ -21,7 +22,6 @@ import 'package:kelimelig/games/luno_bilgi/bilgi_model.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_opening_loader.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_profile_name.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_report.dart';
-import 'package:kelimelig/games/luno_bilgi/bilgi_room.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_rules.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_round_loading.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_server.dart';
@@ -29,11 +29,96 @@ import 'package:kelimelig/games/luno_bilgi/bilgi_shop.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_theme.dart';
 import 'package:kelimelig/injection.dart';
 
-/// Single-line A/B/C/D row on the quiz play screen.
+/// Answer row on the quiz play screen. Height is at least two text lines and grows when the answer needs more.
+const _quizOptionFontSize = 14.0;
+const _quizOptionLineHeight = 1.3;
+const _quizOptionLineCount = 2;
+const _quizOptionPadV = 10.0;
 const _quizOptionRowMinHeight = 52.0;
 
-/// Space between two answer options on the quiz play screen.
+/// Question card on the quiz play screen. Height is at least three text lines and grows when the question needs more.
+const _quizQuestionFontSize = 16.0;
+const _quizQuestionLineHeight = 1.3;
+const _quizQuestionLineCount = 3;
+const _quizQuestionPadV = 12.0;
+
+/// Gap between answer options on the quiz play screen.
 const _quizOptionGap = 8.0;
+
+/// Gap after the question and before the joker strip. Twice the option gap.
+const _quizSectionGap = _quizOptionGap * 2;
+
+double _quizScaled(BuildContext context, double fontSize) => MediaQuery.textScalerOf(context).scale(fontSize);
+
+double _quizQuestionSlot(BuildContext context) {
+  final lines = _quizScaled(context, _quizQuestionFontSize) * _quizQuestionLineHeight * _quizQuestionLineCount;
+  return lines + _quizQuestionPadV * 2;
+}
+
+double _quizOptionChip(BuildContext context) => math.max(32.0, _quizScaled(context, 14) + 18);
+
+double _quizOptionSlot(BuildContext context) {
+  final lines = _quizScaled(context, _quizOptionFontSize) * _quizOptionLineHeight * _quizOptionLineCount;
+  return math.max(_quizOptionChip(context), lines) + _quizOptionPadV * 2;
+}
+
+/// Sizes the quiz to the question and options. A short question keeps the
+/// three-line and two-line minimums. Longer text grows the board, and the
+/// page scrolls when that no longer fits.
+class _PlayFrame extends MultiChildRenderObjectWidget {
+  const _PlayFrame({required super.children});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderPlayFrame();
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderPlayFrame renderObject) {}
+}
+
+class _PlayParentData extends ContainerBoxParentData<RenderBox> {}
+
+class _RenderPlayFrame extends RenderBox
+    with ContainerRenderObjectMixin<RenderBox, _PlayParentData>, RenderBoxContainerDefaultsMixin<RenderBox, _PlayParentData> {
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _PlayParentData) {
+      child.parentData = _PlayParentData();
+    }
+  }
+
+  @override
+  void performLayout() {
+    final top = firstChild;
+    final board = top == null ? null : childAfter(top);
+    final bottom = board == null ? null : childAfter(board);
+    final width = constraints.maxWidth;
+    final loose = BoxConstraints(maxWidth: width);
+    top?.layout(loose, parentUsesSize: true);
+    bottom?.layout(loose, parentUsesSize: true);
+    final topH = top?.size.height ?? 0;
+    final bottomH = bottom?.size.height ?? 0;
+    board?.layout(BoxConstraints(minWidth: width, maxWidth: width), parentUsesSize: true);
+    final height = topH + (board?.size.height ?? 0) + bottomH;
+    size = constraints.constrain(Size(width, height));
+    var y = 0.0;
+    for (final child in [top, board, bottom]) {
+      if (child == null) continue;
+      final data = child.parentData! as _PlayParentData;
+      data.offset = Offset(0, y);
+      y += child.size.height;
+    }
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
+    return defaultHitTestChildren(result, position: position);
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    defaultPaint(context, offset);
+  }
+}
 
 /// Shared height for setup difficulty, question-count, and mode chips.
 const _setupChoiceHeight = 40.0;
@@ -99,13 +184,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
   bool _goldHelpQueued = false;
   bool _duelJoin = false;
   bool _roomJoin = false;
-  bool _duelForm = false;
-  bool _roomForm = false;
-  String _inviteCategory = tumuKarmaId;
-  String _inviteSub = '';
-  String _inviteDifficulty = 'hepsi';
-  int _inviteCount = 10;
-  int _inviteSeconds = 10;
+  String _hintPopup = '';
 
   @override
   void initState() {
@@ -130,13 +209,18 @@ class _BilgiScreenState extends State<BilgiScreen> {
     }
     final help = _game.goldHelpSerial;
     final focusGold = _game.pendingShopGold && _game.page == 'shop';
-    if (_game.page != 'duel') {
-      _duelJoin = false;
-      _duelForm = false;
-    }
-    if (_game.page != 'room') {
-      _roomJoin = false;
-      _roomForm = false;
+    if (_game.page != 'duel') _duelJoin = false;
+    if (_game.page != 'room') _roomJoin = false;
+    final hint = _game.page == 'game' ? (_game.round?.hint ?? '') : '';
+    if (hint.isEmpty) {
+      _hintPopup = '';
+    } else if (hint != _hintPopup) {
+      _hintPopup = hint;
+      final body = hint;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _hintPopup != body) return;
+        _openNote(body);
+      });
     }
     _refreshProfileName();
     if (mounted) setState(() {});
@@ -579,82 +663,8 @@ class _BilgiScreenState extends State<BilgiScreen> {
                         ],
                       ),
                     ),
-                    if (popular.isNotEmpty) ...[
-                      _sectionTitle(
-                        _game.t('popular'),
-                        _game.t('see_all'),
-                        () => _game.open('categories'),
-                      ),
-                      SizedBox(
-                        height: 112,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-                          itemCount: popular.length,
-                          separatorBuilder: (context, index) => const SizedBox(width: 10),
-                          itemBuilder: (context, index) {
-                            final category = popular[index];
-                            return Align(
-                              alignment: Alignment.topCenter,
-                              child: SizedBox(
-                              width: 96,
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: _homeCard,
-                                  borderRadius: BorderRadius.circular(18),
-                                  border: Border.all(color: _homeGold, width: 2),
-                                ),
-                                child: Material(
-                                  color: Colors.transparent,
-                                  borderRadius: BorderRadius.circular(18),
-                                  clipBehavior: Clip.antiAlias,
-                                  child: InkWell(
-                                    onTap: () => _game.selectCategory(category.id),
-                                    child: Padding(
-                                      padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Container(
-                                            width: 44,
-                                            height: 44,
-                                            alignment: Alignment.center,
-                                            decoration: BoxDecoration(
-                                              color: _homeGold,
-                                              borderRadius: BorderRadius.circular(12),
-                                            ),
-                                            child: Text(category.emoji, style: const TextStyle(fontSize: 22, height: 1)),
-                                          ),
-                                          const SizedBox(height: 8),
-                                          SizedBox(
-                                            width: double.infinity,
-                                            height: 11 * 1.15 * 2,
-                                            child: Text(
-                                              _display(_game.categoryLabel(category.id, category.name)),
-                                              maxLines: 2,
-                                              textAlign: TextAlign.center,
-                                              style: _homeInter(
-                                                size: 11,
-                                                weight: FontWeight.w800,
-                                                color: Colors.white,
-                                                height: 1.15,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
                     Padding(
-                      padding: EdgeInsets.fromLTRB(20, popular.isNotEmpty ? 12 : 20, 20, 0),
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
@@ -755,6 +765,78 @@ class _BilgiScreenState extends State<BilgiScreen> {
                       showNoticeAbove: false,
                       margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                     ),
+                    if (popular.isNotEmpty) ...[
+                      _sectionTitle(
+                        _game.t('popular'),
+                        _game.t('see_all'),
+                        () => _game.open('categories'),
+                      ),
+                      SizedBox(
+                        height: 224,
+                        child: GridView.builder(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            mainAxisSpacing: 10,
+                            crossAxisSpacing: 10,
+                            childAspectRatio: 102 / 96,
+                          ),
+                          itemCount: popular.length,
+                          itemBuilder: (context, index) {
+                            final category = popular[index];
+                            return DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: _homeCard,
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(color: _homeGold, width: 2),
+                              ),
+                              child: Material(
+                                color: Colors.transparent,
+                                borderRadius: BorderRadius.circular(18),
+                                clipBehavior: Clip.antiAlias,
+                                child: InkWell(
+                                  onTap: () => _game.selectCategory(category.id),
+                                  child: Padding(
+                                    padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
+                                    child: Column(
+                                      children: [
+                                        Container(
+                                          width: 44,
+                                          height: 44,
+                                          alignment: Alignment.center,
+                                          decoration: BoxDecoration(
+                                            color: _homeGold,
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Text(category.emoji, style: const TextStyle(fontSize: 22, height: 1)),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        SizedBox(
+                                          width: double.infinity,
+                                          height: 11 * 1.15 * 2,
+                                          child: Text(
+                                            _display(_game.categoryLabel(category.id, category.name)),
+                                            maxLines: 2,
+                                            textAlign: TextAlign.center,
+                                            style: _homeInter(
+                                              size: 11,
+                                              weight: FontWeight.w800,
+                                              color: Colors.white,
+                                              height: 1.15,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -968,18 +1050,6 @@ class _BilgiScreenState extends State<BilgiScreen> {
     if (mode.totalSeconds > 0) return '$count • ${_fill('minutes', {'n': '${mode.totalSeconds ~/ 60}'})}';
     if (mode.seconds == 0) return '$count • ${_game.t('untimed')}';
     return '$count • ${_fill('seconds', {'n': '${mode.seconds}'})}';
-  }
-
-  LinearGradient _quickStartGradient(String id) {
-    const begin = Alignment.topLeft;
-    const end = Alignment.bottomRight;
-    return switch (id) {
-      'hizli' => const LinearGradient(begin: begin, end: end, colors: [Color(0xFF134E4A), Color(0xFF0F766E)]),
-      'klasik' => const LinearGradient(begin: begin, end: end, colors: [Color(0xFF4C1D95), Color(0xFF6D28D9)]),
-      'maraton' => const LinearGradient(begin: begin, end: end, colors: [Color(0xFF831843), Color(0xFF9D174D)]),
-      'sakin' => const LinearGradient(begin: begin, end: end, colors: [Color(0xFF78350F), Color(0xFF92400E)]),
-      _ => const LinearGradient(begin: begin, end: end, colors: [BilgiColors.card, BilgiColors.card]),
-    };
   }
 
   List<_BalanceStat> _balanceItems(BilgiProfile user, {bool shop = false}) {
@@ -1299,7 +1369,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
                       ),
                       const SizedBox(height: 2),
                       Text(line, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: BilgiColors.muted)),
-                      if (!karma) ...[
+                      if (!karma && _game.inviteKind.isEmpty) ...[
                         const SizedBox(height: 2),
                         GestureDetector(
                           onTap: () => _game.playCategoryLeague(category.id),
@@ -1515,8 +1585,12 @@ class _BilgiScreenState extends State<BilgiScreen> {
         ),
         const SizedBox(height: 8),
                 _startButton(
-                  _game.busy ? null : _game.start,
-                  label: _display(_game.t('start_game')),
+                  _game.busy ? null : (_game.inviteKind.isEmpty ? _game.start : _game.createInvite),
+                  label: _display(_game.t(_game.inviteKind == 'duello'
+                      ? 'duel_create'
+                      : _game.inviteKind == 'oda'
+                          ? 'room_create'
+                          : 'start_game')),
                   fill: const Color(0xFF22C55E),
                   icon: Icons.play_arrow_rounded,
                   goldBorder: true,
@@ -1802,8 +1876,6 @@ class _BilgiScreenState extends State<BilgiScreen> {
     final source = revealing ? _game.revealQuestion : question;
     final reportQuestion = _game.revealQuestion ?? question;
     final shown = source?.shown(_game.locale);
-    final quizNote = shown?.explanation.trim() ?? '';
-    final hasQuizNote = revealing && quizNote.isNotEmpty;
     final text = shown?.text ?? (revealing ? _game.revealText : question!.text);
     final options = shown?.options ?? (revealing ? _game.revealOptions : question!.options);
     final difficultyKey = revealing ? _game.revealDifficulty : question!.difficulty;
@@ -1826,9 +1898,13 @@ class _BilgiScreenState extends State<BilgiScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-          child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+          child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                child: _PlayFrame(
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
           Row(
             children: [
               _quitButton(),
@@ -1899,6 +1975,7 @@ class _BilgiScreenState extends State<BilgiScreen> {
               ),
             ],
           ),
+          _scoreStrip(round),
           const SizedBox(height: 8),
           DecoratedBox(
             decoration: BoxDecoration(
@@ -1921,40 +1998,14 @@ class _BilgiScreenState extends State<BilgiScreen> {
           ),
           const SizedBox(height: 6),
           _gameTimerChrome(timed: timed, marathon: marathon, round: round),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: SizedBox(
-              height: 6,
-              child: Stack(
-                children: [
-                  const ColoredBox(color: Color(0xFF2A0E48), child: SizedBox.expand()),
-                  FractionallySizedBox(
-                    widthFactor: total == 0 ? 0 : (number / total).clamp(0.0, 1.0),
-                    alignment: Alignment.centerLeft,
-                    child: const DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(colors: [Color(0xFF22C55E), _homeGold]),
-                      ),
-                      child: SizedBox.expand(),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          _playerStrip(round),
           if (round.paused) ...[
             const SizedBox(height: 8),
             _note(_fill('quiz_paused', {'n': '${_game.pauseLeft}'})),
           ],
-          if (round.hint.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            _note(_hintLine(shown, round.hint)),
-          ],
           const SizedBox(height: 10),
-          Expanded(
-            child: _quizBoard(
+                      ],
+                    ),
+                    _quizBoard(
               question: _QuizQuestionCard(
                 key: ValueKey(reportQuestion?.id ?? text),
                 text: text,
@@ -1975,40 +2026,42 @@ class _BilgiScreenState extends State<BilgiScreen> {
                   ),
               ],
             ),
-          ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
           if (round.jokerMax > 0) ...[
-            const SizedBox(height: _quizOptionGap),
+            const SizedBox(height: _quizSectionGap),
             Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-            child: Row(
-              children: [
-                for (final item in const [
-                  ('half', '✂️'),
-                  ('double', '👥'),
-                  ('time', '⏸️'),
-                  ('change', '🔄'),
-                  ('hint', '💡'),
-                ])
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  for (final item in const [
+                    ('half', '✂️'),
+                    ('double', '👥'),
+                    ('time', '⏸️'),
+                    ('change', '🔄'),
+                    ('hint', '💡'),
+                  ])
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 3),
                         child: _jokerButton(
-                    item.$2,
-                    _game.t('joker_${item.$1}'),
-                    _game.profile?.jokers[item.$1] ?? 0,
-                    round.jokersUsed >= round.jokerMax || (item.$1 == 'hint' && (shown?.hint.trim().isEmpty ?? true))
-                        ? null
-                        : () => setState(() {
-                              _jokerPrompt = item.$1;
-                              _jokerPromptIndex = round.index;
-                            }),
-                    dim: item.$1 == 'hint' && (shown?.hint.trim().isEmpty ?? true),
+                          item.$2,
+                          _game.t('joker_${item.$1}'),
+                          _game.profile?.jokers[item.$1] ?? 0,
+                          round.jokersUsed >= round.jokerMax || (item.$1 == 'hint' && (shown?.hint.trim().isEmpty ?? true))
+                              ? null
+                              : () => setState(() {
+                                    _jokerPrompt = item.$1;
+                                    _jokerPromptIndex = round.index;
+                                  }),
+                          dim: item.$1 == 'hint' && (shown?.hint.trim().isEmpty ?? true),
                         ),
                       ),
-                  ),
-              ],
+                    ),
+                ],
+              ),
             ),
-          ),
           ],
           if (_game.notice != null)
             Padding(
@@ -2024,9 +2077,11 @@ class _BilgiScreenState extends State<BilgiScreen> {
           _quizContinue(
             label: _display(_game.t('continue_btn')),
             onTap: revealing ? _game.continueReveal : null,
-            onInfo: hasQuizNote ? () => _openExplanation(quizNote) : null,
           ),
-        ],
+                      ],
+                    ),
+                  ],
+                ),
           ),
         ),
         if (_jokerPrompt != null)
@@ -2045,48 +2100,179 @@ class _BilgiScreenState extends State<BilgiScreen> {
     );
   }
 
-  Widget _playerStrip(BilgiRound round) {
-    final seats = round.standings;
-    if (seats.length > 1) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: SizedBox(
-          height: 28,
-          child: seats.length == 2
-              ? Row(
-                  children: [
-                    for (var i = 0; i < seats.length; i++) ...[
-                      if (i > 0) const SizedBox(width: 8),
-                      Expanded(
-                        child: _seatChip(seats[i], mine: seats[i]['id'] == round.userId, onTap: () => _openStandings(seats, round.userId)),
-                      ),
-                    ],
-                  ],
-                )
-              : ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: seats.length,
-                  separatorBuilder: (context, index) => const SizedBox(width: 8),
-                  itemBuilder: (_, i) => _seatChip(
-                    seats[i],
-                    mine: seats[i]['id'] == round.userId,
-                    maxWidth: 168,
-                    onTap: () => _openStandings(seats, round.userId),
-                  ),
-                ),
-        ),
-      );
-    }
-    if (round.opponentName.isEmpty) return const SizedBox.shrink();
-    final score = round.opponentScore >= 0 ? ' • ${round.opponentScore}' : '';
+  Widget _scoreStrip(BilgiRound round) {
+    final seats = _playSeats(round);
+    if (seats.length < 2) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(top: 8),
-      child: Text(
-        '${_game.t('rival')}: ${round.opponentName}$score',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        textAlign: TextAlign.center,
-        style: const TextStyle(color: BilgiColors.muted, fontSize: 12),
+      child: round.modeId == 'duello' ? _duelBar(seats) : _roomChips(seats, round.userId),
+    );
+  }
+
+  List<({String id, String name, int score, bool mine})> _playSeats(BilgiRound round) {
+    if (round.standings.length > 1) {
+      final rows = [
+        for (final seat in round.standings)
+          (
+            id: seat['id'] ?? '',
+            name: (seat['name'] ?? '').trim(),
+            score: seat['id'] == round.userId ? round.score : (int.tryParse(seat['score'] ?? '') ?? 0),
+            mine: seat['id'] == round.userId,
+          ),
+      ];
+      rows.sort((a, b) {
+        if (a.mine == b.mine) return 0;
+        return a.mine ? -1 : 1;
+      });
+      return rows;
+    }
+    if (round.modeId == 'duello' && round.opponentName.trim().isNotEmpty) {
+      return [
+        (id: round.userId, name: _game.profile?.username ?? '', score: round.score, mine: true),
+        (id: 'rival', name: round.opponentName.trim(), score: round.opponentScore, mine: false),
+      ];
+    }
+    return const [];
+  }
+
+  Widget _duelBar(List<({String id, String name, int score, bool mine})> seats) {
+    final me = seats.where((seat) => seat.mine).firstOrNull ?? seats.first;
+    final rival = seats.where((seat) => !seat.mine).firstOrNull ?? seats.last;
+    final total = me.score + rival.score;
+    final share = total == 0 ? 0.5 : (me.score / total).clamp(0.22, 0.78);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final scale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.6);
+        final barHeight = math.max(36.0, 22 * scale + 14);
+        final badgeW = math.max(36.0, 26 * scale + 10);
+        final badgeH = math.max(28.0, 16 * scale + 10);
+        final split = constraints.maxWidth * share;
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: SizedBox(
+            height: barHeight,
+            child: Stack(
+              children: [
+                Row(
+                  children: [
+                    SizedBox(
+                      width: split,
+                      child: ColoredBox(
+                        color: const Color(0xFF2563EB),
+                        child: Padding(
+                          padding: EdgeInsets.only(left: 10, right: badgeW / 2 + 4),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Row(
+                              children: [
+                                Text(_game.t('you_tag'), style: _homeInter(size: 12, weight: FontWeight.w900)),
+                                const SizedBox(width: 6),
+                                _scorePip(me.score),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: ColoredBox(
+                        color: const Color(0xFFDC2626),
+                        child: Padding(
+                          padding: EdgeInsets.only(left: badgeW / 2 + 4, right: 10),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Row(
+                              children: [
+                                _scorePip(rival.score),
+                                const SizedBox(width: 6),
+                                Text(
+                                  _game.t('rival').toUpperCase(),
+                                  maxLines: 1,
+                                  style: _homeInter(size: 12, weight: FontWeight.w900),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                Positioned(
+                  left: (split - badgeW / 2).clamp(0.0, math.max(0.0, constraints.maxWidth - badgeW)),
+                  top: (barHeight - badgeH) / 2,
+                  child: Container(
+                    width: badgeW,
+                    height: badgeH,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1028),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: _homeGold, width: 2),
+                    ),
+                    child: Text('VS', style: _homeInter(size: 11, weight: FontWeight.w900, color: _homeGold)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _scorePip(int score) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: const BoxDecoration(color: _homeGold, borderRadius: BorderRadius.all(Radius.circular(10))),
+      child: Text('$score', style: _homeInter(size: 11, weight: FontWeight.w900, color: const Color(0xFF3A2200))),
+    );
+  }
+
+  Widget _roomChips(List<({String id, String name, int score, bool mine})> seats, String userId) {
+    const colors = [Color(0xFF2563EB), Color(0xFFDC2626), Color(0xFF16A34A), Color(0xFF7C3AED)];
+    final scale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.6);
+    return SizedBox(
+      height: math.max(34.0, 18 * scale + 16),
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: seats.length,
+        separatorBuilder: (context, index) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final seat = seats[index];
+          final color = colors[index % colors.length];
+          final label = seat.mine ? _game.t('you_tag') : seat.name;
+          return Material(
+            color: color,
+            borderRadius: BorderRadius.circular(12),
+            child: InkWell(
+              onTap: () => _openStandings([
+                for (final row in seats) {'id': row.id, 'name': row.mine ? _game.t('you_tag') : row.name, 'score': '${row.score}'},
+              ], userId),
+              borderRadius: BorderRadius.circular(12),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 168),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('😊', style: TextStyle(fontSize: 14, height: 1)),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: _homeInter(size: 12, weight: FontWeight.w900)),
+                      ),
+                      const SizedBox(width: 6),
+                      Text('${seat.score}', style: _homeInter(size: 12, weight: FontWeight.w900)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -2146,102 +2332,49 @@ class _BilgiScreenState extends State<BilgiScreen> {
   }
 
   Widget _quizBoard({required Widget question, required List<Widget> options}) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final scaler = MediaQuery.textScalerOf(context).scale(1);
-        final optionHeight = (14 * 1.3 * 2 + 20) * math.max(1.0, scaler) + 4;
-        final optionBlock = options.length * optionHeight + math.max(0, options.length - 1) * _quizOptionGap + 10;
-        final optionList = <Widget>[
-          for (var i = 0; i < options.length; i++) ...[
-            if (i > 0) const SizedBox(height: _quizOptionGap),
-            options[i],
-          ],
-        ];
-        if (constraints.maxHeight - optionBlock >= 64) {
-          return ClipRect(
-            child: Column(
-            children: [
-              Expanded(
-                child: LayoutBuilder(
-                  builder: (context, box) {
-                    return SingleChildScrollView(
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(minHeight: box.maxHeight),
-                        child: Center(child: question),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 10),
-              ...optionList,
-            ],
-            ),
-          );
-        }
-        return ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            question,
-            const SizedBox(height: 10),
-            ...optionList,
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _quizContinue({required String label, required VoidCallback? onTap, VoidCallback? onInfo}) {
-    final enabled = onTap != null;
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: enabled ? _homeGold : _homeCard,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: enabled ? _homeGold : const Color(0x99FFC83D), width: 2),
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: onTap,
-                borderRadius: BorderRadius.circular(18),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: _quizOptionRowMinHeight),
-                  child: Center(
-                    child: Text(
-                      label,
-                      textAlign: TextAlign.center,
-                      style: _homeInter(
-                        size: 16,
-                        weight: FontWeight.w900,
-                        color: enabled ? const Color(0xFF3A2200) : Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        SizedBox(
-          width: 40,
-          height: _quizOptionRowMinHeight,
-          child: onInfo == null
-              ? null
-              : IconButton(
-                  padding: EdgeInsets.zero,
-                  onPressed: onInfo,
-                  icon: const Icon(Icons.info_outline_rounded, color: _homeGold, size: 26),
-                ),
-        ),
+        question,
+        if (options.isNotEmpty) const SizedBox(height: _quizSectionGap),
+        for (var i = 0; i < options.length; i++) ...[
+          if (i > 0) const SizedBox(height: _quizOptionGap),
+          options[i],
+        ],
       ],
     );
   }
 
-  void _openExplanation(String body) {
+  Widget _quizContinue({required String label, required VoidCallback? onTap}) {
+    final ready = onTap != null;
+    final fill = ready ? const Color(0xFF86EFAC) : _homeGold;
+    final ink = ready ? const Color(0xFF14532D) : const Color(0xFF3A2200);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: _quizOptionRowMinHeight),
+            child: Center(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: _homeInter(size: 16, weight: FontWeight.w900, color: ink),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openNote(String body) {
     showDialog<void>(
       context: context,
       barrierColor: const Color(0xCC0F0E1A),
@@ -2493,10 +2626,11 @@ class _BilgiScreenState extends State<BilgiScreen> {
         ),
         if (daily)
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
             child: Text(
               _fill('league_competitors', {'n': '${_game.contestJoined}'}),
-              style: const TextStyle(fontWeight: FontWeight.w800, color: BilgiColors.secondary),
+              textAlign: TextAlign.center,
+              style: _homeInter(size: 13, weight: FontWeight.w800, color: const Color(0xFF4ADE80)),
             ),
           )
         else if (categoryOpen || categoryList)
@@ -2538,56 +2672,49 @@ class _BilgiScreenState extends State<BilgiScreen> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-            child: Wrap(
-              spacing: 16,
-              runSpacing: 2,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                for (final line in bilgiMyRankLabel(score: periodScore, rank: periodRank, locale: _game.locale).split('\n'))
-                  Text(
-                    line,
-                    style: const TextStyle(fontWeight: FontWeight.w800, color: BilgiColors.secondary),
-                  ),
-              ],
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+            child: Text(
+              bilgiMyRankLabel(score: periodScore, rank: periodRank, locale: _game.locale).replaceAll('\n', ' | '),
+              textAlign: TextAlign.center,
+              style: _homeInter(size: 13, weight: FontWeight.w800, color: const Color(0xFF4ADE80)),
             ),
           ),
+          if (_game.leagueTitle.trim().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: Text(
+                _game.leagueTitle.trim(),
+                textAlign: TextAlign.center,
+                style: _homeGoldTitle(size: 18, height: 1.2),
+              ),
+            ),
           Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: SizedBox(
-                width: double.infinity,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: _quickStartGradient('hizli'),
-                    borderRadius: BorderRadius.circular(bilgiRadius),
-                    boxShadow: const [BoxShadow(color: Color(0x660F766E), blurRadius: 24, offset: Offset(0, 8))],
-                  ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () {
-                        final categoryId = _game.boardCategoryId;
-                        if (categoryOpen && categoryId != null) {
-                          unawaited(_game.playCategoryLeague(categoryId));
-                        } else {
-                          _game.open('categories');
-                        }
-                      },
-                      borderRadius: BorderRadius.circular(bilgiRadius),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 18),
-                        child: Text(
-                          categoryOpen &&
-                                  _game.boardCategoryId != null &&
-                                  !_game.joinedCategoryLeague(_game.boardCategoryId!)
-                              ? _game.t('league_join')
-                              : _game.t('league_continue'),
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Colors.white),
-                        ),
-                      ),
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            child: SizedBox(
+              width: double.infinity,
+              child: Material(
+                color: const Color(0xFF14B8A6),
+                borderRadius: BorderRadius.circular(18),
+                child: InkWell(
+                  onTap: () {
+                    final categoryId = _game.boardCategoryId;
+                    if (categoryOpen && categoryId != null) {
+                      unawaited(_game.playCategoryLeague(categoryId));
+                    } else {
+                      _game.open('categories');
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(18),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    child: Text(
+                      categoryOpen &&
+                              _game.boardCategoryId != null &&
+                              !_game.joinedCategoryLeague(_game.boardCategoryId!)
+                          ? _game.t('league_join')
+                          : _game.t('league_continue'),
+                      textAlign: TextAlign.center,
+                      style: _homeInter(size: 15, weight: FontWeight.w900),
                     ),
                   ),
                 ),
@@ -2595,11 +2722,6 @@ class _BilgiScreenState extends State<BilgiScreen> {
             ),
           ),
         ],
-              if (!daily && _game.leagueTitle.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-            child: Text(_game.leagueTitle, style: const TextStyle(fontWeight: FontWeight.w800)),
-          ),
         if (daily)
           ..._rankedRows(user.id, podium, rest, rows.isEmpty)
         else if (_game.boardScope == 'category' && _game.boardCategoryId == null)
@@ -3779,17 +3901,11 @@ class _BilgiScreenState extends State<BilgiScreen> {
       children: [
         _pageHeader(
           _game.t('page_duel'),
-          onBack: _duelForm && !lobby
-              ? () => setState(() => _duelForm = false)
-              : _duelJoin && !lobby
-                  ? () => setState(() => _duelJoin = false)
-                  : _game.back,
+          onBack: _duelJoin && !lobby ? () => setState(() => _duelJoin = false) : _game.back,
         ),
         if (_game.notice != null) _note(_game.notice!),
         if (lobby)
           _roomLobby(room)
-        else if (_duelForm)
-          ..._inviteForm('duello')
         else if (_duelJoin)
           _codeJoin(
             title: _game.t('duel_join_title'),
@@ -3802,15 +3918,12 @@ class _BilgiScreenState extends State<BilgiScreen> {
           ),
           BilgiPrimaryButton(
             label: _game.t('duel_create'),
-            onTap: () => _openInviteForm('duello'),
+            onTap: () => _game.beginInvite('duello'),
           ),
           const SizedBox(height: 12),
           BilgiPrimaryButton(
             label: _game.t('duel_join_btn'),
-            onTap: () => setState(() {
-              _duelForm = false;
-              _duelJoin = true;
-            }),
+            onTap: () => setState(() => _duelJoin = true),
           ),
         ],
       ],
@@ -3829,17 +3942,11 @@ class _BilgiScreenState extends State<BilgiScreen> {
       children: [
         _pageHeader(
           lobby ? title : _game.t('mode_oda'),
-          onBack: _roomForm && !lobby
-              ? () => setState(() => _roomForm = false)
-              : _roomJoin && !lobby
-                  ? () => setState(() => _roomJoin = false)
-                  : _game.back,
+          onBack: _roomJoin && !lobby ? () => setState(() => _roomJoin = false) : _game.back,
         ),
         if (_game.notice != null) _note(_game.notice!),
         if (lobby)
           _roomLobby(room)
-        else if (_roomForm)
-          ..._inviteForm('oda')
         else if (_roomJoin)
           _codeJoin(
             title: _game.t('room_join_title'),
@@ -3852,222 +3959,15 @@ class _BilgiScreenState extends State<BilgiScreen> {
           ),
           BilgiPrimaryButton(
             label: _game.t('room_create'),
-            onTap: () => _openInviteForm('oda'),
+            onTap: () => _game.beginInvite('oda'),
           ),
           const SizedBox(height: 12),
           BilgiPrimaryButton(
             label: _game.t('room_join_btn'),
-            onTap: () => setState(() {
-              _roomForm = false;
-              _roomJoin = true;
-            }),
+            onTap: () => setState(() => _roomJoin = true),
           ),
         ],
       ],
-    );
-  }
-
-  void _openInviteForm(String kind) {
-    setState(() {
-      _inviteCategory = tumuKarmaId;
-      _inviteSub = '';
-      _inviteDifficulty = 'hepsi';
-      _inviteCount = kind == 'duello' ? 10 : 20;
-      _inviteSeconds = kind == 'duello' ? 10 : 15;
-      if (kind == 'duello') {
-        _duelJoin = false;
-        _duelForm = true;
-      } else {
-        _roomJoin = false;
-        _roomForm = true;
-      }
-    });
-  }
-
-  List<Widget> _inviteForm(String kind) {
-    final subs = _inviteSubs();
-    final diffs = [
-      (const Color(0xFF3DDC97), _game.t('diff_easy'), 'kolay'),
-      (const Color(0xFFFFB800), _game.t('diff_medium'), 'orta'),
-      (const Color(0xFFFF4D6D), _game.t('diff_hard'), 'zor'),
-      (const Color(0xFF8A879E), _game.t('diff_legend'), 'efsane'),
-      (const Color(0xFFB388FF), _game.t('diff_mix'), bilgiMixDifficulty),
-      (const Color(0xFF7EB6FF), _game.t('diff_all'), 'hepsi'),
-    ];
-    final categories = <(String, String)>[
-      (tumuKarmaId, _game.t('all_mix')),
-      for (final category in _listedCategories) (category.id, _game.categoryLabel(category.id, category.name)),
-    ];
-    return [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-        child: Text(
-          _game.t('invite_blurb'),
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: BilgiColors.muted, fontSize: 13),
-        ),
-      ),
-      _sectionLabel(_game.t('invite_category')),
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: _inviteMenu(
-          value: _inviteCategory,
-          options: categories,
-          onChanged: (value) => setState(() {
-            _inviteCategory = value;
-            _inviteSub = '';
-          }),
-        ),
-      ),
-      if (_inviteCategory != tumuKarmaId && subs.isNotEmpty) ...[
-        _sectionLabel(_game.t('invite_sub')),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: _inviteMenu(
-            value: _inviteSub,
-            options: [
-              ('', _game.t('invite_all_subs')),
-              for (final sub in subs) (sub, _game.subLabel(_inviteCategory, sub)),
-            ],
-            onChanged: (value) => setState(() => _inviteSub = value),
-          ),
-        ),
-      ],
-      _sectionLabel(_game.t('invite_diff')),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
-        child: _setupTray(
-          plated: true,
-          child: Column(
-            children: [
-              for (var row = 0; row < 2; row++) ...[
-                if (row > 0) const SizedBox(height: 4),
-                Row(
-                  children: [
-                    for (final item in (row == 0 ? diffs.take(3) : diffs.skip(3)))
-                      Expanded(
-                        child: _setupDiffChip(
-                          color: item.$1,
-                          label: item.$2,
-                          active: _inviteDifficulty == item.$3,
-                          plated: true,
-                          onTap: () => setState(() => _inviteDifficulty = item.$3),
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-      _sectionLabel(_game.t('invite_questions')),
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: _setupTray(
-          plated: true,
-          child: Row(
-            children: [
-              for (final count in bilgiInviteCounts)
-                Expanded(
-                  child: _setupCountSeg(
-                    count: count,
-                    active: _inviteCount == count,
-                    plated: true,
-                    onTap: () => setState(() => _inviteCount = count),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-      _sectionLabel(_game.t('invite_time')),
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: _setupTray(
-          plated: true,
-          child: Row(
-            children: [
-              for (final pace in bilgiInviteSeconds)
-                Expanded(
-                  child: _setupCountSeg(
-                    count: pace,
-                    active: _inviteSeconds == pace,
-                    plated: true,
-                    onTap: () => setState(() => _inviteSeconds = pace),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(24, 6, 20, 0),
-        child: Text(_game.t('invite_seconds_hint'), style: const TextStyle(color: BilgiColors.muted, fontSize: 11)),
-      ),
-      const SizedBox(height: 16),
-      BilgiPrimaryButton(
-        label: kind == 'duello' ? _game.t('duel_create') : _game.t('room_create'),
-        onTap: () {
-          final category = _inviteCategory;
-          final sub = category == tumuKarmaId ? '' : _inviteSub;
-          _game.makeRoom(
-            kind,
-            categoryId: category,
-            subcategory: sub,
-            difficulty: _inviteDifficulty,
-            questionCount: _inviteCount,
-            seconds: _inviteSeconds,
-          );
-        },
-      ),
-      const SizedBox(height: 24),
-    ];
-  }
-
-  List<String> _inviteSubs() {
-    if (_inviteCategory == tumuKarmaId) return const [];
-    final live = _game.categories.where((item) => item.id == _inviteCategory).firstOrNull;
-    final all = live?.subs ?? const <String>[];
-    return [
-      for (final sub in all)
-        if (bilgiSubListed(_inviteCategory, sub, _game.difficultySlices)) sub,
-    ];
-  }
-
-  Widget _inviteMenu({
-    required String value,
-    required List<(String, String)> options,
-    required ValueChanged<String> onChanged,
-  }) {
-    final selected = options.any((item) => item.$1 == value) ? value : options.first.$1;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: _homeCard,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _homeGold, width: 2),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: DropdownButtonHideUnderline(
-          child: DropdownButton<String>(
-            isExpanded: true,
-            value: selected,
-            dropdownColor: _homeCard,
-            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700),
-            items: [
-              for (final item in options)
-                DropdownMenuItem(
-                  value: item.$1,
-                  child: Text(item.$2, overflow: TextOverflow.ellipsis),
-                ),
-            ],
-            onChanged: (next) {
-              if (next != null) onChanged(next);
-            },
-          ),
-        ),
-      ),
     );
   }
 
@@ -4086,7 +3986,8 @@ class _BilgiScreenState extends State<BilgiScreen> {
       'karisik' => _game.t('diff_mix'),
       _ => _game.t('diff_all'),
     };
-    return '$where • $level • ${_fill('q_count', {'n': '${room.questionCount}'})} • ${_fill('seconds', {'n': '${room.seconds}'})}';
+    final pace = room.seconds == 0 ? _game.t('untimed') : _fill('seconds', {'n': '${room.seconds}'});
+    return '$where • $level • ${_fill('q_count', {'n': '${room.questionCount}'})} • $pace';
   }
 
   Widget _roomLobby(BilgiRoom room) {
@@ -5145,18 +5046,6 @@ class _BilgiScreenState extends State<BilgiScreen> {
     );
   }
 
-  String _hintLine(BilgiQuestion? shown, String stored) {
-    if (shown != null) {
-      return bilgiPlayHint(
-        hint: shown.hint,
-        explanation: shown.explanation,
-        options: shown.options,
-        correct: shown.correct,
-      );
-    }
-    return stored;
-  }
-
   Widget _note(String text) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
@@ -5695,50 +5584,44 @@ class _BilgiScreenState extends State<BilgiScreen> {
   }
 
   Widget _jokerButton(String emoji, String label, int stock, VoidCallback? onTap, {bool dim = false}) {
-    return Opacity(
-      opacity: dim ? 0.35 : 1,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: SizedBox(
-          height: 78,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Container(
-                width: double.infinity,
-                height: 70,
-                padding: const EdgeInsets.fromLTRB(2, 6, 2, 12),
-              decoration: BoxDecoration(
-                  color: _homeCard,
-                borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: _homeGold, width: 2),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(emoji, style: const TextStyle(fontSize: 18, height: 1)),
-                  const SizedBox(height: 3),
-                  Text(
-                    label,
-                    maxLines: 2,
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                      style: _homeInter(size: 8, weight: FontWeight.w800, color: Colors.white, height: 1.05),
+    // Five narrow columns keep names off the strip; the tip still names the joker.
+    return Tooltip(
+      message: label,
+      child: Opacity(
+        opacity: dim ? 0.35 : 1,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: SizedBox(
+            height: 52,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  height: 40,
+                  child: Container(
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2A0E48),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Text(emoji, style: const TextStyle(fontSize: 18, height: 1)),
                   ),
-                ],
-              ),
+                ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: Center(child: _JokerConsumeBadge(stock: stock)),
+                ),
+              ],
             ),
-            Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: Center(child: _JokerConsumeBadge(stock: stock)),
-            ),
-          ],
+          ),
         ),
       ),
-    ),
     );
   }
 
@@ -5876,53 +5759,92 @@ class _BilgiScreenState extends State<BilgiScreen> {
   }
 
   Widget _podium(List<BilgiBoardEntry> top, String meId) {
+    Color metal(int rank) => switch (rank) {
+          1 => const Color(0xFFF5C542),
+          2 => const Color(0xFFC8CDD6),
+          _ => const Color(0xFFE08A4B),
+        };
     Widget place(BilgiBoardEntry user, int rank) {
       final mine = user.id == meId;
-      final ring = mine
-          ? BilgiColors.secondary
-          : rank == 1
-              ? const Color(0xFFFFB800)
-              : (rank == 2 ? const Color(0xFFC0C0C0) : const Color(0xFFCD7F32));
-      final height = rank == 1 ? 90.0 : (rank == 2 ? 60.0 : 40.0);
+      final accent = metal(rank);
+      final avatar = rank == 1 ? 64.0 : 52.0;
+      final step = rank == 1 ? 96.0 : (rank == 2 ? 72.0 : 56.0);
       return Expanded(
-        child: Column(
-          children: [
-            Container(
-              width: rank == 1 ? 64 : 52,
-              height: rank == 1 ? 64 : 52,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: ring, width: mine ? 4 : 3),
-                color: mine ? BilgiColors.secondary.withValues(alpha: 0.22) : BilgiColors.card,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Column(
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.topCenter,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Container(
+                      width: avatar,
+                      height: avatar,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: const Color(0xFF2A0E48),
+                        border: Border.all(color: accent, width: 3),
+                        boxShadow: [
+                          BoxShadow(color: accent.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 4)),
+                        ],
+                      ),
+                      child: Text(_boardAvatar(user, mine), style: TextStyle(fontSize: rank == 1 ? 28 : 22, height: 1)),
+                    ),
+                  ),
+                  Positioned(
+                    top: -4,
+                    child: Icon(
+                      Icons.workspace_premium_rounded,
+                      size: rank == 1 ? 22 : 18,
+                      color: accent,
+                    ),
+                  ),
+                ],
               ),
-              child: Text(_boardAvatar(user, mine), style: const TextStyle(fontSize: 24)),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              _boardLabel(user, mine),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: _homeInter(size: 12, weight: FontWeight.w700, color: mine ? _homeGoldText : Colors.white),
-            ),
-            Text(_grouped(user.score), style: _homeInter(size: 11, weight: FontWeight.w700, color: _homeGoldText)),
-            const SizedBox(height: 6),
-            Container(
-              height: height,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: mine ? _homeGoldText : _homeGold,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+              const SizedBox(height: 8),
+              Text(
+                _boardLabel(user, mine),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: _homeInter(size: 13, weight: FontWeight.w800, color: mine ? _homeGoldText : Colors.white),
               ),
-              child: Text('$rank', style: _homeInter(size: 20, weight: FontWeight.w900, color: const Color(0xFF3A2200))),
-            ),
-          ],
+              const SizedBox(height: 2),
+              Text(
+                _grouped(user.score),
+                style: _homeInter(size: 12, weight: FontWeight.w800, color: _homeGoldText),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                height: step,
+                width: double.infinity,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [accent, Color.lerp(accent, const Color(0xFF1A0A2E), 0.28)!],
+                  ),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+                  border: Border.all(color: Colors.white24, width: 1),
+                ),
+                child: Text(
+                  '$rank',
+                  style: _homeInter(size: rank == 1 ? 34 : 26, weight: FontWeight.w900, color: const Color(0xFF1A0A2E)),
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 18),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -5948,33 +5870,71 @@ class _BilgiScreenState extends State<BilgiScreen> {
 
   Widget _boardRow(int rank, BilgiBoardEntry user, bool me) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: me ? _homeGold : _homeCard,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: _homeGold, width: 2),
+          color: me ? const Color(0xFF4A1A78) : const Color(0xFF2E1054),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: me ? _homeGold.withValues(alpha: 0.75) : const Color(0x335B2A8C),
+            width: me ? 1.5 : 1,
+          ),
         ),
         child: Row(
           children: [
-            Text('$rank', style: _homeInter(size: 14, weight: FontWeight.w900, color: me ? const Color(0xFF3A2200) : Colors.white)),
+            SizedBox(
+              width: 28,
+              child: Text(
+                '$rank',
+                textAlign: TextAlign.center,
+                style: _homeInter(size: 18, weight: FontWeight.w900, color: _homeGoldText),
+              ),
+            ),
             const SizedBox(width: 10),
-            Text(_boardAvatar(user, me), style: const TextStyle(fontSize: 22)),
-            const SizedBox(width: 10),
+            Container(
+              width: 40,
+              height: 40,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF1A0A2E),
+                border: Border.all(color: const Color(0x66FFC83D)),
+              ),
+              child: Text(_boardAvatar(user, me), style: const TextStyle(fontSize: 20, height: 1)),
+            ),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(_boardLabel(user, me), style: _homeInter(size: 14, weight: FontWeight.w800, color: me ? const Color(0xFF3A2200) : Colors.white)),
+                  Text(
+                    _boardLabel(user, me),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: _homeInter(size: 14, weight: FontWeight.w800),
+                  ),
                   if (user.leagueTitle.isNotEmpty)
-                    Text(user.leagueTitle, style: _homeInter(size: 11, weight: FontWeight.w700, color: me ? const Color(0xFF5C3B00) : _homeGoldText))
+                    Text(
+                      user.leagueTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _homeInter(size: 11, weight: FontWeight.w700, color: const Color(0xFFD4C4E8)),
+                    )
                   else if (user.city.isNotEmpty)
-                    Text(user.city, style: _homeInter(size: 11, weight: FontWeight.w700, color: me ? const Color(0xFF5C3B00) : const Color(0xFFD4C4E8))),
+                    Text(
+                      user.city,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _homeInter(size: 11, weight: FontWeight.w700, color: const Color(0xFFD4C4E8)),
+                    ),
                 ],
               ),
             ),
-            Text(_grouped(user.score), style: TextStyle(color: me ? Colors.white : _homeGoldText, fontWeight: FontWeight.w800)),
+            Text(
+              _grouped(user.score),
+              style: _homeInter(size: 15, weight: FontWeight.w900, color: _homeGoldText),
+            ),
           ],
         ),
       ),
@@ -6267,48 +6227,47 @@ class _BilgiQuizOptionState extends State<_BilgiQuizOption> with SingleTickerPro
       textColor = BilgiColors.muted;
       borderWidth = 1.5;
     }
-    final row = Material(
-      color: fill,
+    final row = ConstrainedBox(
+      constraints: BoxConstraints(minHeight: _quizOptionSlot(context)),
+      child: Material(
+        color: fill,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: border, width: borderWidth),
+          side: BorderSide(color: border, width: borderWidth),
         ),
         child: InkWell(
           onTap: widget.hidden ? null : widget.onTap,
           borderRadius: BorderRadius.circular(16),
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 14 * 1.3 * 2 + 20),
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: _quizOptionPadV),
             child: Row(
               children: [
                 Container(
-                  width: 32,
-                  height: 32,
+                  width: _quizOptionChip(context),
+                  height: _quizOptionChip(context),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(color: chip, borderRadius: BorderRadius.circular(10)),
-                child: Text(
-                  widget.letter,
-                  style: GoogleFonts.nunito(fontWeight: FontWeight.w800, color: letterColor),
-                ),
+                  child: Text(
+                    widget.letter,
+                    style: GoogleFonts.nunito(fontWeight: FontWeight.w800, color: letterColor),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     widget.hidden ? '—' : widget.text,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.nunito(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    height: 1.3,
-                    color: textColor,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.nunito(
+                      fontSize: _quizOptionFontSize,
+                      fontWeight: FontWeight.w700,
+                      height: _quizOptionLineHeight,
+                      color: textColor,
                     ),
                   ),
                 ),
-              const SizedBox(width: 44),
+                SizedBox(width: _quizOptionChip(context) + 12),
               ],
+            ),
           ),
         ),
       ),
@@ -6457,28 +6416,37 @@ class _QuizQuestionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final report = onReport != null;
-    return Stack(
+    return ConstrainedBox(
+      constraints: BoxConstraints(minHeight: _quizQuestionSlot(context)),
+      child: Stack(
+      alignment: Alignment.center,
       children: [
-        Container(
-          width: double.infinity,
-          constraints: const BoxConstraints(minHeight: 15 * 1.3 * 3 + 28),
-          padding: EdgeInsets.fromLTRB(16, 14, report ? 40 : 16, 14),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: _homeCard,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: _homeGold, width: 2),
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: const Color(0xFF5B2A8C),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: _homeGold, width: 2),
+            ),
           ),
+        ),
+        Padding(
+          padding: EdgeInsets.fromLTRB(16, _quizQuestionPadV, report ? 40 : 16, _quizQuestionPadV),
           child: Text(
             text,
             textAlign: TextAlign.center,
-            style: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w800, height: 1.3, color: Colors.white),
+            style: GoogleFonts.nunito(
+              fontSize: _quizQuestionFontSize,
+              fontWeight: FontWeight.w800,
+              height: _quizQuestionLineHeight,
+              color: Colors.white,
+            ),
           ),
         ),
         if (report)
           Positioned(
-            right: 2,
-            bottom: 2,
+            top: 0,
+            right: 0,
             child: IconButton(
               visualDensity: VisualDensity.compact,
               padding: const EdgeInsets.all(6),
@@ -6497,10 +6465,11 @@ class _QuizQuestionCard extends StatelessWidget {
                   ),
                 );
               },
-              icon: const Icon(Icons.outlined_flag_rounded, color: _homeGold, size: 20),
+              icon: const Icon(Icons.flag_rounded, color: Color(0xFFEF4444), size: 18),
             ),
           ),
       ],
+      ),
     );
   }
 }
