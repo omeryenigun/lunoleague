@@ -270,17 +270,23 @@ String? bilgiDailyOrderError(List<Map<String, dynamic>> rows) {
   return null;
 }
 
-/// İpucu kalite uyarıları; CSV aktarımını durdurmaz.
+/// İpucu kalite uyarıları; AI kabulünde satırı düşürmez.
 bool bilgiDailyHintSoftError(String? error) =>
     error == 'ipucu doğru şıkkı yazıyor.' || error == 'ipucu açıklamanın aynısı.';
+
+/// CSV içerik notları: ipucu + tekrar olgu. Kota/sıra ayrıca softContent ile not olur.
+bool bilgiDailyContentNote(String? error) =>
+    bilgiDailyHintSoftError(error) || error == 'bu olgu zaten kullanıldı.';
 
 String? bilgiDailyPaperError({
   required List<Map<String, dynamic>> questions,
   required List<Map<String, dynamic>> spares,
   Set<String> avoid = const {},
   bool softHints = false,
+  bool softContent = false,
   List<String>? notes,
 }) {
+  final soft = softContent || softHints;
   if (questions.length != 20) return 'Kağıt 20 soru olmalı.';
   if (spares.length != 11) return 'Yedek 11 soru olmalı.';
   final seen = <String>{};
@@ -288,7 +294,7 @@ String? bilgiDailyPaperError({
   for (var i = 0; i < questions.length; i++) {
     final error = _rowError(questions[i], seen, avoid);
     if (error != null) {
-      if (softHints && bilgiDailyHintSoftError(error)) {
+      if (soft && bilgiDailyContentNote(error)) {
         notes?.add('Kağıt ${i + 1}: $error');
       } else {
         return 'Kağıt ${i + 1}: $error';
@@ -299,29 +305,46 @@ String? bilgiDailyPaperError({
   for (var i = 0; i < spares.length; i++) {
     final error = _rowError(spares[i], seen, avoid);
     if (error != null) {
-      if (softHints && bilgiDailyHintSoftError(error)) {
+      if (soft && bilgiDailyContentNote(error)) {
         notes?.add('Yedek ${i + 1}: $error');
       } else {
         return 'Yedek ${i + 1}: $error';
       }
     }
   }
-  final quotaError = _quota(questions, bilgiDailyAiQuotas, 'Kağıt');
+  String? softOrHard(String? message) {
+    if (message == null) return null;
+    if (soft) {
+      notes?.add(message);
+      return null;
+    }
+    return message;
+  }
+
+  final quotaError = softOrHard(_quota(questions, bilgiDailyAiQuotas, 'Kağıt'));
   if (quotaError != null) return quotaError;
-  final spareError = _quota(spares, bilgiContestSpareCounts, 'Yedek');
+  final spareError = softOrHard(_quota(spares, bilgiContestSpareCounts, 'Yedek'));
   if (spareError != null) return spareError;
   for (var i = 0; i < 3; i++) {
     final difficulty = '${questions[i]['difficulty']}';
     if (difficulty != 'kolay' && difficulty != 'orta') {
-      return 'İlk üç soru kolay veya orta olmalı.';
+      final message = softOrHard('İlk üç soru kolay veya orta olmalı.');
+      if (message != null) return message;
+      break;
     }
   }
-  if ('${questions[19]['difficulty']}' != 'efsane') return '20. soru efsane olmalı.';
+  if ('${questions[19]['difficulty']}' != 'efsane') {
+    final message = softOrHard('20. soru efsane olmalı.');
+    if (message != null) return message;
+  }
   final otherEfsane = questions.indexWhere((row) => row['difficulty'] == 'efsane' && row != questions[19]);
-  if (otherEfsane >= 0 && otherEfsane < 10) return 'İkinci efsane ilk yarıda durmamalı.';
-  final run = _topicRun(paperTopics);
+  if (otherEfsane >= 0 && otherEfsane < 10) {
+    final message = softOrHard('İkinci efsane ilk yarıda durmamalı.');
+    if (message != null) return message;
+  }
+  final run = softOrHard(_topicRun(paperTopics));
   if (run != null) return run;
-  final balance = _groupBalance(questions) ?? _groupBalance(spares);
+  final balance = softOrHard(_groupBalance(questions) ?? _groupBalance(spares));
   if (balance != null) return balance;
   return null;
 }

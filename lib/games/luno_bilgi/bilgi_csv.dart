@@ -142,9 +142,9 @@ const bilgiDailyCsvRecipe = <String>[
   'Kolay 6 asıl için örnek harf: A A B B C D. Orta 8 asıl: her harf iki kez. Zor 4 asıl: her harf bir kez. Efsane 2 asıl: iki farklı harf.',
   'Yedek kolay, orta ve zor 3 soruda üç farklı harf. Yedek efsane iki farklı harf.',
   'konu kısa bir addır (İnsan, Doğa, Tarih). Aynı konu art arda en fazla 2 soru gelir.',
-  'aciklama boş olamaz. ipucu 4 ile 500 karakterdir. İpucunun doğru şıkkı veya açıklamanın aynısını yazması kaydı durdurmaz; not olarak görünür.',
+  'aciklama boş olamaz. ipucu 4 ile 500 karakterdir.',
   'Virgül içeren hücreyi tırnak içine al. Tırnak karakteri için "" yaz.',
-  'Aynı soru metni bu dosyada ve ayın başka gününde tekrarlanamaz. Kilitli güne yazılmaz.',
+  'Kayıt yalnız teknik hatalarda durur (sütun, boş alan, geçersiz zorluk/harf, asıl 20 / yedek 11). Zorluk sırası, kota, ipucu kalitesi, konu tekrarı gibi içerik kuralları not olur; kaydı engellemez.',
   'Hata satırı Kağıt 4 ise 4. asıl sorudur. Yedek 2 ise 2. yedek satırdır.',
 ];
 
@@ -198,8 +198,8 @@ BilgiDailyCsvPaper parseBilgiDailyCsv(String raw, {required String day}) {
     return BilgiDailyCsvPaper(error: 'Yedek soru 11 olmalı. Dosyada ${extras.length} yedek var.');
   }
   final order = bilgiDailyOrderError(mains);
-  if (order != null) return BilgiDailyCsvPaper(error: order);
-  final paper = bilgiDailyPaperError(questions: mains, spares: extras, softHints: true, notes: notes);
+  if (order != null) notes.add(order);
+  final paper = bilgiDailyPaperError(questions: mains, spares: extras, softContent: true, notes: notes);
   if (paper != null) return BilgiDailyCsvPaper(error: paper);
   final compact = day.replaceAll('-', '');
   return BilgiDailyCsvPaper(

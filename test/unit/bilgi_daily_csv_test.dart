@@ -29,6 +29,18 @@ void main() {
     expect(parsed.questions, hasLength(20));
     expect(parsed.notes.join(' '), contains('ipucu doğru şıkkı'));
   });
+
+  test('a wrong play-order difficulty is a note and still saves', () {
+    final lines = _sheet().split('\n');
+    // Slot 19 must be kolay in the recipe; force zor.
+    lines[19] =
+        'asil,Soru asil 19 hangi olguyu anlatır?,Alfa 19,Beta 19,Gama 19,Delta 19,A,Insan,zor,Aciklama asil 19 nedeni soyler.,Ipucu asil 19 konuyu acar.';
+    final parsed = parseBilgiDailyCsv(lines.join('\n'), day: '2026-10-11');
+    expect(parsed.error, isNull, reason: parsed.error);
+    expect(parsed.questions, hasLength(20));
+    expect(parsed.questions[18].difficulty, 'zor');
+    expect(parsed.notes.join(' '), contains('zorluk kolay olmalı'));
+  });
 }
 
 String _sheet() {
