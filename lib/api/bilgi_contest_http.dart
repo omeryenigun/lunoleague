@@ -442,17 +442,30 @@ Future<Map<String, dynamic>> _monthPayload(KeyValueStore store, String month, Li
   final rows = <Map<String, dynamic>>[];
   for (final day in days) {
     final stored = await store.get(bilgiContestPaperBox, day);
+    final questions = _questionsOf(stored);
+    final spares = _sparesOf(stored);
     rows.add({
       'day': day,
       'title': _titleOf(stored),
-      'count': _questionsOf(stored).length,
+      'count': questions.length,
       'locked': locked.contains(day),
+      'translated': _paperTranslated(questions, spares),
       'aiStatus': '${stored?['aiStatus'] ?? ''}',
       'aiMessage': '${stored?['aiMessage'] ?? ''}',
       'aiLastOkAt': '${stored?['aiLastOkAt'] ?? ''}',
     });
   }
   return {'month': month, 'days': rows};
+}
+
+/// Asıl + yedek soruların dokuz dil tercümesi dolu mu.
+bool _paperTranslated(List<Map<String, dynamic>> questions, List<Map<String, dynamic>> spares) {
+  if (questions.isEmpty) return false;
+  for (final row in [...questions, ...spares]) {
+    final question = BilgiQuestion.fromMap(row);
+    if (!bilgiQuestionLanguagesReady(question)) return false;
+  }
+  return true;
 }
 
 Future<Set<String>> _lockedDays(KeyValueStore store) async {

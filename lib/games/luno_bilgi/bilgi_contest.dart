@@ -123,6 +123,7 @@ class BilgiContestDay {
     required this.title,
     required this.count,
     required this.locked,
+    this.translated,
     this.aiStatus = '',
     this.aiMessage = '',
     this.aiLastOkAt = '',
@@ -132,6 +133,8 @@ class BilgiContestDay {
   final String title;
   final int count;
   final bool locked;
+  /// Asıl + yedek sorularda dokuz dil tercümesi tamam. null: API alanı yok.
+  final bool? translated;
   final String aiStatus;
   final String aiMessage;
   final String aiLastOkAt;
@@ -342,6 +345,7 @@ class BilgiContestApi {
               title: '${item['title'] ?? ''}'.trim(),
               count: bilgiInt(item['count'], 0),
               locked: item['locked'] == true,
+              translated: item.containsKey('translated') ? item['translated'] == true : null,
               aiStatus: '${item['aiStatus'] ?? ''}',
               aiMessage: '${item['aiMessage'] ?? ''}',
               aiLastOkAt: '${item['aiLastOkAt'] ?? ''}',

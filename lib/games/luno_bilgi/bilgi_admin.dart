@@ -1209,6 +1209,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
 
   Color _contestRowColor(BilgiContestDay day) {
     if (day.locked) return const Color(0xFF7F1D1D);
+    if (day.count > 0 && day.translated == false) return const Color(0xFF854D0E);
     if (day.count > 0) return const Color(0xFF166534);
     return BilgiColors.card;
   }
@@ -1420,7 +1421,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
         ),
         const SizedBox(height: 8),
         const Text(
-          'Soruları oluşan gün yeşil taslaktır. Kilitli gün kırmızıya döner ve değişmez. 9 Ekim 2026 ve sonrası CSV ile yüklenir; o günler boşken bankadan dolmaz. CSV sonrası Çevir ile dokuz dili bir tuşta doldur.',
+          'Soruları oluşan gün yeşil taslaktır. Tercümesi eksik gün sarıdır. Kilitli gün kırmızıya döner ve değişmez. 9 Ekim 2026 ve sonrası CSV ile yüklenir; o günler boşken bankadan dolmaz. CSV sonrası Çevir ile dokuz dili bir tuşta doldur.',
           style: TextStyle(color: BilgiColors.muted, fontSize: 12),
         ),
         const SizedBox(height: 16),
@@ -1448,6 +1449,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                         ),
                         if (day.locked)
                           const Text('Kilitli', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800))
+                        else if (day.count > 0 && day.translated == false)
+                          const Text('Tercüme eksik', style: TextStyle(color: Color(0xFFFDE68A), fontWeight: FontWeight.w800))
                         else if (day.count > 0)
                           const Text('Taslak', style: TextStyle(color: Color(0xFF86EFAC), fontWeight: FontWeight.w800))
                         else
