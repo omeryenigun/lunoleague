@@ -166,6 +166,13 @@ class AdminGameCatalog {
       icon: Icons.quiz,
       sections: [AdminSection.overview],
     ),
+    AdminGameDefinition(
+      id: GameIds.oneButton,
+      name: 'ONE BUTTON',
+      summary: 'Tek buton, sonsuz meydan okuma',
+      icon: Icons.radio_button_checked,
+      sections: const [],
+    ),
   ];
 
   static AdminGameDefinition byId(String id) {

@@ -10,6 +10,7 @@ import 'package:kelimelig/core/config/api_config.dart';
 import 'package:kelimelig/admin/game_catalog.dart';
 import 'package:kelimelig/admin/screens/fall_admin_screen.dart';
 import 'package:kelimelig/admin/screens/grid_admin_screen.dart';
+import 'package:kelimelig/admin/screens/one_button_admin_screen.dart';
 import 'package:kelimelig/games/luno_bilgi/bilgi_admin.dart';
 import 'package:kelimelig/admin/game_scope.dart';
 import 'package:kelimelig/admin/screens/config_screen.dart';
@@ -617,6 +618,9 @@ class _AdminShellState extends State<AdminShell> {
     final game = AdminGameScope.gameOf(context);
     if (game.id == GameIds.lunoBilgi) {
       return BilgiAdminScreen(onLeave: widget.onLeave);
+    }
+    if (game.id == GameIds.oneButton) {
+      return OneButtonAdminScreen(onLeave: widget.onLeave);
     }
     final sections = game.menuSections;
     final index = _index.clamp(0, sections.length - 1);

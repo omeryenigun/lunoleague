@@ -17,6 +17,7 @@ COPY store/feature-graphic.png /seed/luno_league_gallery.png
 COPY assets/site/luno_play.png /seed/luno_shot_play.png
 COPY assets/site/luno_win.png /seed/luno_shot_win.png
 COPY assets/images/luno_bilgi_logo.jpg /seed/luno_bilgi_icon.jpg
+COPY assets/images/one_button_logo.jpg /seed/one_button_icon.jpg
 ENV PORT=8080
 ENV ADMIN_WEB_ROOT=/admin_web
 EXPOSE 8080

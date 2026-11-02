@@ -54,6 +54,7 @@ Future<void> main() async {
   await seedSiteCardGrid(db);
   await seedSiteCardBilgi(db);
   await seedSiteCardBilgiLive(db);
+  await seedSiteCardOneButton(db);
   await classifySiteCardMedia(db);
   final scoped = ScopedKeyValueStore(PostgresKv(db), GameIds.lunoLeague);
   final rules = LocalGameServer(scoped);

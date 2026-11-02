@@ -15,6 +15,7 @@ const siteCardsShotKey = 'site_cards_shots_v1';
 const siteCardsGridKey = 'site_cards_grid_v1';
 const siteCardsBilgiKey = 'site_cards_bilgi_v1';
 const siteCardsBilgiLiveKey = 'site_cards_bilgi_live_v1';
+const siteCardsOneButtonKey = 'site_cards_one_button_v1';
 const siteBilgiPlayUrl = 'https://play.google.com/store/apps/details?id=com.lunobilgi.game';
 
 const _iconPaths = [
@@ -329,6 +330,61 @@ Future<void> seedSiteCardBilgi(Connection db) async {
     parameters: {'key': siteCardsBilgiKey},
   );
   stdout.writeln('site card bilgi seeded live');
+}
+
+/// Adds the ONE BUTTON showcase card once. Later admin edits stay.
+Future<void> seedSiteCardOneButton(Connection db) async {
+  final meta = await db.execute(
+    Sql.named('select value from kv_meta where item_key = @key'),
+    parameters: {'key': siteCardsOneButtonKey},
+  );
+  if (meta.isNotEmpty && meta.first[0] == '1') return;
+  await db.execute(
+    Sql.named('''
+      insert into site_cards (
+        id, name, description, status, sort_order, name_en, description_en
+      )
+      values (
+        'one_button', @name, @description, 'soon', 5, @nameEn, @descriptionEn
+      )
+      on conflict (id) do update set
+        name = excluded.name,
+        description = excluded.description,
+        status = excluded.status,
+        sort_order = excluded.sort_order,
+        name_en = excluded.name_en,
+        description_en = excluded.description_en
+    '''),
+    parameters: {
+      'name': 'ONE BUTTON',
+      'description': 'Tek butonla refleks, zamanlama ve hafıza.',
+      'nameEn': 'ONE BUTTON',
+      'descriptionEn': 'One button. Reflex, timing, and memory.',
+    },
+  );
+  final icon = await _storeSeedImage(
+    db,
+    cardId: 'one_button',
+    role: siteMediaIcon,
+    paths: [
+      '/seed/one_button_icon.jpg',
+      'assets/images/one_button_logo.jpg',
+    ],
+    sortOrder: 1,
+  );
+  if (!icon) {
+    stdout.writeln('site card one_button waiting for icon');
+    return;
+  }
+  await db.execute(
+    Sql.named('''
+      insert into kv_meta (item_key, value)
+      values (@key, '1')
+      on conflict (item_key) do update set value = excluded.value
+    '''),
+    parameters: {'key': siteCardsOneButtonKey},
+  );
+  stdout.writeln('site card one_button seeded soon');
 }
 
 /// Marks Luno Bilgi published and stores the Play link. Runs once over an older soon card.
