@@ -10,3 +10,8 @@ macos
 .idea
 .env
 *.iml
+games
+**/build
+**/.dart_tool
+app-bilgi-release.apk
+tool/_*

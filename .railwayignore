@@ -44,3 +44,9 @@ linux
 macos
 test
 .env
+games
+**/build
+**/.dart_tool
+app-bilgi-release.apk
+tool/_*
+store/luno_bilgi_play_anim.json
