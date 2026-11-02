@@ -44,9 +44,9 @@ linux
 macos
 test
 .env
-games
-**/build
+# Only the isolated app tree at repo root (not lib/games/).
+/games
 **/.dart_tool
 app-bilgi-release.apk
-tool/_*
+/tool/_*
 store/luno_bilgi_play_anim.json

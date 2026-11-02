@@ -4,10 +4,7 @@ COPY pubspec.api.yaml pubspec.yaml
 COPY lib lib
 COPY bin/api_server.dart bin/api_server.dart
 RUN dart pub get
-# Cap heap so Metal builders don't OOM-kill AOT with no stderr (exit 254).
-ENV DART_VM_OPTIONS=--old_gen_heap_size=1536
-RUN dart --version \
-  && dart compile exe -v bin/api_server.dart -o /api/server
+RUN dart compile exe bin/api_server.dart -o /api/server
 
 FROM debian:bookworm-slim
 RUN apt-get update \
