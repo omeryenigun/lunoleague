@@ -171,7 +171,7 @@ class AdminGameCatalog {
       name: 'ONE BUTTON',
       summary: 'Tek buton, sonsuz meydan okuma',
       icon: Icons.radio_button_checked,
-      sections: const [],
+      sections: [],
     ),
   ];
 

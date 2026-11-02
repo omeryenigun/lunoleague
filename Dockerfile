@@ -1,4 +1,5 @@
-FROM dart:stable AS api
+# Pin digest: current dart:stable AOT step exits without logs on Railway Metal.
+FROM dart:stable@sha256:8dafcab3a8e474b49a2591b1db3b9d5d3915f1f36a396ec68d7726923ceb114f AS api
 WORKDIR /api
 COPY pubspec.api.yaml pubspec.yaml
 COPY lib lib
