@@ -1,11 +1,13 @@
-# Pin digest: current dart:stable AOT step exits without logs on Railway Metal.
-FROM dart:stable@sha256:8dafcab3a8e474b49a2591b1db3b9d5d3915f1f36a396ec68d7726923ceb114f AS api
+FROM dart:stable AS api
 WORKDIR /api
 COPY pubspec.api.yaml pubspec.yaml
 COPY lib lib
 COPY bin/api_server.dart bin/api_server.dart
 RUN dart pub get
-RUN dart compile exe bin/api_server.dart -o /api/server
+# Cap heap so Metal builders don't OOM-kill AOT with no stderr (exit 254).
+ENV DART_VM_OPTIONS=--old_gen_heap_size=1536
+RUN dart --version \
+  && dart compile exe -v bin/api_server.dart -o /api/server
 
 FROM debian:bookworm-slim
 RUN apt-get update \
