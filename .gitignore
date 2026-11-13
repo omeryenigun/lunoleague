@@ -62,3 +62,8 @@ android/keystore-backup/
 # API build
 server/.dart_tool/
 server/build/
+
+# Isolated Flutter apps under games/ (artifacts; source is tracked)
+games/**/build/
+games/**/.dart_tool/
+games/**/.flutter-plugins-dependencies

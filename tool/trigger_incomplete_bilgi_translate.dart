@@ -134,6 +134,7 @@ Future<void> main() async {
         result.error == 'Tercüme okunamadı.' ||
         result.error == 'Tercüme eksik geldi.' ||
         (result.error?.startsWith('openrouter_') ?? false) ||
+        (result.error?.startsWith('openai_') ?? false) ||
         (result.error?.startsWith('incomplete_locale_') ?? false)) {
       await Future<void>.delayed(const Duration(seconds: 3));
       result = await _translate(token, q, missing);
@@ -182,8 +183,15 @@ Future<({Map<String, BilgiTranslation> translations, String? error})> _translate
   // Prefer direct OpenRouter with max_tokens when the key is available (railway run).
   // Production /v1/admin/bilgi-translate currently omits max_tokens and can 402 when
   // remaining credits cannot cover the provider default ceiling (~65535).
+  // If OpenRouter auth is dead (401 User not found), fall back to OPENAI_API_KEY.
   final key = Platform.environment['OPENROUTER_API_KEY'] ?? '';
-  if (key.isNotEmpty) return _translateOpenRouter(key, q, locales);
+  if (key.isNotEmpty) {
+    final viaOr = await _translateOpenRouter(key, q, locales);
+    if (viaOr.error != 'openrouter_401') return viaOr;
+    stdout.writeln('openrouter_401 falling_back_to_openai id=${q.id}');
+  }
+  final openai = Platform.environment['OPENAI_API_KEY'] ?? '';
+  if (openai.isNotEmpty) return _translateOpenAi(openai, q, locales);
   return _translateViaApi(token, q, locales);
 }
 
@@ -244,6 +252,46 @@ Future<({Map<String, BilgiTranslation> translations, String? error})> _translate
   List<String> locales,
 ) async {
   final model = Platform.environment['OPENROUTER_MODEL'] ?? 'google/gemini-2.5-flash';
+  return _translateChatCompletions(
+    endpoint: Uri.parse('https://openrouter.ai/api/v1/chat/completions'),
+    key: key,
+    model: model,
+    q: q,
+    locales: locales,
+    headers: {
+      'http-referer': 'https://onyapp.app',
+      'x-title': 'Luno Bilgi',
+    },
+    errorPrefix: 'openrouter',
+  );
+}
+
+Future<({Map<String, BilgiTranslation> translations, String? error})> _translateOpenAi(
+  String key,
+  BilgiQuestion q,
+  List<String> locales,
+) async {
+  final model = Platform.environment['OPENAI_TRANSLATE_MODEL'] ?? 'gpt-4o-mini';
+  return _translateChatCompletions(
+    endpoint: Uri.parse('https://api.openai.com/v1/chat/completions'),
+    key: key,
+    model: model,
+    q: q,
+    locales: locales,
+    headers: const {},
+    errorPrefix: 'openai',
+  );
+}
+
+Future<({Map<String, BilgiTranslation> translations, String? error})> _translateChatCompletions({
+  required Uri endpoint,
+  required String key,
+  required String model,
+  required BilgiQuestion q,
+  required List<String> locales,
+  required Map<String, String> headers,
+  required String errorPrefix,
+}) async {
   final withHint = q.hint.trim().isNotEmpty;
   final sample = locales
       .map(
@@ -261,12 +309,11 @@ Future<({Map<String, BilgiTranslation> translations, String? error})> _translate
   try {
     final response = await http
         .post(
-          Uri.parse('https://openrouter.ai/api/v1/chat/completions'),
+          endpoint,
           headers: {
             'authorization': 'Bearer $key',
             'content-type': 'application/json',
-            'http-referer': 'https://onyapp.app',
-            'x-title': 'Luno Bilgi',
+            ...headers,
           },
           body: jsonEncode({
             'model': model,
@@ -291,7 +338,7 @@ Future<({Map<String, BilgiTranslation> translations, String? error})> _translate
         )
         .timeout(const Duration(seconds: 90));
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      return (translations: <String, BilgiTranslation>{}, error: 'openrouter_${response.statusCode}');
+      return (translations: <String, BilgiTranslation>{}, error: '${errorPrefix}_${response.statusCode}');
     }
     final decoded = jsonDecode(response.body);
     if (decoded is! Map) return (translations: <String, BilgiTranslation>{}, error: 'bad_json');

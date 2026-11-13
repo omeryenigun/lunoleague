@@ -1611,7 +1611,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
         const Text('Yayınlı sorular', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
         const Text(
-          'Onaylı soru sayısı. Her zorlukta en az $bilgiMinPublishedPerDifficulty soru varsa yeşil, biri eksikse kırmızı.',
+          'Onaylı soru sayısı. Her zorlukta en az $bilgiMinPublishedPerDifficulty soru varsa yeşil, biri eksikse kırmızı. Aktif/Pasif canlı yayın bayrağıdır.',
           style: TextStyle(color: BilgiColors.muted, fontSize: 12, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 12),
@@ -1622,7 +1622,7 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(minWidth: 860),
+                constraints: const BoxConstraints(minWidth: 940),
                 child: Column(
                   children: [
                     _matrixLine(category: 'Kategori', sub: 'Alt kategori', counts: const [], header: true),
@@ -1639,6 +1639,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
                           counts: [...row.counts, row.counts.fold<int>(0, (sum, item) => sum + item)],
                           ready: bilgiPublishedSubReady(row.categoryId, row.sub, row.counts),
                           selected: row.categoryId == _distCat && row.sub == _distSub && _distSub.isNotEmpty,
+                          categoryActive: row.categoryActive,
+                          subActive: row.subActive,
                         ),
                   ],
                 ),
@@ -1650,11 +1652,12 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     );
   }
 
-  List<({String categoryId, String category, String sub, List<int> counts})> _publishedMatrixRows() {
+  List<({String categoryId, String category, String sub, List<int> counts, bool categoryActive, bool subActive})>
+      _publishedMatrixRows() {
     const diffs = ['kolay', 'orta', 'zor', 'efsane'];
     final categories = _distCat.isEmpty ? _categories : _categories.where((item) => item.id == _distCat).toList();
     final seen = <String>{};
-    final rows = <({String categoryId, String category, String sub, List<int> counts})>[];
+    final rows = <({String categoryId, String category, String sub, List<int> counts, bool categoryActive, bool subActive})>[];
     List<int> countsOf(String categoryId, String sub) => [
           for (final difficulty in diffs)
             _distMatrix[(categoryId: categoryId, sub: sub, difficulty: difficulty)] ?? 0,
@@ -1663,7 +1666,14 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       final label = '${category.emoji} ${category.name}';
       for (final sub in category.subs) {
         seen.add('${category.id}|$sub');
-        rows.add((categoryId: category.id, category: label, sub: sub, counts: countsOf(category.id, sub)));
+        rows.add((
+          categoryId: category.id,
+          category: label,
+          sub: sub,
+          counts: countsOf(category.id, sub),
+          categoryActive: category.active,
+          subActive: _subIsActive(category.id, sub),
+        ));
       }
     }
     final extras = <({String categoryId, String sub})>[];
@@ -1687,6 +1697,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
         category: label,
         sub: extra.sub,
         counts: countsOf(extra.categoryId, extra.sub),
+        categoryActive: category?.active ?? true,
+        subActive: _subIsActive(extra.categoryId, extra.sub),
       ));
     }
     return rows;
@@ -1699,6 +1711,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
     bool header = false,
     bool selected = false,
     bool ready = false,
+    bool categoryActive = true,
+    bool subActive = true,
   }) {
     const headers = ['Kolay', 'Orta', 'Zor', 'Efsane', 'Toplam'];
     const readyColor = Color(0xFF3DDC97);
@@ -1709,6 +1723,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       fontWeight: FontWeight.w800,
       letterSpacing: header ? 0.4 : 0,
     );
+    final categoryLabel = header ? category : '$category · ${categoryActive ? 'Aktif' : 'Pasif'}';
+    final subLabel = header ? sub : '$sub · ${subActive ? 'Aktif' : 'Pasif'}';
     Widget cell(Widget child, double width, {bool end = false}) => SizedBox(
           width: width,
           child: Align(alignment: end ? Alignment.centerRight : Alignment.centerLeft, child: child),
@@ -1726,8 +1742,8 @@ class _BilgiAdminScreenState extends State<BilgiAdminScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
-          cell(Text(category, style: labelStyle, overflow: TextOverflow.ellipsis), 220),
-          cell(Text(sub, style: labelStyle, overflow: TextOverflow.ellipsis), 220),
+          cell(Text(categoryLabel, style: labelStyle, overflow: TextOverflow.ellipsis), 260),
+          cell(Text(subLabel, style: labelStyle, overflow: TextOverflow.ellipsis), 260),
           for (var i = 0; i < headers.length; i++)
             cell(
               Text(
