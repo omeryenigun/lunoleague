@@ -6,20 +6,23 @@ import 'package:go_router/go_router.dart';
 import 'package:kelimelig/core/constants/enums.dart';
 import 'package:kelimelig/core/l10n/l10n.dart';
 import 'package:kelimelig/core/services/ad_service.dart';
+import 'package:kelimelig/core/theme/colors.dart';
+import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
+import 'package:kelimelig/core/theme/shimmer_title.dart';
 import 'package:kelimelig/domain/entities/game_models.dart';
 import 'package:kelimelig/domain/entities/user_entity.dart';
+import 'package:kelimelig/core/widgets/app_bottom_nav.dart';
 import 'package:kelimelig/core/widgets/game_page_header.dart';
 import 'package:kelimelig/domain/game/game_server.dart';
 import 'package:kelimelig/injection.dart';
 
-const _kBg = Color(0xFF0D1117);
-const _kPanel = Color(0xFF161B22);
-const _kLine = Color(0xFF21262D);
-const _kMuted = Color(0xFF8B949E);
-const _kText = Color(0xFFE6EDF3);
-const _kGold = Color(0xFFF7B733);
-const _kGreen = Color(0xFF238636);
-const _kGreenLine = Color(0xFF2EA043);
+const _kPanel = Color(0xFF1E293B);
+const _kLine = AppColors.slateBorder;
+const _kMuted = AppColors.muted;
+const _kText = Color(0xFFF8FAFC);
+const _kGold = AppColors.cosmicGold;
+const _kGreen = AppColors.cosmicGreen;
+const _kGreenLine = AppColors.cosmicGreen;
 
 class MarathonScreen extends StatefulWidget {
   const MarathonScreen({super.key});
@@ -148,90 +151,96 @@ class _MarathonScreenState extends State<MarathonScreen> {
     final mine = _current;
     final selected = _selected;
     return Scaffold(
-      backgroundColor: _kBg,
-      body: SafeArea(
-        child: _loading || _snap == null
-            ? const Center(
-                child: CircularProgressIndicator(color: _kGold),
-              )
-            : Column(
-                children: [
-                  _TopBar(
-                    title: l10n.t('marathon_header'),
-                    continueLabel: _continueLabel(l10n, mine),
-                    endLabel: l10n.t('marathon_end'),
-                    stateLabel: switch (mine?.state) {
-                      MarathonRunState.running =>
-                        l10n.t('marathon_state_running'),
-                      MarathonRunState.paused =>
-                        l10n.t('marathon_state_paused'),
-                      _ => null,
-                    },
-                    paused: mine?.state == MarathonRunState.paused,
-                    busy: _busy,
-                    onContinue: _continue,
-                    onEnd: _end,
-                  ),
-                  Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(0, 0, 0, 28),
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-                          child: Row(
-                            children: [
-                              for (final row in _snap!.leagues) ...[
-                                if (row != _snap!.leagues.first)
-                                  const SizedBox(width: 8),
-                                Expanded(
-                                  child: _LeagueTab(
-                                    row: row,
-                                    selected: _open == row.league,
-                                    locale: l10n.id,
-                                    onTap: () =>
-                                        setState(() => _open = row.league),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Row(
-                            children: [
-                              for (final span in _MarathonSpan.values) ...[
-                                if (span != _MarathonSpan.values.first)
-                                  const SizedBox(width: 6),
-                                Expanded(
-                                  child: _TimePill(
-                                    label: l10n.t(span.labelKey),
-                                    selected: _span == span,
-                                    onTap: () => setState(() => _span = span),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        if (selected != null)
-                          _BoardSection(
-                            row: selected,
-                            span: _span,
-                            playerName: _user?.displayName ?? l10n.t('guest'),
-                            placeInvite: mine == null ||
-                                    mine.state == MarathonRunState.none
-                                ? l10n.t('marathon_take_place')
-                                : null,
-                          ),
-                        const SizedBox(height: 16),
-                        const _RulesCard(),
-                      ],
+      backgroundColor: AppColors.cosmicBg,
+      bottomNavigationBar: const AppBottomNav(),
+      body: CosmicBackdrop(
+        child: SafeArea(
+          bottom: false,
+          child: _loading || _snap == null
+              ? const Center(
+                  child: CircularProgressIndicator(color: _kGold),
+                )
+              : Column(
+                  children: [
+                    _TopBar(
+                      title: l10n.t('marathon_header'),
+                      continueLabel: _continueLabel(l10n, mine),
+                      endLabel: l10n.t('marathon_end'),
+                      stateLabel: switch (mine?.state) {
+                        MarathonRunState.running =>
+                          l10n.t('marathon_state_running'),
+                        MarathonRunState.paused =>
+                          l10n.t('marathon_state_paused'),
+                        _ => null,
+                      },
+                      paused: mine?.state == MarathonRunState.paused,
+                      busy: _busy,
+                      onContinue: _continue,
+                      onEnd: _end,
                     ),
-                  ),
-                ],
-              ),
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(0, 0, 0, 28),
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                            child: Row(
+                              children: [
+                                for (final row in _snap!.leagues) ...[
+                                  if (row != _snap!.leagues.first)
+                                    const SizedBox(width: 8),
+                                  Expanded(
+                                    child: _LeagueTab(
+                                      row: row,
+                                      selected: _open == row.league,
+                                      locale: l10n.id,
+                                      onTap: () =>
+                                          setState(() => _open = row.league),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Row(
+                              children: [
+                                for (final span in _MarathonSpan.values) ...[
+                                  if (span != _MarathonSpan.values.first)
+                                    const SizedBox(width: 6),
+                                  Expanded(
+                                    child: _TimePill(
+                                      label: l10n.t(span.labelKey),
+                                      selected: _span == span,
+                                      onTap: () =>
+                                          setState(() => _span = span),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          if (selected != null)
+                            _BoardSection(
+                              row: selected,
+                              span: _span,
+                              playerName:
+                                  _user?.displayName ?? l10n.t('guest'),
+                              placeInvite: mine == null ||
+                                      mine.state == MarathonRunState.none
+                                  ? l10n.t('marathon_take_place')
+                                  : null,
+                            ),
+                          const SizedBox(height: 16),
+                          const _RulesCard(),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }
@@ -267,10 +276,10 @@ class _TopBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           GamePageHeader(title: title, bottomSpacing: 12),
-          _ContinueButton(
+          CosmicContinueButton(
             label: continueLabel,
-            busy: busy,
-            onPressed: onContinue,
+            onPressed: busy ? null : onContinue,
+            showArrow: false,
           ),
           if (status != null && status.isNotEmpty) ...[
             const SizedBox(height: 8),
@@ -288,8 +297,8 @@ class _TopBar extends StatelessWidget {
             OutlinedButton(
               onPressed: busy ? null : onEnd,
               style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFE6EDF3),
-                side: const BorderSide(color: Color(0xFF30363D)),
+                foregroundColor: _kText,
+                side: const BorderSide(color: AppColors.slateBorder),
                 minimumSize: const Size.fromHeight(44),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -302,59 +311,6 @@ class _TopBar extends StatelessWidget {
             ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-class _ContinueButton extends StatelessWidget {
-  const _ContinueButton({
-    required this.label,
-    required this.busy,
-    required this.onPressed,
-  });
-
-  final String label;
-  final bool busy;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(28),
-          gradient: const LinearGradient(
-            colors: [Color(0xFFD7B8FF), Color(0xFFB794F6)],
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFFC4A1FF).withValues(alpha: 0.45),
-              blurRadius: 18,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: busy ? null : onPressed,
-            borderRadius: BorderRadius.circular(28),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Color(0xFF1A1028),
-                  fontWeight: FontWeight.w900,
-                  fontSize: 16,
-                ),
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -752,9 +708,9 @@ class _RankRow extends StatelessWidget {
     final name = me ? '${entry.player.name}  · $youLabel' : entry.player.name;
     return Container(
       decoration: me
-          ? const BoxDecoration(
-              color: Color(0x1F2EA043),
-              border: Border(
+          ? BoxDecoration(
+              color: AppColors.cosmicGreen.withValues(alpha: 0.12),
+              border: const Border(
                 left: BorderSide(color: _kGreenLine, width: 3),
               ),
             )
@@ -781,7 +737,7 @@ class _RankRow extends StatelessWidget {
             alignment: Alignment.center,
             decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              color: Color(0xFF21262D),
+              color: AppColors.slateBorder,
             ),
             child: Text(
               _initial(entry.player.name),
@@ -802,7 +758,7 @@ class _RankRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: me ? const Color(0xFF4ADE80) : _kText,
+                    color: me ? AppColors.cosmicGreen : _kText,
                     fontWeight: FontWeight.w600,
                     fontSize: 14,
                   ),

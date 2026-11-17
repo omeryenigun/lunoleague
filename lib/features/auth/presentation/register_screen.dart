@@ -37,17 +37,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return InputDecoration(
       labelText: label,
       filled: true,
-      fillColor: const Color(0xB30F172A),
+      fillColor: AppColors.slateGlass,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: AppColors.cosmicGreen.withValues(alpha: 0.35)),
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: AppColors.slateBorder),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: AppColors.cosmicBlue.withValues(alpha: 0.28)),
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: AppColors.slateBorder),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         borderSide: const BorderSide(color: AppColors.cosmicGreen, width: 1.6),
       ),
     );

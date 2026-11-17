@@ -29,10 +29,10 @@ class GuessBoard extends StatelessWidget {
       builder: (context, constraints) {
         final maxW = constraints.maxWidth.isFinite
             ? constraints.maxWidth
-            : MediaQuery.sizeOf(context).width - 32;
-        final gap = wordLength >= 7 ? 4.0 : (wordLength >= 6 ? 5.0 : 6.0);
+            : MediaQuery.sizeOf(context).width - 12;
+        final gap = wordLength >= 7 ? 3.0 : (wordLength >= 6 ? 4.0 : 5.0);
         final size = ((maxW - gap * (wordLength - 1)) / wordLength)
-            .clamp(26.0, 58.0)
+            .clamp(28.0, 72.0)
             .toDouble();
         return Column(
           mainAxisSize: MainAxisSize.min,

@@ -7,12 +7,12 @@ import 'package:kelimelig/domain/entities/game_models.dart';
 import 'package:kelimelig/domain/game/game_server.dart';
 import 'package:kelimelig/injection.dart';
 
-const _kPanel = Color(0xFF161B22);
-const _kLine = Color(0xFF21262D);
-const _kMuted = Color(0xFF8B949E);
-const _kText = Color(0xFFE6EDF3);
-const _kGold = Color(0xFFF7B733);
-const _kGreenLine = Color(0xFF2EA043);
+const _kPanel = Color(0xFF1E293B);
+const _kLine = Color(0xFF334155);
+const _kMuted = Color(0xFF94A3B8);
+const _kText = Color(0xFFF8FAFC);
+const _kGold = Color(0xFFFBBF24);
+const _kGreenLine = Color(0xFF2ECC71);
 
 const _kSeedFirst = [
   'Ahmet', 'Zeynep', 'Mert', 'Elif', 'Can', 'Selin', 'Burak', 'Ayşe',

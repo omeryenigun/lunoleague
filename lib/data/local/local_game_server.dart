@@ -1300,10 +1300,16 @@ class LocalGameServer implements GameServer {
     user = await _applyMissedStreak(user);
     user = await _maybeRolloverLeague(user);
     final today = DateKeys.dayKey(_now);
-    final open = await _findActive(user.id, GameType.daily, language: user.locale);
+    final league = user.currentLeague;
+    final open = await _findActive(
+      user.id,
+      GameType.daily,
+      language: user.locale,
+      league: league,
+    );
     final openToday = open != null && _sessionStillOpen(open);
-    final finished = await _maxFinishedDailyIndex(user, today);
-    final stored = await _storedDailyCount(today, user.locale, user.currentLeague);
+    final finished = await _maxFinishedDailyIndex(user, today, league: league);
+    final stored = await _storedDailyCount(today, user.locale, league);
     final DailyStatus daily;
     final int dailyIndex;
     final bool dailyNeedsAd;
@@ -1322,7 +1328,7 @@ class LocalGameServer implements GameServer {
         user.id,
         today,
         user.locale,
-        user.currentLeague,
+        league,
         finished + 1,
       );
     } else {
@@ -1546,11 +1552,37 @@ class LocalGameServer implements GameServer {
     return 1;
   }
 
-  bool _dailySessionFinished(Map<String, dynamic> session, UserEntity user, String today) {
+  /// League on the session, or inferred from word length for legacy rows.
+  LeagueTier? _sessionLeague(Map<String, dynamic> raw) {
+    final name = raw['league'] as String?;
+    if (name != null) {
+      for (final tier in LeagueTier.values) {
+        if (tier.name == name) return tier;
+      }
+    }
+    final length = raw['wordLength'];
+    final len = length is int ? length : int.tryParse('$length');
+    if (len == null) return null;
+    for (final tier in LeagueTier.values) {
+      if (tier.wordLength == len) return tier;
+    }
+    return null;
+  }
+
+  bool _dailySessionFinished(
+    Map<String, dynamic> session,
+    UserEntity user,
+    String today, {
+    LeagueTier? league,
+  }) {
     if (session['userId'] != user.id) return false;
     if (session['gameType'] != GameType.daily.name) return false;
     final language = session['language'] as String? ?? 'tr';
     if (language != user.locale) return false;
+    if (league != null) {
+      final sessionLeague = _sessionLeague(session);
+      if (sessionLeague != league) return false;
+    }
     final status = session['status'] as String?;
     final finished = status == GameStatus.won.name ||
         status == GameStatus.lost.name ||
@@ -1560,10 +1592,15 @@ class LocalGameServer implements GameServer {
     return started != null && DateKeys.dayKey(started) == today;
   }
 
-  Future<int> _maxFinishedDailyIndex(UserEntity user, String today) async {
+  Future<int> _maxFinishedDailyIndex(
+    UserEntity user,
+    String today, {
+    LeagueTier? league,
+  }) async {
+    final tier = league ?? user.currentLeague;
     var maxIndex = 0;
     for (final session in await _store.values('game_sessions')) {
-      if (!_dailySessionFinished(session, user, today)) continue;
+      if (!_dailySessionFinished(session, user, today, league: tier)) continue;
       final index = _sessionDailyIndex(session);
       if (index > maxIndex) maxIndex = index;
     }
@@ -1573,11 +1610,13 @@ class LocalGameServer implements GameServer {
   Future<Map<String, dynamic>?> _finishedDailySession(
     UserEntity user,
     String today,
-    int index,
-  ) async {
+    int index, {
+    LeagueTier? league,
+  }) async {
+    final tier = league ?? user.currentLeague;
     Map<String, dynamic>? found;
     for (final session in await _store.values('game_sessions')) {
-      if (!_dailySessionFinished(session, user, today)) continue;
+      if (!_dailySessionFinished(session, user, today, league: tier)) continue;
       if (_sessionDailyIndex(session) != index) continue;
       found = session;
     }
@@ -1671,7 +1710,8 @@ class LocalGameServer implements GameServer {
     final locale = user.locale;
     final league = user.currentLeague;
     return _lockedDaily('${day}_${locale}_${league.name}', () async {
-      final finished = await _maxFinishedDailyIndex(user, day);
+      final finished =
+          await _maxFinishedDailyIndex(user, day, league: league);
       final stored = await _storedDailyCount(day, locale, league);
       if (finished < 1) return false;
       if (finished < stored) return true;
@@ -1754,13 +1794,15 @@ class LocalGameServer implements GameServer {
     final created = await _ensureNextDailySlot(user);
     if (!created) return false;
     final day = DateKeys.dayKey(_now);
-    final next = await _maxFinishedDailyIndex(user, day) + 1;
+    final league = user.currentLeague;
+    final next =
+        await _maxFinishedDailyIndex(user, day, league: league) + 1;
     if (next > AppConstants.maxDailySlots) return false;
-    if (await _readDailySlot(day, user.locale, user.currentLeague, next) == null) {
+    if (await _readDailySlot(day, user.locale, league, next) == null) {
       return false;
     }
     await _store.putMeta(
-      _dailyPermitKey(userId, day, user.locale, user.currentLeague, next),
+      _dailyPermitKey(userId, day, user.locale, league, next),
       '1',
     );
     await _store.putMeta(seen, '1');
@@ -1771,6 +1813,7 @@ class LocalGameServer implements GameServer {
     String userId,
     GameType type, {
     String? language,
+    LeagueTier? league,
   }) async {
     final all = await _store.values('game_sessions');
     for (final s in all) {
@@ -1780,6 +1823,10 @@ class LocalGameServer implements GameServer {
         if (language != null) {
           final sessionLang = s['language'] as String? ?? 'tr';
           if (sessionLang != language) continue;
+        }
+        if (league != null) {
+          final sessionLeague = _sessionLeague(s);
+          if (sessionLeague != league) continue;
         }
         return s;
       }
@@ -1814,6 +1861,7 @@ class LocalGameServer implements GameServer {
       'expiresAt': _expiresAtFor(type).toIso8601String(),
       'endlessStreak': 0,
       if (type == GameType.daily) 'dailyIndex': dailyIndex,
+      if (type == GameType.daily) 'league': user.currentLeague.name,
     };
     await _store.put('game_sessions', id, map);
     return map;
@@ -1827,16 +1875,23 @@ class LocalGameServer implements GameServer {
     }
     user = await _applyMissedStreak(user);
     final today = DateKeys.dayKey(_now);
-    final existing = await _findActive(user.id, GameType.daily, language: user.locale);
+    final league = user.currentLeague;
+    final locale = user.locale;
+    final existing = await _findActive(
+      user.id,
+      GameType.daily,
+      language: locale,
+      league: league,
+    );
     if (existing != null && _sessionStillOpen(existing)) {
       return _sessionToView(existing);
     }
-    final finished = await _maxFinishedDailyIndex(user, today);
+    final finished =
+        await _maxFinishedDailyIndex(user, today, league: league);
     final next = finished + 1;
-    final league = user.currentLeague;
-    final locale = user.locale;
     if (next > AppConstants.maxDailySlots) {
-      final last = await _finishedDailySession(user, today, finished);
+      final last =
+          await _finishedDailySession(user, today, finished, league: league);
       if (last != null) return _sessionToView(last);
       throw AppFailure(UserMessages.dailyCompleted, code: 'DAILY_DONE');
     }
@@ -1863,7 +1918,8 @@ class LocalGameServer implements GameServer {
     if (slot == null ||
         (next > 1 &&
             !await _hasDailyPermit(user.id, today, locale, league, next))) {
-      final last = await _finishedDailySession(user, today, finished);
+      final last =
+          await _finishedDailySession(user, today, finished, league: league);
       if (last != null) return _sessionToView(last);
       throw AppFailure(UserMessages.dailyCompleted, code: 'DAILY_DONE');
     }
@@ -2511,7 +2567,12 @@ class LocalGameServer implements GameServer {
   @override
   Future<GameSessionView> activeSession(GameType type) async {
     final user = await _requireUser();
-    final existing = await _findActive(user.id, type, language: user.locale);
+    final existing = await _findActive(
+      user.id,
+      type,
+      language: user.locale,
+      league: type == GameType.daily ? user.currentLeague : null,
+    );
     if (existing == null) {
       throw AppFailure(UserMessages.sessionExpired, code: 'NO_SESSION');
     }

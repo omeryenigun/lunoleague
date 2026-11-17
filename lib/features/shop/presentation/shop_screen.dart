@@ -175,14 +175,12 @@ class _ShopScreenState extends State<ShopScreen> {
                         return CosmicGlassCard(
                           colors: isShield
                               ? const [
-                                  Color(0xFF3B82F6),
+                                  AppColors.cosmicBlue,
                                   Color(0xFF1E3A5F),
-                                  Color(0xFF0F172A),
                                 ]
                               : const [
-                                  Color(0xFF334155),
-                                  Color(0xFF1E293B),
-                                  Color(0xFF0F172A),
+                                  AppColors.cosmicGold,
+                                  Color(0xFFF59E0B),
                                 ],
                           padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
                           child: Row(
@@ -193,10 +191,16 @@ class _ShopScreenState extends State<ShopScreen> {
                                 alignment: Alignment.center,
                                 decoration: BoxDecoration(
                                   color: (isShield
-                                          ? const Color(0xFF60A5FA)
+                                          ? AppColors.cosmicBlue
                                           : AppColors.cosmicGold)
-                                      .withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(14),
+                                      .withValues(alpha: 0.16),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: (isShield
+                                            ? AppColors.cosmicBlue
+                                            : AppColors.cosmicGold)
+                                        .withValues(alpha: 0.28),
+                                  ),
                                 ),
                                 child: Text(
                                   isShield ? '🛡' : '🪙',
@@ -220,7 +224,7 @@ class _ShopScreenState extends State<ShopScreen> {
                                     Text(
                                       storePrice ?? p.priceLabel(locale),
                                       style: const TextStyle(
-                                        color: Color(0xFF94A3B8),
+                                        color: AppColors.muted,
                                         fontWeight: FontWeight.w600,
                                         fontSize: 13,
                                       ),
@@ -241,6 +245,13 @@ class _ShopScreenState extends State<ShopScreen> {
                                         : AppColors.cosmicGold
                                             .withValues(alpha: 0.18),
                                     borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: p.popular
+                                          ? AppColors.cosmicGreen
+                                              .withValues(alpha: 0.4)
+                                          : AppColors.cosmicGold
+                                              .withValues(alpha: 0.4),
+                                    ),
                                   ),
                                   child: Text(
                                     badge,
@@ -258,9 +269,12 @@ class _ShopScreenState extends State<ShopScreen> {
                               FilledButton(
                                 onPressed: busy || !canBuy ? null : () => _buy(p),
                                 style: FilledButton.styleFrom(
-                                  backgroundColor: AppColors.cosmicGreen,
-                                  foregroundColor: const Color(0xFF0F172A),
+                                  backgroundColor: AppColors.cosmicGold,
+                                  foregroundColor: const Color(0xFF1A1205),
                                   visualDensity: VisualDensity.compact,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
                                 ),
                                 child: busy
                                     ? const SizedBox(
@@ -268,12 +282,16 @@ class _ShopScreenState extends State<ShopScreen> {
                                         height: 16,
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2,
+                                          color: Color(0xFF1A1205),
                                         ),
                                       )
                                     : Text(
                                         canBuy
                                             ? l10n.t('shop_buy')
                                             : l10n.t('shop_unavailable'),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w900,
+                                        ),
                                       ),
                               ),
                             ],

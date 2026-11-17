@@ -6,7 +6,12 @@ import 'package:kelimelig/core/constants/user_messages.dart';
 import 'package:kelimelig/core/errors/failures.dart';
 import 'package:kelimelig/core/l10n/l10n.dart';
 import 'package:kelimelig/core/services/rewarded_ad_flow.dart';
+import 'package:kelimelig/core/theme/colors.dart';
+import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
+import 'package:kelimelig/core/theme/cosmic_glass.dart';
+import 'package:kelimelig/core/theme/shimmer_title.dart';
 import 'package:kelimelig/core/utils/date_keys.dart';
+import 'package:kelimelig/core/widgets/app_bottom_nav.dart';
 import 'package:kelimelig/core/widgets/game_page_header.dart';
 import 'package:kelimelig/domain/entities/app_config.dart';
 import 'package:kelimelig/domain/entities/user_entity.dart';
@@ -14,11 +19,10 @@ import 'package:kelimelig/domain/game/game_server.dart';
 import 'package:kelimelig/features/auth/cubit/auth_cubit.dart';
 import 'package:kelimelig/injection.dart';
 
-const _bg = Color(0xFF071018);
-const _gold = Color(0xFFFBBF24);
+const _gold = AppColors.cosmicGold;
 const _amber = Color(0xFFF59E0B);
-const _green = Color(0xFF4ADE80);
-const _muted = Color(0xFFB8C3D6);
+const _green = AppColors.cosmicGreen;
+const _muted = AppColors.muted;
 const _hint = Color(0xFF64748B);
 
 class DailyRewardScreen extends StatefulWidget {
@@ -123,54 +127,66 @@ class _DailyRewardScreenState extends State<DailyRewardScreen>
     final l10n = sl<L10n>();
     final user = _user;
     return Scaffold(
-      backgroundColor: _bg,
-      body: SafeArea(
-        child: _loading
-            ? const Center(child: CircularProgressIndicator(color: _green))
-            : user == null
-            ? const Center(child: Text('Günlük ödül açılamadı.', style: TextStyle(color: _muted)))
-            : ListView(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-                children: [
-                  GamePageHeader(title: l10n.t('daily_reward_title')),
-                  _Series(through: _through(user)),
-                  const SizedBox(height: 28),
-                  Text(
-                    _claimedToday(user)
-                        ? l10n.t('daily_reward_tomorrow')
-                        : l10n.t('daily_reward_today'),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: _hint,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                      letterSpacing: 0.4,
-                    ),
+      backgroundColor: AppColors.cosmicBg,
+      bottomNavigationBar: const AppBottomNav(),
+      body: CosmicBackdrop(
+        child: SafeArea(
+          bottom: false,
+          child: _loading
+              ? const Center(child: CircularProgressIndicator(color: _green))
+              : user == null
+              ? const Center(
+                  child: Text(
+                    'Günlük ödül açılamadı.',
+                    style: TextStyle(color: _muted),
                   ),
-                  const SizedBox(height: 10),
-                  _RewardStage(
-                    prizes: _prizes(l10n, _spec(_shownDay(user))),
-                    gathering: _busy ? _motion : null,
-                  ),
-                  if (_error != null) ...[
-                    const SizedBox(height: 12),
-                    Text(_error!, style: const TextStyle(color: Color(0xFFF87171))),
-                  ],
-                  const SizedBox(height: 16),
-                  _ClaimButton(
-                    claimed: _claimedToday(user),
-                    busy: _busy,
-                    label: _trUpper(
+                )
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+                  children: [
+                    GamePageHeader(title: l10n.t('daily_reward_title')),
+                    _Series(through: _through(user)),
+                    const SizedBox(height: 28),
+                    Text(
                       _claimedToday(user)
-                          ? l10n.t('daily_reward_taken')
-                          : l10n.t('daily_reward_claim'),
+                          ? l10n.t('daily_reward_tomorrow')
+                          : l10n.t('daily_reward_today'),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: _hint,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        letterSpacing: 0.4,
+                      ),
                     ),
-                    onPressed: _claim,
-                  ),
-                  const SizedBox(height: 16),
-                  const _AdCoinBanner(),
-                ],
-              ),
+                    const SizedBox(height: 10),
+                    _RewardStage(
+                      prizes: _prizes(l10n, _spec(_shownDay(user))),
+                      gathering: _busy ? _motion : null,
+                    ),
+                    if (_error != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        _error!,
+                        style: const TextStyle(color: AppColors.cosmicRed),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    _ClaimButton(
+                      claimed: _claimedToday(user),
+                      busy: _busy,
+                      label: _trUpper(
+                        _claimedToday(user)
+                            ? l10n.t('daily_reward_taken')
+                            : l10n.t('daily_reward_claim'),
+                      ),
+                      onPressed: _claim,
+                    ),
+                    const SizedBox(height: 16),
+                    const _AdCoinBanner(),
+                  ],
+                ),
+        ),
       ),
     );
   }
@@ -264,7 +280,9 @@ class _Series extends StatelessWidget {
                               height: 3,
                               color: day == 1
                                   ? Colors.transparent
-                                  : (day - 1 <= through ? _green : const Color(0xFF3A4454)),
+                                  : (day - 1 <= through
+                                      ? _green
+                                      : AppColors.slateBorder),
                             ),
                           ),
                           Expanded(
@@ -272,7 +290,9 @@ class _Series extends StatelessWidget {
                               height: 3,
                               color: day == 7
                                   ? Colors.transparent
-                                  : (day <= through ? _green : const Color(0xFF3A4454)),
+                                  : (day <= through
+                                      ? _green
+                                      : AppColors.slateBorder),
                             ),
                           ),
                         ],
@@ -287,7 +307,7 @@ class _Series extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: day <= through ? _green : const Color(0xFF6B7280),
+                    color: day <= through ? _green : AppColors.muted,
                     fontSize: 10,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 0.3,
@@ -317,9 +337,17 @@ class _DayNode extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: claimed ? const Color(0xFF3DDC84) : const Color(0xFF2C3544),
+        color: claimed ? _green : const Color(0xFF1E293B),
+        border: claimed
+            ? null
+            : Border.all(color: AppColors.slateBorder),
         boxShadow: claimed
-            ? const [BoxShadow(color: Color(0x883DDC84), blurRadius: 12)]
+            ? [
+                BoxShadow(
+                  color: _green.withValues(alpha: 0.45),
+                  blurRadius: 12,
+                ),
+              ]
             : null,
       ),
       child: claimed
@@ -327,7 +355,7 @@ class _DayNode extends StatelessWidget {
           : Text(
               '$day',
               style: const TextStyle(
-                color: Color(0xFF9AA3B2),
+                color: AppColors.muted,
                 fontWeight: FontWeight.w700,
                 fontSize: 12,
               ),
@@ -344,14 +372,9 @@ class _RewardStage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
+    return CosmicGlassCard(
+      colors: const [_gold, _amber, Color(0xFFD97706)],
       padding: const EdgeInsets.fromLTRB(16, 28, 16, 26),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A2230),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFF2A3544)),
-      ),
       child: Column(
         children: [
           for (var i = 0; i < prizes.length; i++) ...[
@@ -414,7 +437,7 @@ class _PrizeMark extends StatelessWidget {
         Text(
           prize.caption,
           style: const TextStyle(
-            color: Color(0xFF9AA3B2),
+            color: AppColors.muted,
             fontSize: 13,
             fontWeight: FontWeight.w800,
             letterSpacing: 1.6,
@@ -441,23 +464,22 @@ class _ClaimButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (claimed) {
-      return Container(
-        height: 52,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: const Color(0xFF1B2430),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFF2A3544)),
-        ),
+      return CosmicGlassCard(
+        colors: const [AppColors.slateBorder, AppColors.slateBorder],
+        padding: const EdgeInsets.symmetric(vertical: 14),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.check_circle_outline, color: Color(0xFF9AA3B2), size: 18),
+            const Icon(
+              Icons.check_circle_outline,
+              color: AppColors.muted,
+              size: 18,
+            ),
             const SizedBox(width: 8),
             Text(
               label,
               style: const TextStyle(
-                color: Color(0xFF9AA3B2),
+                color: AppColors.muted,
                 fontWeight: FontWeight.w800,
                 fontSize: 14,
                 letterSpacing: 1.2,
@@ -467,19 +489,10 @@ class _ClaimButton extends StatelessWidget {
         ),
       );
     }
-    return FilledButton(
+    return CosmicContinueButton(
+      label: label,
       onPressed: busy ? null : onPressed,
-      style: FilledButton.styleFrom(
-        backgroundColor: _amber,
-        disabledBackgroundColor: const Color(0xFF1B2430),
-        foregroundColor: const Color(0xFF1C1917),
-        minimumSize: const Size.fromHeight(52),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, letterSpacing: 1.1),
-      ),
+      showArrow: false,
     );
   }
 }
@@ -566,64 +579,67 @@ class _AdCoinBannerState extends State<_AdCoinBanner> {
   Widget build(BuildContext context) {
     final l10n = sl<L10n>();
     final amount = _reward ?? 15;
-    return Material(
-      color: const Color(0xFF111827),
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: _busy ? null : _watch,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0x66F59E0B)),
+    return CosmicGlassCard(
+      onTap: _busy ? null : _watch,
+      colors: const [_gold, _amber, Color(0xFFD97706)],
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Row(
+        children: [
+          const Icon(Icons.card_giftcard_rounded, color: _gold, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  l10n.t('home_ad_title'),
+                  style: const TextStyle(
+                    color: _gold,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
+                ),
+                Text(
+                  l10n.t('home_ad_sub').replaceAll('{n}', '$amount'),
+                  style: const TextStyle(
+                    color: _muted,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
           ),
-          child: Row(
-            children: [
-              const Icon(Icons.card_giftcard_rounded, color: _gold, size: 22),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      l10n.t('home_ad_title'),
-                      style: const TextStyle(color: _gold, fontWeight: FontWeight.w800, fontSize: 15),
-                    ),
-                    Text(
-                      l10n.t('home_ad_sub').replaceAll('{n}', '$amount'),
-                      style: const TextStyle(color: _muted, fontSize: 12.5, fontWeight: FontWeight.w500),
-                    ),
-                  ],
-                ),
+          const SizedBox(width: 8),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              gradient: const LinearGradient(
+                colors: [_amber, Color(0xFFD97706)],
               ),
-              const SizedBox(width: 8),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  gradient: const LinearGradient(colors: [_amber, Color(0xFFD97706)]),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  child: _busy
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1C1917)),
-                        )
-                      : Text(
-                          l10n.t('home_ad_watch'),
-                          style: const TextStyle(
-                            color: Color(0xFF1C1917),
-                            fontWeight: FontWeight.w800,
-                            fontSize: 13,
-                          ),
-                        ),
-                ),
-              ),
-            ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: _busy
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFF1C1917),
+                      ),
+                    )
+                  : Text(
+                      l10n.t('home_ad_watch'),
+                      style: const TextStyle(
+                        color: Color(0xFF1C1917),
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                      ),
+                    ),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

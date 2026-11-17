@@ -19,11 +19,26 @@ class HomeTitleButton extends StatelessWidget {
   }
 }
 
-/// Settings-style page chrome: shimmer title with a home control on the left.
+/// Close control for in-game chrome. Opens `/home` with no confirm dialog.
+class CloseTitleButton extends StatelessWidget {
+  const CloseTitleButton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return CosmicGlassIconButton(
+      icon: Icons.close_rounded,
+      tooltip: sl<L10n>().t('home'),
+      onPressed: () => context.go('/home'),
+    );
+  }
+}
+
+/// Settings-style page chrome: shimmer title with a leading control on the left.
 class GamePageHeader extends StatelessWidget {
   const GamePageHeader({
     super.key,
     required this.title,
+    this.leading,
     this.trailing,
     this.titleExtra,
     this.bottomSpacing = 18,
@@ -31,6 +46,8 @@ class GamePageHeader extends StatelessWidget {
   });
 
   final String title;
+  /// Defaults to [HomeTitleButton]. Pass [CloseTitleButton] on the game screen.
+  final Widget? leading;
   final Widget? trailing;
   final Widget? titleExtra;
   final double bottomSpacing;
@@ -43,7 +60,7 @@ class GamePageHeader extends StatelessWidget {
       children: [
         Row(
           children: [
-            const HomeTitleButton(),
+            leading ?? const HomeTitleButton(),
             const SizedBox(width: 12),
             Expanded(
               child: Row(

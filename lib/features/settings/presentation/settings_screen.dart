@@ -265,13 +265,17 @@ class _SettingsAdPanelState extends State<_SettingsAdPanel> {
         borderRadius: BorderRadius.circular(20),
         child: Ink(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            gradient: const LinearGradient(
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-              colors: [Color(0x332A2208), Color(0xFF12160F)],
+            borderRadius: BorderRadius.circular(16),
+            color: AppColors.slateGlass,
+            border: Border.all(
+              color: AppColors.cosmicGold.withValues(alpha: 0.55),
             ),
-            border: Border.all(color: const Color(0x99C6A15A)),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.cosmicGold.withValues(alpha: 0.16),
+                blurRadius: 18,
+              ),
+            ],
           ),
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
           child: Row(
@@ -280,13 +284,16 @@ class _SettingsAdPanelState extends State<_SettingsAdPanel> {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2A2414),
+                  color: AppColors.cosmicGold.withValues(alpha: 0.16),
                   borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.cosmicGold.withValues(alpha: 0.28),
+                  ),
                 ),
                 alignment: Alignment.center,
                 child: const Icon(
                   Icons.videocam_rounded,
-                  color: Color(0xFFFFC107),
+                  color: AppColors.cosmicGold,
                   size: 22,
                 ),
               ),
@@ -307,7 +314,7 @@ class _SettingsAdPanelState extends State<_SettingsAdPanel> {
                     Text(
                       l10n.t('settings_ad_sub'),
                       style: const TextStyle(
-                        color: Color(0xFF9CA3AF),
+                        color: AppColors.muted,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -318,9 +325,9 @@ class _SettingsAdPanelState extends State<_SettingsAdPanel> {
               const SizedBox(width: 8),
               DecoratedBox(
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1A1408),
+                  color: const Color(0xCC0B1120),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFFFC107)),
+                  border: Border.all(color: AppColors.cosmicGold),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -330,7 +337,7 @@ class _SettingsAdPanelState extends State<_SettingsAdPanel> {
                           height: 16,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: Color(0xFFFFC107),
+                            color: AppColors.cosmicGold,
                           ),
                         )
                       : Row(
@@ -339,7 +346,7 @@ class _SettingsAdPanelState extends State<_SettingsAdPanel> {
                             Text(
                               '+$reward',
                               style: const TextStyle(
-                                color: Color(0xFFFFC107),
+                                color: AppColors.cosmicGold,
                                 fontWeight: FontWeight.w800,
                                 fontSize: 14,
                               ),
@@ -369,9 +376,15 @@ class _SettingsSection extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
       decoration: BoxDecoration(
-        color: const Color(0x990F172A),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0x1A94A3B8)),
+        color: AppColors.slateGlass,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.slateBorder),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.cosmicGreen.withValues(alpha: 0.08),
+            blurRadius: 16,
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -379,7 +392,7 @@ class _SettingsSection extends StatelessWidget {
           Text(
             label.toUpperCase(),
             style: const TextStyle(
-              color: Color(0xFF64748B),
+              color: AppColors.muted,
               fontSize: 12,
               fontWeight: FontWeight.w800,
               letterSpacing: 0.8,
@@ -520,7 +533,7 @@ class _HowPlayRow extends StatelessWidget {
             ],
           ),
         ),
-        if (showDivider) const Divider(height: 1, color: Color(0x1494A3B8)),
+        if (showDivider) const Divider(height: 1, color: AppColors.slateBorder),
       ],
     );
   }
@@ -609,16 +622,16 @@ class _DifficultyTabs extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0x800A0F19),
+        color: const Color(0xCC0B1120),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0x2694A3B8)),
+        border: Border.all(color: AppColors.slateBorder),
       ),
       clipBehavior: Clip.antiAlias,
       child: Row(
         children: [
           for (var i = 0; i < LeagueTier.values.length; i++) ...[
             if (i > 0)
-              Container(width: 1.5, height: 48, color: const Color(0x2694A3B8)),
+              Container(width: 1.5, height: 48, color: AppColors.slateBorder),
             Expanded(
               child: _DiffTab(
                 tier: LeagueTier.values[i],
@@ -768,7 +781,7 @@ class _ToggleRow extends StatelessWidget {
           ),
         ),
         if (showDivider)
-          const Divider(height: 1, color: Color(0x1494A3B8)),
+          const Divider(height: 1, color: AppColors.slateBorder),
       ],
     );
   }
@@ -796,15 +809,15 @@ class _CosmicSwitch extends StatelessWidget {
               ? const LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [AppColors.cosmicGreen, AppColors.cosmicTeal],
+                  colors: [Color(0xFF4ADE80), AppColors.cosmicGreen],
                 )
               : null,
-          color: value ? null : const Color(0x80475565),
+          color: value ? null : const Color(0xFF334155),
           boxShadow: value
               ? [
                   BoxShadow(
-                    color: AppColors.cosmicGreen.withValues(alpha: 0.45),
-                    blurRadius: 16,
+                    color: AppColors.cosmicGreen.withValues(alpha: 0.4),
+                    blurRadius: 14,
                   ),
                 ]
               : null,

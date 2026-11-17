@@ -35,12 +35,15 @@ class AppColors {
     colors: [Color(0xFF4CAF50), Color(0xFF00BCD4)],
   );
 
-  static const cosmicBg = Color(0xFF0A0E1A);
+  static const cosmicBg = Color(0xFF0B1120);
   static const cosmicGreen = Color(0xFF2ECC71);
   static const cosmicTeal = Color(0xFF1ABC9C);
   static const cosmicBlue = Color(0xFF3498DB);
   static const cosmicPurple = Color(0xFF9B59B6);
-  static const cosmicGold = Color(0xFFF1C40F);
+  static const cosmicGold = Color(0xFFFBBF24);
+  static const slateGlass = Color(0xE61E293B);
+  static const slateBorder = Color(0xFF334155);
+  static const muted = Color(0xFF94A3B8);
   static const cosmicRed = Color(0xFFE74C3C);
 
   static const cosmicShimmer = LinearGradient(

@@ -50,21 +50,17 @@ class _LoginScreenState extends State<LoginScreen>
       labelText: label,
       hintText: hint,
       filled: true,
-      fillColor: const Color(0xB30F172A),
+      fillColor: AppColors.slateGlass,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(
-          color: AppColors.cosmicGreen.withValues(alpha: 0.35),
-        ),
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: AppColors.slateBorder),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(
-          color: AppColors.cosmicBlue.withValues(alpha: 0.28),
-        ),
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: AppColors.slateBorder),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         borderSide: const BorderSide(
           color: AppColors.cosmicGreen,
           width: 1.6,
@@ -223,13 +219,11 @@ class _LoginScreenState extends State<LoginScreen>
                               },
                         style: OutlinedButton.styleFrom(
                           foregroundColor: const Color(0xFFF0FDF4),
-                          side: BorderSide(
-                            color:
-                                AppColors.cosmicGreen.withValues(alpha: 0.5),
-                          ),
+                          backgroundColor: AppColors.slateGlass,
+                          side: const BorderSide(color: AppColors.slateBorder),
                           minimumSize: const Size.fromHeight(48),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(14),
                           ),
                         ),
                         child: Text(l10n.t('google')),
@@ -245,12 +239,11 @@ class _LoginScreenState extends State<LoginScreen>
                               },
                         style: OutlinedButton.styleFrom(
                           foregroundColor: const Color(0xFFF0FDF4),
-                          side: BorderSide(
-                            color: AppColors.cosmicGreen.withValues(alpha: 0.5),
-                          ),
+                          backgroundColor: AppColors.slateGlass,
+                          side: const BorderSide(color: AppColors.slateBorder),
                           minimumSize: const Size.fromHeight(48),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(14),
                           ),
                         ),
                         child: Text(l10n.t('apple')),

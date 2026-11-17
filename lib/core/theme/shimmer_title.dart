@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:kelimelig/core/constants/app_constants.dart';
 import 'package:kelimelig/core/theme/colors.dart';
 
-class ShimmerTitle extends StatefulWidget {
+/// Page / brand title for Clash-style dark screens.
+/// Brand name uses a green wash; other titles stay bold white with a soft glow.
+class ShimmerTitle extends StatelessWidget {
   const ShimmerTitle({
     super.key,
     this.text = AppConstants.appName,
@@ -16,73 +18,54 @@ class ShimmerTitle extends StatefulWidget {
   final TextAlign textAlign;
 
   /// Header size: one line, tighter tracking, lighter glow.
-  /// The opening title leaves this false.
   final bool compact;
 
   @override
-  State<ShimmerTitle> createState() => _ShimmerTitleState();
-}
-
-class _ShimmerTitleState extends State<ShimmerTitle>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _tick;
-
-  @override
-  void initState() {
-    super.initState();
-    _tick = AnimationController(vsync: this, duration: const Duration(seconds: 4))
-      ..repeat();
-  }
-
-  @override
-  void dispose() {
-    _tick.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _tick,
-      builder: (context, _) {
-        return ShaderMask(
-          blendMode: BlendMode.srcIn,
-          shaderCallback: (bounds) {
-            return LinearGradient(
-              colors: AppColors.cosmicShimmer.colors,
-              begin: Alignment(-1.4 + _tick.value * 2.8, 0),
-              end: Alignment(0.2 + _tick.value * 2.8, 0),
-            ).createShader(bounds);
-          },
-          child: Text(
-            widget.text,
-            textAlign: widget.textAlign,
-            maxLines: widget.compact ? 1 : null,
-            softWrap: !widget.compact,
-            style: TextStyle(
-              fontSize: widget.fontSize,
-              fontWeight: FontWeight.w900,
-              letterSpacing: widget.compact ? -0.3 : -0.8,
-              height: widget.compact ? 1 : 1.05,
-              color: Colors.white,
-              shadows: widget.compact
-                  ? const [
-                      Shadow(color: Color(0x662ECC71), blurRadius: 12),
-                      Shadow(color: Color(0x449B59B6), blurRadius: 18),
-                    ]
-                  : const [
-                      Shadow(color: Color(0x662ECC71), blurRadius: 22),
-                      Shadow(color: Color(0x449B59B6), blurRadius: 36),
-                    ],
-            ),
-          ),
-        );
-      },
+    final isBrand = text == AppConstants.appName;
+    final style = TextStyle(
+      fontSize: fontSize,
+      fontWeight: FontWeight.w900,
+      letterSpacing: compact ? -0.3 : -0.8,
+      height: compact ? 1 : 1.05,
+      color: Colors.white,
+      shadows: compact
+          ? const [
+              Shadow(color: Color(0x662ECC71), blurRadius: 12),
+            ]
+          : const [
+              Shadow(color: Color(0x662ECC71), blurRadius: 18),
+            ],
+    );
+
+    final label = Text(
+      text,
+      textAlign: textAlign,
+      maxLines: compact ? 1 : null,
+      softWrap: !compact,
+      style: style,
+    );
+
+    if (!isBrand) return label;
+
+    return ShaderMask(
+      blendMode: BlendMode.srcIn,
+      shaderCallback: (bounds) => const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Color(0xFF6EE7B7),
+          AppColors.cosmicGreen,
+          AppColors.cosmicTeal,
+        ],
+      ).createShader(bounds),
+      child: label,
     );
   }
 }
 
-class CosmicContinueButton extends StatelessWidget {
+/// Amber 3D primary CTA (Clash / language-screen style).
+class CosmicContinueButton extends StatefulWidget {
   const CosmicContinueButton({
     super.key,
     required this.label,
@@ -97,37 +80,64 @@ class CosmicContinueButton extends StatelessWidget {
   final bool showArrow;
 
   @override
+  State<CosmicContinueButton> createState() => _CosmicContinueButtonState();
+}
+
+class _CosmicContinueButtonState extends State<CosmicContinueButton> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed == value) return;
+    setState(() => _pressed = value);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        gradient: const LinearGradient(
-          colors: [
-            AppColors.cosmicGreen,
-            AppColors.cosmicTeal,
-            AppColors.cosmicBlue,
-            AppColors.cosmicPurple,
-          ],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.cosmicGreen.withValues(alpha: 0.4),
-            blurRadius: 28,
-            offset: const Offset(0, 8),
+    final enabled = widget.onPressed != null;
+    final depth = _pressed ? 2.0 : 6.0;
+    return Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: GestureDetector(
+        onTapDown: enabled ? (_) => _setPressed(true) : null,
+        onTapUp: enabled
+            ? (_) {
+                _setPressed(false);
+                widget.onPressed?.call();
+              }
+            : null,
+        onTapCancel: enabled ? () => _setPressed(false) : null,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 90),
+          curve: Curves.easeOut,
+          transform: Matrix4.translationValues(0, _pressed ? 4 : 0, 0),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF92400E),
+                offset: Offset(0, depth),
+                blurRadius: 0,
+              ),
+            ],
           ),
-          BoxShadow(
-            color: AppColors.cosmicBlue.withValues(alpha: 0.22),
-            blurRadius: 48,
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(18),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 54),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0xFFFBBF24),
+                  Color(0xFFF59E0B),
+                  Color(0xFFD97706),
+                ],
+                stops: [0.0, 0.45, 1.0],
+              ),
+              border: Border.all(color: const Color(0x66FFF7ED), width: 1),
+            ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -136,35 +146,35 @@ class CosmicContinueButton extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        label,
+                        widget.label.toUpperCase(),
                         textAlign: TextAlign.center,
                         style: const TextStyle(
-                          color: AppColors.cosmicBg,
+                          color: Color(0xFF1A1205),
                           fontWeight: FontWeight.w900,
-                          fontSize: 17,
-                          letterSpacing: 0.3,
+                          fontSize: 16,
+                          letterSpacing: 1.1,
                         ),
                       ),
-                      if (subtitle != null)
+                      if (widget.subtitle != null)
                         Text(
-                          subtitle!,
+                          widget.subtitle!,
                           textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: AppColors.cosmicBg.withValues(alpha: 0.72),
+                          style: const TextStyle(
+                            color: Color(0xCC1A1205),
                             fontWeight: FontWeight.w700,
-                            fontSize: 15,
+                            fontSize: 13,
                             height: 1.2,
                           ),
                         ),
                     ],
                   ),
                 ),
-                if (showArrow) ...[
+                if (widget.showArrow) ...[
                   const SizedBox(width: 8),
                   const Text(
                     '→',
                     style: TextStyle(
-                      color: AppColors.cosmicBg,
+                      color: Color(0xFF1A1205),
                       fontWeight: FontWeight.w900,
                       fontSize: 20,
                     ),

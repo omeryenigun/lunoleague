@@ -605,8 +605,8 @@ class _ResultScreenState extends State<ResultScreen>
                                       child: _ActionButton(
                                         label: l10n.t('daily_continue_ad'),
                                         primary: true,
-                                        accent: const Color(0xFFD7B8FF),
-                                        accentEnd: const Color(0xFFB794F6),
+                                        accent: AppColors.cosmicGold,
+                                        accentEnd: const Color(0xFFD97706),
                                         darkLabel: true,
                                         onPressed:
                                             _nextBusy ? null : _openNextDaily,

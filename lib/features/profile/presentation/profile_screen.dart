@@ -70,7 +70,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: const Color(0xFF1E293B),
       builder: (context) {
         return Padding(
           padding: EdgeInsets.fromLTRB(
@@ -298,11 +298,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       children: [
                         for (final b in u.badges)
                           Chip(
-                            backgroundColor: const Color(0x991E293B),
-                            side: const BorderSide(color: Color(0x2694A3B8)),
+                            backgroundColor: AppColors.slateGlass,
+                            side: const BorderSide(color: AppColors.slateBorder),
                             label: Text(
                               _badgeLabel(b),
-                              style: const TextStyle(fontSize: 12),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFFE2E8F0),
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                       ],
@@ -407,27 +411,26 @@ class _AvatarRing extends StatelessWidget {
               padding: const EdgeInsets.all(3),
               decoration: const BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: SweepGradient(
-                  startAngle: math.pi,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                   colors: [
                     Color(0xFF4ADE80),
-                    Color(0xFF22D3EE),
-                    Color(0xFFA855F7),
-                    Color(0xFFF59E0B),
-                    Color(0xFF4ADE80),
+                    Color(0xFF22C55E),
+                    Color(0xFFFBBF24),
                   ],
                 ),
                 boxShadow: [
                   BoxShadow(
                     color: Color(0x4022C55E),
-                    blurRadius: 24,
+                    blurRadius: 22,
                   ),
                 ],
               ),
               child: DecoratedBox(
                 decoration: const BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Color(0xFF0A0E1A),
+                  color: Color(0xFF0B1120),
                 ),
                 child: Center(child: _avatarFace(avatar)),
               ),
@@ -564,9 +567,9 @@ class _ProfileAuthCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F1729),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF1E293B)),
+        color: AppColors.slateGlass,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.slateBorder),
       ),
       child: Column(
         children: [
@@ -661,41 +664,42 @@ class _ProfilePrimaryCta extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
           colors: [
-            Color(0xFF22C55E),
-            Color(0xFF06B6D4),
-            Color(0xFFA855F7),
+            Color(0xFFFBBF24),
+            Color(0xFFF59E0B),
+            Color(0xFFD97706),
           ],
         ),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x4D22C55E),
-            blurRadius: 20,
-            offset: Offset(0, 6),
+            color: Color(0xFF92400E),
+            offset: Offset(0, 4),
+            blurRadius: 0,
           ),
         ],
+        border: Border.all(color: const Color(0x66FFF7ED)),
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onPressed,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           child: SizedBox(
             width: double.infinity,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 13),
               child: Text(
-                label,
+                label.toUpperCase(),
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  color: Color(0xFFFFFFFF),
+                  color: Color(0xFF1A1205),
                   fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.3,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.8,
                 ),
               ),
             ),
@@ -724,16 +728,16 @@ class _ProfileSocialBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFF131A2B),
-      borderRadius: BorderRadius.circular(11),
+      color: const Color(0xCC1E293B),
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onPressed,
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(12),
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 8),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(11),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: borderColor),
           ),
           child: Row(
@@ -901,9 +905,15 @@ class _GlassCard extends StatelessWidget {
     return Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: const Color(0x990F172A),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0x1A94A3B8)),
+        color: AppColors.slateGlass,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.slateBorder),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.cosmicGreen.withValues(alpha: 0.08),
+            blurRadius: 16,
+          ),
+        ],
       ),
       child: child,
     );
@@ -962,7 +972,7 @@ class _StatRow extends StatelessWidget {
           ),
         ),
         if (showDivider)
-          const Divider(height: 1, color: Color(0x1494A3B8)),
+          const Divider(height: 1, color: AppColors.slateBorder),
       ],
     );
   }
@@ -1010,7 +1020,7 @@ class _MenuRow extends StatelessWidget {
           ),
         ),
         if (showDivider)
-          const Divider(height: 1, color: Color(0x1494A3B8)),
+          const Divider(height: 1, color: AppColors.slateBorder),
       ],
     );
   }
@@ -1251,9 +1261,17 @@ class _StatsCompareState extends State<_StatsCompare> {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       decoration: BoxDecoration(
-        color: const Color(0xCC0F172A),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0x3346E8A0)),
+        color: AppColors.slateGlass,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppColors.cosmicGreen.withValues(alpha: 0.35),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.cosmicGreen.withValues(alpha: 0.12),
+            blurRadius: 18,
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1388,10 +1406,12 @@ class _StatsTab extends StatelessWidget {
         duration: const Duration(milliseconds: 180),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? const Color(0x3346E8A0) : const Color(0x221E293B),
+          color: selected
+              ? AppColors.cosmicGreen.withValues(alpha: 0.18)
+              : const Color(0xCC0B1120),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: selected ? AppColors.cosmicGreen : const Color(0x2294A3B8),
+            color: selected ? AppColors.cosmicGreen : AppColors.slateBorder,
           ),
         ),
         child: Text(
@@ -1424,9 +1444,9 @@ class _CompareTile extends StatelessWidget {
       height: 108,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF121A2B),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0x1A94A3B8)),
+        color: const Color(0xCC0B1120),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.slateBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1542,16 +1562,16 @@ class _StatsCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
       decoration: BoxDecoration(
-        color: const Color(0x990F172A),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0x1A94A3B8)),
+        color: AppColors.slateGlass,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.slateBorder),
       ),
       child: Column(
         children: [
           for (var i = 0; i < rows.length; i++) ...[
             _RichStatRow(stat: rows[i]),
             if (i < rows.length - 1)
-              const Divider(height: 1, color: Color(0x1494A3B8)),
+              const Divider(height: 1, color: AppColors.slateBorder),
           ],
         ],
       ),

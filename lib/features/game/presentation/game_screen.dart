@@ -13,6 +13,7 @@ import 'package:kelimelig/core/services/haptic_manager.dart';
 import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
 import 'package:kelimelig/core/theme/cosmic_glass.dart';
+import 'package:kelimelig/core/theme/shimmer_title.dart';
 import 'package:kelimelig/core/widgets/game_page_header.dart';
 import 'package:kelimelig/core/widgets/midnight_countdown.dart';
 import 'package:kelimelig/domain/entities/game_models.dart';
@@ -156,6 +157,7 @@ class GameView extends StatelessWidget {
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                           child: GamePageHeader(
                             title: title,
+                            leading: const CloseTitleButton(),
                             bottomSpacing: 0,
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -224,7 +226,7 @@ class GameView extends StatelessWidget {
                                     ),
                                   Padding(
                                     padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
+                                      horizontal: 6,
                                       vertical: 12,
                                     ),
                                     child: GuessBoard(
@@ -284,7 +286,7 @@ class GameView extends StatelessWidget {
                           child: Center(
                             child: SingleChildScrollView(
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
+                                horizontal: 6,
                                 vertical: 12,
                               ),
                               child: GuessBoard(
@@ -321,19 +323,19 @@ class GameView extends StatelessWidget {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
                             child: Row(
                               children: [
                                 _HintChip(
                                   label: l10n.t('hint_letter').replaceAll('💡 ', ''),
                                   onTap: () => _confirmLetterHint(context, l10n),
                                 ),
-                                const SizedBox(width: 10),
+                                const SizedBox(width: 8),
                                 _HintChip(
                                   label: l10n.t('hint_meaning').replaceAll('💡 ', ''),
                                   onTap: () => _confirmMeaningHint(context, l10n),
                                 ),
-                                const SizedBox(width: 10),
+                                const SizedBox(width: 8),
                                 const _WatchAdChip(),
                                 const Spacer(),
                                 _CoinDisplay(coins: state.coins),
@@ -569,42 +571,10 @@ class _ContinueDailyButtonState extends State<_ContinueDailyButton> {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(28),
-          gradient: const LinearGradient(
-            colors: [Color(0xFFD7B8FF), Color(0xFFB794F6)],
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFFC4A1FF).withValues(alpha: 0.45),
-              blurRadius: 18,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: _busy ? null : _press,
-            borderRadius: BorderRadius.circular(28),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              child: Text(
-                sl<L10n>().t('daily_continue_ad'),
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Color(0xFF1A1028),
-                  fontWeight: FontWeight.w900,
-                  fontSize: 16,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
+    return CosmicContinueButton(
+      label: sl<L10n>().t('daily_continue_ad'),
+      onPressed: _busy ? null : _press,
+      showArrow: false,
     );
   }
 }
@@ -940,19 +910,19 @@ class _HintChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CosmicGlassCard(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       onTap: onTap,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(icon, style: const TextStyle(fontSize: 14)),
-          const SizedBox(width: 6),
+          Text(icon, style: const TextStyle(fontSize: 12)),
+          const SizedBox(width: 4),
           Text(
             label,
             style: const TextStyle(
               color: AppColors.cosmicGold,
               fontWeight: FontWeight.w800,
-              fontSize: 13,
+              fontSize: 11,
             ),
           ),
         ],
@@ -971,8 +941,8 @@ class _CoinDisplay extends StatelessWidget {
     return Row(
       children: [
         Container(
-          width: 22,
-          height: 22,
+          width: 18,
+          height: 18,
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
             gradient: LinearGradient(
@@ -983,7 +953,7 @@ class _CoinDisplay extends StatelessWidget {
             ],
           ),
           alignment: Alignment.center,
-          child: const Text('🪙', style: TextStyle(fontSize: 11)),
+          child: const Text('🪙', style: TextStyle(fontSize: 10)),
         ),
         const SizedBox(width: 6),
         Text(
@@ -991,7 +961,7 @@ class _CoinDisplay extends StatelessWidget {
           style: const TextStyle(
             color: AppColors.cosmicGold,
             fontWeight: FontWeight.w900,
-            fontSize: 16,
+            fontSize: 13,
             shadows: [Shadow(color: Color(0x80F1C40F), blurRadius: 10)],
           ),
         ),

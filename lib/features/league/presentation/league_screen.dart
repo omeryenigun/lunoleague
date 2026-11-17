@@ -3,63 +3,14 @@ import 'package:go_router/go_router.dart';
 import 'package:kelimelig/core/constants/enums.dart';
 import 'package:kelimelig/core/l10n/l10n.dart';
 import 'package:kelimelig/core/theme/colors.dart';
+import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
 import 'package:kelimelig/core/widgets/game_page_header.dart';
 import 'package:kelimelig/domain/entities/game_models.dart';
 import 'package:kelimelig/domain/game/game_server.dart';
 import 'package:kelimelig/injection.dart';
 
-const _kPageBg = Color(0xFF071018);
+const _kPageBg = AppColors.cosmicBg;
 const _kTitleGreen = Color(0xFF4ADE80);
-const _kLeagueCardFill = Color(0xFF0F1729);
-
-class _LeaguePageBackdrop extends StatelessWidget {
-  const _LeaguePageBackdrop({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return ColoredBox(
-      color: _kPageBg,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: Alignment(-0.7, -0.9),
-                radius: 0.95,
-                colors: [Color(0x3322C55E), Color(0x00071018)],
-                stops: [0, 0.45],
-              ),
-            ),
-          ),
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: Alignment(0.7, -0.4),
-                radius: 0.9,
-                colors: [Color(0x24A855F7), Color(0x00071018)],
-                stops: [0, 0.45],
-              ),
-            ),
-          ),
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: Alignment(0, 0.8),
-                radius: 1.0,
-                colors: [Color(0x1AF59E0B), Color(0x00071018)],
-                stops: [0, 0.5],
-              ),
-            ),
-          ),
-          child,
-        ],
-      ),
-    );
-  }
-}
 
 class LeagueScreen extends StatefulWidget {
   const LeagueScreen({super.key});
@@ -70,7 +21,7 @@ class LeagueScreen extends StatefulWidget {
 
 class _LeagueScreenState extends State<LeagueScreen>
     with SingleTickerProviderStateMixin {
-  late Future<CompetitionSnapshot> _future =
+  late final Future<CompetitionSnapshot> _future =
       sl<GameServer>().competitionSnapshot();
   late final TabController _tabs;
 
@@ -98,7 +49,7 @@ class _LeagueScreenState extends State<LeagueScreen>
         if (!snap.hasData) {
           return const Scaffold(
             backgroundColor: _kPageBg,
-            body: _LeaguePageBackdrop(
+            body: CosmicBackdrop(
               child: Center(
                 child: CircularProgressIndicator(color: _kTitleGreen),
               ),
@@ -109,7 +60,7 @@ class _LeagueScreenState extends State<LeagueScreen>
         if (data.guest) {
           return Scaffold(
             backgroundColor: _kPageBg,
-            body: _LeaguePageBackdrop(
+            body: CosmicBackdrop(
               child: SafeArea(
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(14, 6, 14, 28),
@@ -177,7 +128,7 @@ class _LeagueScreenState extends State<LeagueScreen>
 
         return Scaffold(
           backgroundColor: _kPageBg,
-          body: _LeaguePageBackdrop(
+          body: CosmicBackdrop(
             child: SafeArea(
               child: Column(
                 children: [
@@ -206,7 +157,7 @@ class _LeagueScreenState extends State<LeagueScreen>
                   ),
                   Container(
                     height: 1.5,
-                    color: const Color(0x1A94A3B8),
+                    color: const Color(0xFF1E293B),
                   ),
                   Expanded(
                     child: TabBarView(
@@ -215,10 +166,6 @@ class _LeagueScreenState extends State<LeagueScreen>
                         for (final board in boards) _Board(data: board),
                       ],
                     ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(14, 8, 14, 12),
-                    child: _MarathonStatsAction(),
                   ),
                 ],
               ),
@@ -473,83 +420,64 @@ class _MarathonStatsAction extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = sl<L10n>();
     final label = _marathonStatsLabel(l10n);
-    void open() => context.push('/marathon');
-    return Column(
-      children: [
-        Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: open,
-            borderRadius: BorderRadius.circular(18),
-            child: Ink(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                color: _kLeagueCardFill,
-                border: Border.all(color: const Color(0x994ADE80), width: 1.5),
-                boxShadow: const [
-                  BoxShadow(color: Color(0x264ADE80), blurRadius: 18),
-                ],
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => context.push('/marathon'),
+        borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          width: double.infinity,
+          padding: const EdgeInsets.all(15),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: const LinearGradient(
+              colors: [
+                Color(0x2622C55E),
+                Color(0xCC1E293B),
+              ],
+            ),
+            border: Border.all(color: const Color(0x6622C55E), width: 1.5),
+            boxShadow: const [
+              BoxShadow(color: Color(0x1A22C55E), blurRadius: 15),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: const Color(0x3322C55E),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.insights_outlined,
+                  color: _kTitleGreen,
+                  size: 22,
+                ),
               ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: const Color(0x334ADE80),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Icon(
-                      Icons.insights_outlined,
-                      color: _kTitleGreen,
-                      size: 26,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      label,
-                      style: const TextStyle(
-                        color: _kTitleGreen,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 15.5,
-                        letterSpacing: 0.3,
-                      ),
-                    ),
-                  ),
-                  const Icon(
-                    Icons.chevron_right,
+              const SizedBox(width: 15),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
                     color: _kTitleGreen,
-                    size: 22,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                    letterSpacing: 0.2,
                   ),
-                ],
+                ),
               ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 10),
-        GestureDetector(
-          onTap: open,
-          behavior: HitTestBehavior.opaque,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Text(
-              label,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
+              const Icon(
+                Icons.chevron_right,
                 color: _kTitleGreen,
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-                decoration: TextDecoration.underline,
-                decorationColor: _kTitleGreen,
+                size: 22,
               ),
-            ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 }
@@ -582,18 +510,18 @@ class _LeagueTab extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         child: Column(
           children: [
             Text(
               label,
               style: TextStyle(
-                color: active ? AppColors.cosmicGreen : const Color(0xFF64748B),
+                color: active ? _kTitleGreen : const Color(0xFF64748B),
                 fontWeight: FontWeight.w700,
                 fontSize: 14,
                 shadows: active
                     ? const [
-                        Shadow(color: Color(0x802ECC71), blurRadius: 12),
+                        Shadow(color: Color(0x804ADE80), blurRadius: 12),
                       ]
                     : null,
               ),
@@ -602,21 +530,21 @@ class _LeagueTab extends StatelessWidget {
             AnimatedContainer(
               duration: const Duration(milliseconds: 220),
               height: 3,
-              width: active ? 36 : 0,
+              width: active ? double.infinity : 0,
+              margin: active
+                  ? const EdgeInsets.symmetric(horizontal: 4)
+                  : EdgeInsets.zero,
               decoration: BoxDecoration(
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(3),
                 ),
-                gradient: active
-                    ? const LinearGradient(
-                        colors: [AppColors.cosmicGreen, AppColors.cosmicTeal],
-                      )
-                    : null,
+                color: active ? _kTitleGreen : null,
                 boxShadow: active
-                    ? [
+                    ? const [
                         BoxShadow(
-                          color: AppColors.cosmicGreen.withValues(alpha: 0.7),
-                          blurRadius: 12,
+                          color: Color(0x804ADE80),
+                          blurRadius: 10,
+                          offset: Offset(0, -2),
                         ),
                       ]
                     : null,
@@ -638,17 +566,23 @@ class _Board extends StatelessWidget {
   Widget build(BuildContext context) {
     final entries = data.entries;
     final me = entries.where((e) => e.isCurrentUser).firstOrNull;
+    final top = entries.where((e) => e.rank >= 1 && e.rank <= 3).toList()
+      ..sort((a, b) => a.rank.compareTo(b.rank));
+    final rest = entries.where((e) => e.rank > 3).toList()
+      ..sort((a, b) => a.rank.compareTo(b.rank));
+
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
+      padding: const EdgeInsets.fromLTRB(15, 15, 15, 28),
       children: [
         Container(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          padding: const EdgeInsets.fromLTRB(15, 12, 15, 12),
           decoration: BoxDecoration(
-            color: const Color(0x990F172A),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: AppColors.cosmicGreen.withValues(alpha: 0.25),
-            ),
+            color: const Color(0x801E293B),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0x4D22C55E)),
+            boxShadow: const [
+              BoxShadow(color: Color(0x0D22C55E), blurRadius: 15),
+            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -656,10 +590,10 @@ class _Board extends StatelessWidget {
               Text(
                 data.caption.toUpperCase(),
                 style: const TextStyle(
-                  color: Color(0xFF64748B),
+                  color: Color(0xFF94A3B8),
                   fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.4,
                 ),
               ),
               if (data.title != null) ...[
@@ -667,14 +601,14 @@ class _Board extends StatelessWidget {
                 Text(
                   data.title!,
                   style: const TextStyle(
-                    color: AppColors.cosmicGold,
+                    color: Color(0xFFFBBF24),
                     fontWeight: FontWeight.w800,
                     fontSize: 13,
                   ),
                 ),
               ],
               if (me != null) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Row(
                   children: [
                     Expanded(
@@ -684,17 +618,17 @@ class _Board extends StatelessWidget {
                             const TextSpan(
                               text: '#',
                               style: TextStyle(
-                                color: AppColors.cosmicGreen,
+                                color: _kTitleGreen,
                                 fontWeight: FontWeight.w900,
-                                fontSize: 16,
+                                fontSize: 20,
                               ),
                             ),
                             TextSpan(
                               text: '${me.rank} / ${entries.length}',
                               style: const TextStyle(
-                                color: Color(0xFFF8FAFC),
-                                fontWeight: FontWeight.w900,
-                                fontSize: 16,
+                                color: Color(0xFFFFFFFF),
+                                fontWeight: FontWeight.w800,
+                                fontSize: 20,
                               ),
                             ),
                           ],
@@ -704,11 +638,11 @@ class _Board extends StatelessWidget {
                     Text(
                       '${me.points} puan',
                       style: const TextStyle(
-                        color: AppColors.cosmicGold,
+                        color: Color(0xFFFBBF24),
                         fontWeight: FontWeight.w800,
-                        fontSize: 14,
+                        fontSize: 16,
                         shadows: [
-                          Shadow(color: Color(0x80F1C40F), blurRadius: 10),
+                          Shadow(color: Color(0x80FBBF24), blurRadius: 10),
                         ],
                       ),
                     ),
@@ -718,7 +652,7 @@ class _Board extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 15),
         if (entries.isEmpty)
           const Padding(
             padding: EdgeInsets.all(24),
@@ -729,24 +663,224 @@ class _Board extends StatelessWidget {
               ),
             ),
           )
-        else
-          Container(
-            decoration: BoxDecoration(
-              color: const Color(0x660F172A),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0x1494A3B8)),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              children: [
-                for (var i = 0; i < entries.length; i++) ...[
-                  if (i > 0)
-                    const Divider(height: 1, color: Color(0x0F94A3B8)),
-                  _LbRow(entry: entries[i]),
+        else ...[
+          if (top.isNotEmpty) ...[
+            _Podium(entries: top),
+            const SizedBox(height: 10),
+          ],
+          if (rest.isNotEmpty)
+            Container(
+              decoration: BoxDecoration(
+                color: const Color(0xCC0F172A),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFF1E293B)),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                children: [
+                  for (var i = 0; i < rest.length; i++) ...[
+                    if (i > 0)
+                      const Divider(height: 1, color: Color(0xFF1E293B)),
+                    _LbRow(entry: rest[i]),
+                  ],
                 ],
+              ),
+            ),
+        ],
+        const SizedBox(height: 15),
+        const _MarathonStatsAction(),
+      ],
+    );
+  }
+}
+
+class _PodiumStyle {
+  const _PodiumStyle({
+    required this.blockHeight,
+    required this.avatarSize,
+    required this.border,
+    required this.glow,
+    required this.gradient,
+  });
+
+  final double blockHeight;
+  final double avatarSize;
+  final Color border;
+  final Color glow;
+  final List<Color> gradient;
+
+  static _PodiumStyle forRank(int rank) => switch (rank) {
+        1 => const _PodiumStyle(
+            blockHeight: 110,
+            avatarSize: 65,
+            border: Color(0xFFFBBF24),
+            glow: Color(0x80FBBF24),
+            gradient: [Color(0xFFFBBF24), Color(0xFFB45309)],
+          ),
+        2 => const _PodiumStyle(
+            blockHeight: 80,
+            avatarSize: 50,
+            border: Color(0xFFCBD5E1),
+            glow: Color(0x4DCBD5E1),
+            gradient: [Color(0xFF94A3B8), Color(0xFF475569)],
+          ),
+        _ => const _PodiumStyle(
+            blockHeight: 60,
+            avatarSize: 50,
+            border: Color(0xFFD97706),
+            glow: Color(0x4DD97706),
+            gradient: [Color(0xFFD97706), Color(0xFF78350F)],
+          ),
+      };
+}
+
+class _Podium extends StatelessWidget {
+  const _Podium({required this.entries});
+
+  final List<LeaderboardEntry> entries;
+
+  LeaderboardEntry? _at(int rank) {
+    for (final e in entries) {
+      if (e.rank == rank) return e;
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final second = _at(2);
+    final first = _at(1);
+    final third = _at(3);
+
+    return SizedBox(
+      height: 220,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: second != null
+                ? _PodiumPlace(entry: second)
+                : const SizedBox.shrink(),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: first != null
+                ? _PodiumPlace(entry: first)
+                : const SizedBox.shrink(),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: third != null
+                ? _PodiumPlace(entry: third)
+                : const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PodiumPlace extends StatelessWidget {
+  const _PodiumPlace({required this.entry});
+
+  final LeaderboardEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = _PodiumStyle.forRank(entry.rank);
+    final me = entry.isCurrentUser;
+    final name = me ? '${entry.displayName} · sen' : entry.displayName;
+    final isGold = entry.rank == 1;
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        Container(
+          width: style.avatarSize,
+          height: style.avatarSize,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: const Color(0xFF1E293B),
+            border: Border.all(
+              color: style.border,
+              width: isGold ? 2.5 : 2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: style.glow,
+                blurRadius: isGold ? 20 : 15,
+              ),
+            ],
+          ),
+          child: Icon(
+            isGold ? Icons.emoji_events_rounded : Icons.person_rounded,
+            color: style.border,
+            size: isGold ? 30 : 24,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: me ? _kTitleGreen : Colors.white,
+            fontWeight: FontWeight.w800,
+            fontSize: 12,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          '${entry.points} p',
+          style: const TextStyle(
+            color: Color(0xFFFBBF24),
+            fontWeight: FontWeight.w700,
+            fontSize: 12,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          height: style.blockHeight,
+          width: double.infinity,
+          alignment: Alignment.topCenter,
+          padding: const EdgeInsets.only(top: 10),
+          decoration: BoxDecoration(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: style.gradient,
+            ),
+            border: Border.all(
+              color: entry.rank == 1
+                  ? const Color(0xFFFCD34D)
+                  : entry.rank == 2
+                      ? const Color(0xFFCBD5E1)
+                      : const Color(0xFFF59E0B),
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x80000000),
+                blurRadius: 20,
+                spreadRadius: -8,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Text(
+            '${entry.rank}',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+              fontSize: isGold ? 28 : 24,
+              shadows: const [
+                Shadow(color: Color(0x66000000), blurRadius: 6),
               ],
             ),
           ),
+        ),
       ],
     );
   }
@@ -757,20 +891,6 @@ class _LbRow extends StatelessWidget {
 
   final LeaderboardEntry entry;
 
-  Color get _rankColor {
-    if (entry.rank == 1) return AppColors.cosmicGold;
-    if (entry.rank == 2) return const Color(0xFFCBD5E1);
-    if (entry.rank == 3) return const Color(0xFFE67E22);
-    return const Color(0xFF64748B);
-  }
-
-  String get _rankLabel {
-    if (entry.rank == 1) return '🥇';
-    if (entry.rank == 2) return '🥈';
-    if (entry.rank == 3) return '🥉';
-    return '#${entry.rank}';
-  }
-
   @override
   Widget build(BuildContext context) {
     final me = entry.isCurrentUser;
@@ -779,56 +899,46 @@ class _LbRow extends StatelessWidget {
           ? const BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  Color(0x1F2ECC71),
-                  Color(0x0A2ECC71),
+                  Color(0x1F22C55E),
+                  Color(0x0A22C55E),
                 ],
               ),
               border: Border(
-                left: BorderSide(color: AppColors.cosmicGreen, width: 3),
+                left: BorderSide(color: _kTitleGreen, width: 3),
               ),
             )
           : null,
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      padding: const EdgeInsets.all(15),
       child: Row(
         children: [
           SizedBox(
-            width: 40,
+            width: 30,
             child: Text(
-              _rankLabel,
-              textAlign: TextAlign.right,
+              '#${entry.rank}',
               style: TextStyle(
-                color: _rankColor,
-                fontWeight: FontWeight.w900,
-                fontSize: entry.rank <= 3 ? 15 : 14,
-                shadows: entry.rank <= 3
-                    ? [Shadow(color: _rankColor.withValues(alpha: 0.55), blurRadius: 10)]
-                    : null,
+                color: me ? _kTitleGreen : const Color(0xFF64748B),
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
               ),
             ),
           ),
-          const SizedBox(width: 12),
           Expanded(
             child: Text(
               me ? '${entry.displayName}  · sen' : entry.displayName,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: me ? AppColors.cosmicGreen : const Color(0xFFE2E8F0),
+                color: me ? _kTitleGreen : const Color(0xFFE2E8F0),
                 fontWeight: FontWeight.w700,
                 fontSize: 15,
-                shadows: me
-                    ? const [
-                        Shadow(color: Color(0x802ECC71), blurRadius: 10),
-                      ]
-                    : null,
               ),
             ),
           ),
           Text(
             '${entry.points} puan',
             style: TextStyle(
-              color: me ? AppColors.cosmicGreen : const Color(0xFF94A3B8),
-              fontWeight: FontWeight.w900,
+              color: me ? _kTitleGreen : const Color(0xFF94A3B8),
+              fontWeight: FontWeight.w700,
               fontSize: 14,
             ),
           ),

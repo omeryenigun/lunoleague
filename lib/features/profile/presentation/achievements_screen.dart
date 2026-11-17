@@ -78,11 +78,17 @@ class _SummaryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
       decoration: BoxDecoration(
-        color: const Color(0x990F172A),
-        borderRadius: BorderRadius.circular(18),
+        color: AppColors.slateGlass,
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: AppColors.cosmicGreen.withValues(alpha: 0.25),
+          color: AppColors.cosmicGreen.withValues(alpha: 0.35),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.cosmicGreen.withValues(alpha: 0.12),
+            blurRadius: 16,
+          ),
+        ],
       ),
       child: Row(
         children: [
@@ -209,20 +215,21 @@ class _AchievementCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          gradient: unlocked
-              ? const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0x0F2ECC71), Color(0x990F172A)],
-                )
-              : null,
-          color: unlocked ? null : const Color(0x990F172A),
+          borderRadius: BorderRadius.circular(16),
+          color: AppColors.slateGlass,
           border: Border.all(
             color: unlocked
-                ? AppColors.cosmicGreen.withValues(alpha: 0.4)
-                : const Color(0x1A94A3B8),
+                ? AppColors.cosmicGreen.withValues(alpha: 0.45)
+                : AppColors.slateBorder,
           ),
+          boxShadow: unlocked
+              ? [
+                  BoxShadow(
+                    color: AppColors.cosmicGreen.withValues(alpha: 0.14),
+                    blurRadius: 16,
+                  ),
+                ]
+              : null,
         ),
         child: Row(
           children: [

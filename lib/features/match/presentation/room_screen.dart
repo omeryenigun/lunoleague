@@ -7,6 +7,7 @@ import 'package:kelimelig/core/l10n/l10n.dart';
 import 'package:kelimelig/core/theme/colors.dart';
 import 'package:kelimelig/core/theme/cosmic_backdrop.dart';
 import 'package:kelimelig/core/theme/cosmic_glass.dart';
+import 'package:kelimelig/core/widgets/app_bottom_nav.dart';
 import 'package:kelimelig/core/widgets/game_page_header.dart';
 import 'package:kelimelig/domain/entities/match_snapshot.dart';
 import 'package:kelimelig/domain/game/game_server.dart';
@@ -123,8 +124,10 @@ class _RoomScreenState extends State<RoomScreen> {
     final host = inLobby && snap.hostId == _me;
     return Scaffold(
       backgroundColor: AppColors.cosmicBg,
+      bottomNavigationBar: const AppBottomNav(),
       body: CosmicBackdrop(
         child: SafeArea(
+          bottom: false,
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
             children: [

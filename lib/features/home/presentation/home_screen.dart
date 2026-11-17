@@ -16,30 +16,31 @@ import 'package:kelimelig/features/auth/cubit/auth_cubit.dart';
 import 'package:kelimelig/features/home/cubit/home_cubit.dart';
 import 'package:kelimelig/injection.dart';
 
-const _homeBg = Color(0xFF071018);
-const _homeMuted = Color(0xFFB8C3D6);
-const _homeHint = Color(0xFF64748B);
+const _homeBg = Color(0xFF0B1120);
+const _homeSlateDeep = Color(0xFF121826);
+const _homeMuted = Color(0xFF94A3B8);
 const _homeGold = Color(0xFFFBBF24);
 const _homeAmber = Color(0xFFF59E0B);
-const _homeGreen = Color(0xFF4ADE80);
-const _homePurple = Color(0xFFC084FC);
-const _homeBlue = Color(0xFF60A5FA);
-const _homeCyan = Color(0xFF22D3EE);
+const _homeGreen = Color(0xFF2ECC71);
+const _homePurple = Color(0xFF9B59B6);
+const _homeBlue = Color(0xFF3498DB);
+const _homeCyan = Color(0xFF1ABC9C);
 
-const _homeCardPadding = EdgeInsets.symmetric(horizontal: 16, vertical: 10);
+const _homeCardPadding = EdgeInsets.symmetric(horizontal: 14, vertical: 12);
 
 /// Logo→ilk panel ve son panel→alt menü; panel arası 8px'e dokunulmaz.
 const _homeEdgeGap = 16.0;
 
 const _homeTitleStyle = TextStyle(
   fontWeight: FontWeight.w800,
-  fontSize: 15,
-  letterSpacing: 0.5,
+  fontSize: 14.5,
+  letterSpacing: 0.8,
+  height: 1.1,
 );
 
 const _homeSubStyle = TextStyle(
   color: _homeMuted,
-  fontSize: 12.5,
+  fontSize: 12,
   height: 1.35,
   fontWeight: FontWeight.w500,
 );
@@ -111,13 +112,14 @@ class _HomeView extends StatelessWidget {
                               decoration: BoxDecoration(
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Color(0x5922C55E),
-                                    blurRadius: 24,
-                                    offset: Offset(0, 8),
+                                    color: Color(0x663498DB),
+                                    blurRadius: 28,
+                                    spreadRadius: 1,
                                   ),
                                   BoxShadow(
-                                    color: Color(0x40A855F7),
-                                    blurRadius: 18,
+                                    color: Color(0x402ECC71),
+                                    blurRadius: 20,
+                                    offset: Offset(0, 6),
                                   ),
                                 ],
                               ),
@@ -279,30 +281,20 @@ class _HomeBackdrop extends StatelessWidget {
           const DecoratedBox(
             decoration: BoxDecoration(
               gradient: RadialGradient(
-                center: Alignment(-0.6, -0.9),
-                radius: 0.9,
-                colors: [Color(0x2E22C55E), Color(0x00071018)],
-                stops: [0.0, 0.45],
+                center: Alignment(-0.85, -0.95),
+                radius: 1.05,
+                colors: [Color(0x332ECC71), Color(0x000B1120)],
+                stops: [0.0, 0.55],
               ),
             ),
           ),
           const DecoratedBox(
             decoration: BoxDecoration(
               gradient: RadialGradient(
-                center: Alignment(0.7, -0.5),
-                radius: 0.9,
-                colors: [Color(0x29A855F7), Color(0x00071018)],
-                stops: [0.0, 0.45],
-              ),
-            ),
-          ),
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: Alignment(0.0, 0.9),
-                radius: 1.0,
-                colors: [Color(0x1AF59E0B), Color(0x00071018)],
-                stops: [0.0, 0.5],
+                center: Alignment(0.95, 1.05),
+                radius: 1.1,
+                colors: [Color(0x333498DB), Color(0x000B1120)],
+                stops: [0.0, 0.55],
               ),
             ),
           ),
@@ -317,24 +309,26 @@ class _HomeCard extends StatelessWidget {
   const _HomeCard({
     required this.child,
     required this.accent,
-    required this.fill,
+    this.fill,
     this.borderOpacity = 0.55,
-    this.glowOpacity = 0.15,
+    this.glowOpacity = 0.22,
+    this.leftWash = true,
     this.padding = _homeCardPadding,
     this.onTap,
   });
 
   final Widget child;
   final Color accent;
-  final List<Color> fill;
+  final List<Color>? fill;
   final double borderOpacity;
   final double glowOpacity;
+  final bool leftWash;
   final EdgeInsets padding;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(18);
+    final radius = BorderRadius.circular(16);
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -345,19 +339,23 @@ class _HomeCard extends StatelessWidget {
         child: Ink(
           decoration: BoxDecoration(
             borderRadius: radius,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: fill,
-            ),
+            color: fill == null ? _homeSlateDeep : null,
+            gradient: fill == null
+                ? null
+                : LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: fill!,
+                  ),
             border: Border.all(
               color: accent.withValues(alpha: borderOpacity),
-              width: 1.5,
+              width: 1.25,
             ),
             boxShadow: [
               BoxShadow(
                 color: accent.withValues(alpha: glowOpacity),
-                blurRadius: 20,
+                blurRadius: 18,
+                spreadRadius: 0.5,
               ),
             ],
           ),
@@ -365,14 +363,33 @@ class _HomeCard extends StatelessWidget {
             borderRadius: radius,
             child: Stack(
               children: [
+                if (leftWash)
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 132,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            accent.withValues(alpha: 0.28),
+                            accent.withValues(alpha: 0.08),
+                            accent.withValues(alpha: 0.0),
+                          ],
+                          stops: const [0.0, 0.45, 1.0],
+                        ),
+                      ),
+                    ),
+                  ),
                 const Positioned.fill(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [Color(0x0AFFFFFF), Color(0x00FFFFFF)],
-                        stops: [0.0, 0.6],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Color(0x0DFFFFFF), Color(0x00FFFFFF)],
+                        stops: [0.0, 0.55],
                       ),
                     ),
                   ),
@@ -396,11 +413,18 @@ class _HomeIconBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 36,
-      height: 36,
+      width: 40,
+      height: 40,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
-        color: accent.withValues(alpha: 0.18),
+        color: accent.withValues(alpha: 0.16),
+        border: Border.all(color: accent.withValues(alpha: 0.28)),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: 0.35),
+            blurRadius: 12,
+          ),
+        ],
       ),
       alignment: Alignment.center,
       child: child,
@@ -421,24 +445,25 @@ class _LeagueTone {
   final Color meta;
   final List<Color> fill;
 
+  /// Dark slate glass + gold chrome; title tint keeps league identity.
   static _LeagueTone of(LeagueTier tier) => switch (tier) {
         LeagueTier.bronze => const _LeagueTone(
-            accent: Color(0xFFCD7F32),
-            name: Color(0xFFE8A866),
-            meta: Color(0xFFF3D2A4),
-            fill: [Color(0x33CD7F32), Color(0x1A8B5A2B)],
+            accent: Color(0xFFFBBF24),
+            name: Color(0xFFFBBF24),
+            meta: Color(0xFFFDE68A),
+            fill: [Color(0xFF1A2336), Color(0xFF121826)],
           ),
         LeagueTier.silver => const _LeagueTone(
-            accent: Color(0xFFD1D5DB),
+            accent: Color(0xFFE2E8F0),
             name: Color(0xFFE5E7EB),
             meta: Color(0xFFD1D5DB),
-            fill: [Color(0x33D1D5DB), Color(0x1A6B7280)],
+            fill: [Color(0xFF1A2336), Color(0xFF121826)],
           ),
         LeagueTier.gold => const _LeagueTone(
             accent: Color(0xFFFFD700),
             name: Color(0xFFFBBF24),
             meta: Color(0xFFFDE68A),
-            fill: [Color(0x33FFD700), Color(0x1AB8860B)],
+            fill: [Color(0xFF1A2336), Color(0xFF121826)],
           ),
       };
 }
@@ -493,7 +518,6 @@ class _LeagueStripState extends State<_LeagueStrip> {
 
   @override
   Widget build(BuildContext context) {
-    final tone = _LeagueTone.of(widget.snap.user.currentLeague);
     return Column(
       children: [
         SizedBox(
@@ -519,19 +543,21 @@ class _LeagueStripState extends State<_LeagueStrip> {
             },
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             for (final tier in LeagueTier.values)
               AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                width: tier == widget.snap.user.currentLeague ? 16 : 6,
-                height: 6,
+                width: tier == widget.snap.user.currentLeague ? 18 : 8,
+                height: 5,
                 margin: const EdgeInsets.symmetric(horizontal: 3),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(99),
-                  color: tier == widget.snap.user.currentLeague ? tone.accent : _homeHint,
+                  color: tier == widget.snap.user.currentLeague
+                      ? _homeGold
+                      : const Color(0xFF334155),
                 ),
               ),
           ],
@@ -564,6 +590,9 @@ class _LeagueCard extends StatelessWidget {
     return _HomeCard(
       accent: tone.accent,
       fill: tone.fill,
+      leftWash: false,
+      borderOpacity: 0.65,
+      glowOpacity: 0.28,
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       onTap: () async {
         await context.push('/settings');
@@ -581,19 +610,25 @@ class _LeagueCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: _homeTitleStyle.copyWith(color: tone.name),
+                  style: _homeTitleStyle.copyWith(
+                    color: tone.name,
+                    letterSpacing: 1.0,
+                  ),
                 ),
               ),
               if (active && snap.leagueRank != null)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                   decoration: BoxDecoration(
                     color: tone.accent.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: tone.accent.withValues(alpha: 0.3)),
+                    borderRadius: BorderRadius.circular(99),
+                    border: Border.all(
+                      color: tone.accent.withValues(alpha: 0.35),
+                    ),
                   ),
                   child: Text(
-                    '#${snap.leagueRank} · ${snap.leaguePoints}p',
+                    '#${snap.leagueRank} • ${snap.leaguePoints}p',
                     style: TextStyle(
                       color: tone.name,
                       fontWeight: FontWeight.w700,
@@ -619,7 +654,7 @@ class _LeagueCard extends StatelessWidget {
               ),
             ),
           ],
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Row(
             children: [
               _Stat(icon: '🔥', value: '${user.streak}', color: tone.meta),
@@ -683,13 +718,12 @@ class _DailyCta extends StatelessWidget {
         ? l10n.t('daily_resume_sub')
         : l10n.t('daily_reg');
     return _HomeCard(
-      accent: const Color(0xFF22C55E),
-      fill: const [Color(0x2E22C55E), Color(0x1A064E3B)],
+      accent: _homeGreen,
       onTap: () => _open(context),
       child: Row(
         children: [
           const _HomeIconBox(
-            accent: Color(0xFF22C55E),
+            accent: _homeGreen,
             child: Icon(
               Icons.calendar_today_rounded,
               color: _homeGreen,
@@ -702,7 +736,7 @@ class _DailyCta extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _title(l10n),
+                  _title(l10n).toUpperCase(),
                   style: _homeTitleStyle.copyWith(color: _homeGreen),
                 ),
                 const SizedBox(height: 3),
@@ -724,15 +758,11 @@ class _ModeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = sl<L10n>();
-    final accent = duel ? const Color(0xFF3B82F6) : const Color(0xFF06B6D4);
-    final title = duel ? _homeBlue : _homeCyan;
-    final fill = duel
-        ? const [Color(0x2E3B82F6), Color(0x1A1E3A8A)]
-        : const [Color(0x2E06B6D4), Color(0x1A083344)];
-    final subtitle = l10n.t(duel ? 'duel_sub' : 'room_sub').split('\n').first.trim();
+    final accent = duel ? _homeBlue : _homeCyan;
+    final subtitle =
+        l10n.t(duel ? 'duel_sub' : 'room_sub').split('\n').first.trim();
     return _HomeCard(
       accent: accent,
-      fill: fill,
       onTap: () => context.push(duel ? '/duel' : '/room'),
       child: Row(
         children: [
@@ -740,7 +770,7 @@ class _ModeCard extends StatelessWidget {
             accent: accent,
             child: Icon(
               duel ? Icons.bolt_rounded : Icons.lock_rounded,
-              color: title,
+              color: accent,
               size: 20,
             ),
           ),
@@ -751,7 +781,7 @@ class _ModeCard extends StatelessWidget {
               children: [
                 Text(
                   l10n.t(duel ? 'duel_title' : 'room_title').toUpperCase(),
-                  style: _homeTitleStyle.copyWith(color: title),
+                  style: _homeTitleStyle.copyWith(color: accent),
                 ),
                 const SizedBox(height: 3),
                 Text(
@@ -778,14 +808,13 @@ class _EndlessCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = sl<L10n>();
     return _HomeCard(
-      accent: const Color(0xFFA855F7),
-      fill: const [Color(0x33A855F7), Color(0x1A581C87)],
-      glowOpacity: 0.18,
+      accent: _homePurple,
+      glowOpacity: 0.24,
       onTap: () => context.push('/marathon'),
       child: Row(
         children: [
           const _HomeIconBox(
-            accent: Color(0xFFA855F7),
+            accent: _homePurple,
             child: Text(
               '∞',
               style: TextStyle(
@@ -802,7 +831,7 @@ class _EndlessCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  l10n.t('endless_home'),
+                  l10n.t('endless_home').toUpperCase(),
                   style: _homeTitleStyle.copyWith(color: _homePurple),
                 ),
                 const SizedBox(height: 3),
@@ -810,29 +839,38 @@ class _EndlessCard extends StatelessWidget {
               ],
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                l10n.t('record').toUpperCase(),
-                style: TextStyle(
-                  color: _homePurple.withValues(alpha: 0.8),
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 2,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            decoration: BoxDecoration(
+              color: _homePurple.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _homePurple.withValues(alpha: 0.35)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  l10n.t('record').toUpperCase(),
+                  style: TextStyle(
+                    color: _homePurple.withValues(alpha: 0.85),
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                    height: 1,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                '$best',
-                style: const TextStyle(
-                  color: _homePurple,
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  height: 1,
+                const SizedBox(height: 3),
+                Text(
+                  '$best',
+                  style: const TextStyle(
+                    color: _homePurple,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    height: 1,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
@@ -851,8 +889,8 @@ class _RewardCard extends StatelessWidget {
     final l10n = sl<L10n>();
     return _HomeCard(
       accent: _homeAmber,
-      fill: const [Color(0x26F59E0B), Color(0x1478350F)],
-      borderOpacity: 0.5,
+      borderOpacity: 0.55,
+      glowOpacity: 0.24,
       onTap: () async {
         await context.push('/rewards');
         if (context.mounted) await context.read<HomeCubit>().load();
@@ -869,9 +907,10 @@ class _RewardCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  l10n.t('daily_reward_title'),
+                  l10n.t('daily_reward_title').toUpperCase(),
                   style: _homeTitleStyle.copyWith(color: _homeGold),
                 ),
+                const SizedBox(height: 3),
                 Text(
                   claimed
                       ? l10n.t('daily_reward_taken')
